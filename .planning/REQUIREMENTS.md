@@ -120,57 +120,55 @@
 
 ## Traceability
 
-_Populated during roadmap creation._
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FIX-01 | — | Pending |
-| FIX-02 | — | Pending |
-| FIX-03 | — | Pending |
-| TOUR-01 | — | Pending |
-| TOUR-02 | — | Pending |
-| TOUR-03 | — | Pending |
-| TOUR-04 | — | Pending |
-| TOUR-05 | — | Pending |
-| VIEW-01 | — | Pending |
-| VIEW-02 | — | Pending |
-| VIEW-03 | — | Pending |
-| LEAD-01 | — | Pending |
-| ANLT-01 | — | Pending |
-| CAP-01 | — | Pending |
-| CAP-02 | — | Pending |
-| CAP-03 | — | Pending |
-| CAP-04 | — | Pending |
-| VIEW3D-01 | — | Pending |
-| VIEW3D-02 | — | Pending |
-| VIEW3D-03 | — | Pending |
-| VIEW3D-04 | — | Pending |
-| FURN-01 | — | Pending |
-| FURN-02 | — | Pending |
-| FURN-03 | — | Pending |
-| FURN-04 | — | Pending |
-| FURN-05 | — | Pending |
-| FURN-06 | — | Pending |
-| FURN-07 | — | Pending |
-| FURN-08 | — | Pending |
-| SHARE-01 | — | Pending |
-| SHARE-02 | — | Pending |
-| SHARE-03 | — | Pending |
-| FP-01 | — | Pending |
-| FP-02 | — | Pending |
-| FP-03 | — | Pending |
-| FP-04 | — | Pending |
-| FP3D-01 | — | Pending |
-| FP3D-02 | — | Pending |
-| FP3D-03 | — | Pending |
-| FP3D-04 | — | Pending |
-| FP3D-05 | — | Pending |
+| FIX-01 | Phase 1 | Pending |
+| FIX-02 | Phase 1 | Pending |
+| FIX-03 | Phase 1 | Pending |
+| TOUR-01 | Phase 1 | Pending |
+| TOUR-02 | Phase 1 | Pending |
+| TOUR-03 | Phase 1 | Pending |
+| TOUR-04 | Phase 1 | Pending |
+| TOUR-05 | Phase 1 | Pending |
+| VIEW-01 | Phase 1 | Pending |
+| VIEW-02 | Phase 1 | Pending |
+| VIEW-03 | Phase 1 | Pending |
+| LEAD-01 | Phase 1 | Pending |
+| ANLT-01 | Phase 1 | Pending |
+| CAP-01 | Phase 2 | Pending |
+| CAP-02 | Phase 2 | Pending |
+| CAP-03 | Phase 2 | Pending |
+| CAP-04 | Phase 2 | Pending |
+| VIEW3D-01 | Phase 2 | Pending |
+| VIEW3D-02 | Phase 2 | Pending |
+| VIEW3D-03 | Phase 2 | Pending |
+| VIEW3D-04 | Phase 2 | Pending |
+| FURN-01 | Phase 3 | Pending |
+| FURN-02 | Phase 3 | Pending |
+| FURN-03 | Phase 3 | Pending |
+| FURN-04 | Phase 3 | Pending |
+| FURN-05 | Phase 3 | Pending |
+| FURN-06 | Phase 3 | Pending |
+| FURN-07 | Phase 3 | Pending |
+| FURN-08 | Phase 3 | Pending |
+| SHARE-01 | Phase 3 | Pending |
+| SHARE-02 | Phase 3 | Pending |
+| SHARE-03 | Phase 3 | Pending |
+| FP-01 | Phase 4 | Pending |
+| FP-02 | Phase 4 | Pending |
+| FP-03 | Phase 4 | Pending |
+| FP-04 | Phase 4 | Pending |
+| FP3D-01 | Phase 5 | Pending |
+| FP3D-02 | Phase 5 | Pending |
+| FP3D-03 | Phase 5 | Pending |
+| FP3D-04 | Phase 5 | Pending |
+| FP3D-05 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 40 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 40 ⚠️
+- v1 requirements: 41 total
+- Mapped to phases: 41
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-09 — traceability populated after roadmap creation*
