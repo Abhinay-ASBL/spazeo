@@ -30,7 +30,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. An agent completes the full flow — upload panoramas, arrange scenes, add hotspots visually, set sharing options, and publish — without leaving the app or editing JSON
   4. A buyer on a mobile device can pinch to zoom, swipe to rotate, and tap hotspots with no degradation vs desktop; the viewer auto-rotates when idle and stops on interaction
   5. An agent can view total tour views, unique visitors, average scene time, and lead count for any tour in the analytics dashboard
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Security fixes: remove duplicate lead email function and add bcrypt password hashing (Convex backend)
+- [ ] 01-02-PLAN.md — Password gate frontend switch to useAction + Stripe webhook verification
+- [ ] 01-03-PLAN.md — Viewer polish: pinch-to-zoom, F key fullscreen, idle auto-rotate timer
+- [ ] 01-04-PLAN.md — Hotspot visual upgrade: Gold pulse ring + info popup card + editor config fields
+- [ ] 01-05-PLAN.md — Tour creation flow, embed code UI, lead email verify, analytics verify
 
 ### Phase 2: 3D Capture Pipeline and Splat Viewer
 **Goal**: A user can upload a video walkthrough or multi-angle photos, trigger GPU-based Gaussian Splatting reconstruction asynchronously, and view the completed splat rendered in-browser inside the existing R3F canvas with dollhouse, free-roam, and hotspot navigation — no furniture yet
@@ -85,7 +92,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tour Platform — Stabilize and Polish | 0/TBD | Not started | - |
+| 1. Tour Platform — Stabilize and Polish | 0/5 | Not started | - |
 | 2. 3D Capture Pipeline and Splat Viewer | 0/TBD | Not started | - |
 | 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
