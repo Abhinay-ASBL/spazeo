@@ -128,9 +128,12 @@ function Controls({
   return (
     <OrbitControls
       ref={controlsRef}
-      enableZoom={false}
+      enableZoom={true}
       enablePan={false}
       rotateSpeed={-0.3}
+      zoomSpeed={0.5}
+      minDistance={0.1}
+      maxDistance={5}
       dampingFactor={0.1}
       enableDamping
       autoRotate={autoRotate}
@@ -247,6 +250,7 @@ export function PanoramaViewer({
         position: 'relative',
         cursor: isEditing ? 'crosshair' : 'grab',
         backgroundColor: '#0A0908',
+        touchAction: 'none',
       }}
     >
       {/* Canvas with CSS fade transition */}
