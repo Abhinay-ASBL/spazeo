@@ -298,6 +298,20 @@ export const getByUserId = query({
 })
 
 /**
+ * Get the splat URL for a completed reconstruction job.
+ * Returns null if job has no output or storage URL cannot be resolved.
+ */
+export const getSplatUrl = query({
+  args: { jobId: v.id('reconstructionJobs') },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId)
+    if (!job || !job.outputStorageId) return null
+    const url = await ctx.storage.getUrl(job.outputStorageId)
+    return url
+  },
+})
+
+/**
  * Get remaining reconstruction quota for the current month.
  * Authenticated query.
  */
