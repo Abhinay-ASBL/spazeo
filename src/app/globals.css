@@ -145,6 +145,16 @@
   50%      { border-color: rgba(212, 160, 23, 0.4); box-shadow: 0 0 50px rgba(212, 160, 23, 0.15); }
 }
 
+@keyframes hotspot-pulse {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes hotspot-pulse-inner {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(0.95); }
+}
+
 /* ─── CSS Custom Properties ──────────────────────────────────── */
 
 /* Dark theme (default) */
@@ -756,4 +766,72 @@ a { color: inherit; text-decoration: none; }
     min-height: 44px;
     min-width: 44px;
   }
+}
+
+/* ─── Clerk UserProfile dark theme overrides ─────────────────── */
+/* Force dark background on all Clerk root/wrapper elements */
+.cl-rootBox,
+.cl-userProfile-root,
+.cl-internal-fqc41u,
+.cl-modalContent,
+.cl-modalCloseButton + div,
+[class^="cl-internal-"] {
+  background-color: #12100E !important;
+  color: #F5F3EF !important;
+}
+
+/* UserProfile card + page areas */
+.cl-card,
+.cl-userProfile-root .cl-card,
+.cl-pageScrollBox,
+.cl-page,
+.cl-navbar {
+  background-color: #12100E !important;
+}
+
+/* UserProfile navbar */
+.cl-navbar {
+  background-color: #0A0908 !important;
+  border-right: 1px solid rgba(212, 160, 23, 0.08) !important;
+}
+
+.cl-navbarButton {
+  color: #A8A29E !important;
+}
+
+.cl-navbarButton:hover,
+.cl-navbarButton[data-active="true"] {
+  color: #F5F3EF !important;
+  background-color: #1B1916 !important;
+}
+
+/* Profile section text */
+.cl-profileSectionTitleText,
+.cl-userPreviewMainIdentifier,
+.cl-userPreviewSecondaryIdentifier {
+  color: #F5F3EF !important;
+}
+
+.cl-profileSectionContent__emailAddresses,
+.cl-profileSectionContent,
+.cl-accordionTriggerButton {
+  color: #A8A29E !important;
+}
+
+/* Buttons inside UserProfile */
+.cl-profileSectionPrimaryButton,
+.cl-formButtonPrimary {
+  background-color: #D4A017 !important;
+  color: #0A0908 !important;
+}
+
+.cl-profileSectionPrimaryButton:hover,
+.cl-formButtonPrimary:hover {
+  background-color: #E5B120 !important;
+}
+
+/* Modal backdrop */
+.cl-modalBackdrop {
+  background-color: rgba(10, 9, 8, 0.85) !important;
+  backdrop-filter: blur(4px) !important;
 }

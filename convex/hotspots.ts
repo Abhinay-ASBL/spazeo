@@ -54,6 +54,7 @@ export const create = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     imageStorageId: v.optional(v.id('_storage')),
+    visible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()
@@ -74,6 +75,7 @@ export const update = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     imageStorageId: v.optional(v.id('_storage')),
+    visible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()

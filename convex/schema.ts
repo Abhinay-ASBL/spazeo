@@ -90,6 +90,7 @@ export default defineSchema({
       v.union(v.literal('public'), v.literal('unlisted'), v.literal('password_protected'))
     ),
     password: v.optional(v.string()),
+    passwordHash: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     coverSceneId: v.optional(v.id('scenes')),
     autoplay: v.optional(v.boolean()),
@@ -164,6 +165,7 @@ export default defineSchema({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     imageStorageId: v.optional(v.id('_storage')),
+    visible: v.optional(v.boolean()),
   }).index('by_sceneId', ['sceneId']),
 
   floorPlans: defineTable({

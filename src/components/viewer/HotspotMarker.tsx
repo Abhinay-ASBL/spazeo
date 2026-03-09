@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
-import { Navigation, Info, Play, ExternalLink } from 'lucide-react'
+import { Navigation, Info, Play, ExternalLink, ChevronRight, X } from 'lucide-react'
 
 interface HotspotData {
   _id: string
@@ -16,11 +16,13 @@ interface HotspotData {
   title?: string
   description?: string
   imageUrl?: string | null
+  visible?: boolean
 }
 
 interface Props {
   hotspot: HotspotData
   onClick: () => void
+  isSelected?: boolean
 }
 
 const TYPE_CONFIG = {
@@ -30,9 +32,108 @@ const TYPE_CONFIG = {
   link: { icon: ExternalLink, color: '#8B5CF6', label: 'Link' },
 }
 
-export function HotspotMarker({ hotspot, onClick }: Props) {
+export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isPopupOpen, setIsPopupOpen] = useState(false)
   const config = TYPE_CONFIG[hotspot.type] ?? TYPE_CONFIG.navigation
+
+  // Visibility toggle — return null to skip rendering hidden hotspots
+  if (hotspot.visible === false) return null
+
+  if (hotspot.type === 'navigation') {
+    return (
+      <Html
+        position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
+        center
+        zIndexRange={[10, 0]}
+      >
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {/* Tooltip label — shown on hover */}
+          {isHovered && (hotspot.title || hotspot.tooltip) && (
+            <div
+              style={{
+                position: 'absolute',
+                top: -40,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                whiteSpace: 'nowrap',
+                padding: '4px 8px',
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 500,
+                pointerEvents: 'none',
+                backgroundColor: 'rgba(10,9,8,0.9)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#F5F3EF',
+                fontFamily: 'var(--font-dmsans)',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.07)',
+              }}
+            >
+              {hotspot.title || hotspot.tooltip}
+            </div>
+          )}
+
+          {/* Gold pulse ring container */}
+          <div style={{ position: 'relative', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Outer ring 1 — pulse animation */}
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '50%',
+                border: '2px solid #D4A017',
+                animation: 'hotspot-pulse 1.8s ease-out infinite',
+              }}
+            />
+            {/* Outer ring 2 — staggered pulse */}
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '50%',
+                border: '2px solid #D4A017',
+                animation: 'hotspot-pulse 1.8s ease-out infinite',
+                animationDelay: '0.6s',
+              }}
+            />
+            {/* Inner button */}
+            <button
+              onClick={onClick}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              aria-label={hotspot.tooltip ?? hotspot.title ?? 'Navigate'}
+              style={{
+                position: 'relative',
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                backgroundColor: '#D4A017',
+                color: '#0A0908',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'transform 150ms ease',
+                transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+                animation: 'hotspot-pulse-inner 1.8s ease-in-out infinite',
+                boxShadow: isSelected
+                  ? '0 0 0 2px #2DD4BF, 0 0 12px rgba(45,212,191,0.4)'
+                  : '0 4px 6px rgba(0,0,0,0.07)',
+                outline: 'none',
+              }}
+            >
+              <ChevronRight size={14} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+      </Html>
+    )
+  }
+
+  // Info / Media / Link types — popup card on click
   const IconComponent = config.icon
 
   return (
@@ -41,15 +142,26 @@ export function HotspotMarker({ hotspot, onClick }: Props) {
       center
       zIndexRange={[10, 0]}
     >
-      <div className="relative flex flex-col items-center">
-        {/* Tooltip label — shown on hover */}
-        {isHovered && (hotspot.title || hotspot.tooltip || config.label) && (
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {/* Tooltip label — shown on hover (when popup is closed) */}
+        {isHovered && !isPopupOpen && (hotspot.title || hotspot.tooltip || config.label) && (
           <div
-            className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-1 rounded-[4px] text-xs font-medium shadow-lg pointer-events-none"
             style={{
+              position: 'absolute',
+              top: -40,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              whiteSpace: 'nowrap',
+              padding: '4px 8px',
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 500,
+              pointerEvents: 'none',
               backgroundColor: 'rgba(10,9,8,0.9)',
               border: '1px solid rgba(255,255,255,0.1)',
               color: '#F5F3EF',
+              fontFamily: 'var(--font-dmsans)',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.07)',
             }}
           >
             {hotspot.title || hotspot.tooltip || config.label}
@@ -58,25 +170,134 @@ export function HotspotMarker({ hotspot, onClick }: Props) {
 
         {/* Marker button */}
         <button
-          onClick={onClick}
+          onClick={() => setIsPopupOpen((prev) => !prev)}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          aria-label={hotspot.tooltip ?? config.label}
-          className="relative w-9 h-9 flex items-center justify-center rounded-full shadow-lg transition-transform duration-150 hover:scale-110 focus-visible:outline-none"
+          aria-label={hotspot.tooltip ?? hotspot.title ?? config.label}
           style={{
+            position: 'relative',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
             backgroundColor: config.color,
             color: '#0A0908',
+            border: 'none',
             cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 150ms ease',
+            transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+            boxShadow: isSelected
+              ? '0 0 0 2px #2DD4BF, 0 0 12px rgba(45,212,191,0.4)'
+              : '0 4px 6px rgba(0,0,0,0.07)',
+            outline: 'none',
           }}
         >
           {/* Ping animation ring */}
           <span
-            className="absolute inset-0 rounded-full animate-ping"
-            style={{ backgroundColor: `${config.color}40` }}
             aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '50%',
+              backgroundColor: `${config.color}40`,
+              animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
+            }}
           />
-          <IconComponent size={16} strokeWidth={1.5} className="relative z-10" />
+          <IconComponent size={16} strokeWidth={1.5} style={{ position: 'relative', zIndex: 10 }} />
         </button>
+
+        {/* Popup card */}
+        {isPopupOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 52,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 240,
+              backgroundColor: '#12100E',
+              border: '1px solid rgba(212,160,23,0.2)',
+              borderRadius: 8,
+              padding: '12px 14px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
+              fontFamily: 'var(--font-dmsans)',
+              zIndex: 20,
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsPopupOpen(false) }}
+              aria-label="Close"
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                color: '#6B6560',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <X size={14} />
+            </button>
+
+            {/* Title */}
+            {(hotspot.title || hotspot.tooltip) && (
+              <p style={{ color: '#F5F3EF', fontSize: 13, fontWeight: 600, margin: '0 0 6px', paddingRight: 20 }}>
+                {hotspot.title || hotspot.tooltip}
+              </p>
+            )}
+
+            {/* Description text */}
+            {hotspot.description && (
+              <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
+                {hotspot.description}
+              </p>
+            )}
+
+            {/* Content text (fallback for info/media) */}
+            {!hotspot.description && hotspot.content && hotspot.type !== 'link' && (
+              <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
+                {hotspot.content}
+              </p>
+            )}
+
+            {/* Image if provided */}
+            {hotspot.imageUrl && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={hotspot.imageUrl}
+                alt={hotspot.title || ''}
+                style={{ width: '100%', borderRadius: 6, marginBottom: 8, objectFit: 'cover', maxHeight: 120 }}
+              />
+            )}
+
+            {/* External link if provided */}
+            {hotspot.type === 'link' && hotspot.content && hotspot.content.startsWith('http') && (
+              <a
+                href={hotspot.content}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  color: '#D4A017',
+                  fontSize: 12,
+                  textDecoration: 'none',
+                }}
+              >
+                Open link <ExternalLink size={11} />
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </Html>
   )
