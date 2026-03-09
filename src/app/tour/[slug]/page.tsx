@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 /* eslint-disable @next/next/no-img-element */
-import { useQuery, useMutation } from 'convex/react'
+import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
@@ -152,18 +152,22 @@ export default function PublicTourViewerPage() {
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [submittedPassword, setSubmittedPassword] = useState<string | null>(null)
+  const [passwordVerified, setPasswordVerified] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [showPasswordError, setShowPasswordError] = useState(false)
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '' })
   const [leadSubmitting, setLeadSubmitting] = useState(false)
 
-  // Verify password reactively when submitted
-  const verifiedTour = useQuery(
-    api.tours.verifyTourPassword,
-    submittedPassword ? { slug, password: submittedPassword } : 'skip'
+  const verifyPassword = useAction(api.passwordUtils.verifyTourPassword)
+
+  // After password is verified, load full tour data with scenes
+  const unlockedTour = useQuery(
+    api.tours.getBySlugWithScenes,
+    passwordVerified ? { slug } : 'skip'
   )
 
-  // Use verified tour data if available, otherwise use the initial data
-  const tour = verifiedTour ?? tourData
+  // Use unlocked tour (post-verification) if available, otherwise use the initial data
+  const tour = unlockedTour ?? tourData
 
   const containerRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef(crypto.randomUUID())
@@ -296,15 +300,25 @@ export default function PublicTourViewerPage() {
   }
 
   /* ── Password gate ── */
-  const handlePasswordSubmit = () => {
-    if (!password.trim()) return
-    setSubmittedPassword(password)
+  const handlePasswordSubmit = async () => {
+    if (!password.trim() || verifying) return
+    setVerifying(true)
+    setShowPasswordError(false)
+    try {
+      const ok = await verifyPassword({ slug, password: password.trim() })
+      if (ok) {
+        setPasswordVerified(true)
+      } else {
+        setShowPasswordError(true)
+      }
+    } catch {
+      toast.error('Verification failed. Please try again.')
+    } finally {
+      setVerifying(false)
+    }
   }
 
-  // Show error when verification returns null (wrong password)
-  const showPasswordError = submittedPassword !== null && verifiedTour === null
-
-  if (tour && 'requiresPassword' in tour && tour.requiresPassword) {
+  if (tour && 'requiresPassword' in tour && tour.requiresPassword && !passwordVerified) {
     return (
       <div
         className="fixed inset-0 flex items-center justify-center"
@@ -340,7 +354,7 @@ export default function PublicTourViewerPage() {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value)
-                if (submittedPassword) setSubmittedPassword(null)
+                if (showPasswordError) setShowPasswordError(false)
               }}
               placeholder="Enter password"
               className="w-full h-11 px-4 rounded-lg text-sm outline-none"
@@ -361,14 +375,15 @@ export default function PublicTourViewerPage() {
             )}
             <button
               onClick={handlePasswordSubmit}
-              className="w-full h-11 rounded-lg text-sm font-semibold transition-all"
+              disabled={verifying || !password.trim()}
+              className="w-full h-11 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
               style={{
                 backgroundColor: '#D4A017',
                 color: '#0A0908',
                 fontFamily: 'var(--font-dmsans)',
               }}
             >
-              Enter Tour
+              {verifying ? 'Verifying...' : 'Enter Tour'}
             </button>
           </div>
         </div>

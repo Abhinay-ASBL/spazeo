@@ -169,6 +169,44 @@ export const getBySlug = query({
   },
 })
 
+// Public query called client-side only after the password action has verified the visitor.
+// Returns full scene data without re-checking the password — the caller must have already
+// verified the password via api.passwordUtils.verifyTourPassword (bcrypt action).
+export const getBySlugWithScenes = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const tour = await ctx.db
+      .query('tours')
+      .withIndex('by_slug', (q) => q.eq('slug', args.slug))
+      .unique()
+    if (!tour || tour.status !== 'published') return null
+
+    const scenes = await ctx.db
+      .query('scenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+      .collect()
+
+    const scenesWithHotspots = await Promise.all(
+      scenes.map(async (scene) => {
+        const hotspots = await ctx.db
+          .query('hotspots')
+          .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
+          .collect()
+        const imageUrl = scene.imageStorageId
+          ? await ctx.storage.getUrl(scene.imageStorageId)
+          : null
+        return { ...scene, hotspots, imageUrl }
+      })
+    )
+
+    return {
+      ...tour,
+      scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
+      requiresPassword: false,
+    }
+  },
+})
+
 // NOTE: Password verification is now handled by passwordUtils.verifyTourPassword (bcrypt action).
 // This query is kept for backward compatibility but returns only a boolean — it does NOT
 // compare passwords or return scenes. The public viewer (Plan 02) will call the action instead.

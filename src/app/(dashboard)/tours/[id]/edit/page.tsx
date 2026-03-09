@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 /* eslint-disable @next/next/no-img-element */
-import { useQuery, useMutation } from 'convex/react'
+import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
@@ -76,6 +76,7 @@ export default function TourEditorPage() {
   const createHotspot = useMutation(api.hotspots.create)
   const updateHotspot = useMutation(api.hotspots.update)
   const removeHotspot = useMutation(api.hotspots.remove)
+  const setTourPassword = useAction(api.tours.setTourPassword)
 
   // AI analysis disabled
 
@@ -1873,15 +1874,12 @@ export default function TourEditorPage() {
                   </label>
                   <input
                     type="password"
-                    defaultValue={tour?.password || ''}
-                    placeholder="Enter password"
+                    defaultValue=""
+                    placeholder="Enter new password"
                     onBlur={(e) => {
                       const val = e.target.value.trim()
-                      if (val !== (tour?.password || '')) {
-                        updateTour({
-                          tourId,
-                          password: val || undefined
-                        }).catch(err => {
+                      if (val) {
+                        setTourPassword({ tourId, password: val }).catch(() => {
                           toast.error('Failed to update password')
                         })
                       }
