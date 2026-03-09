@@ -19,6 +19,10 @@ import {
   Lock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { AnimatePresence } from 'framer-motion'
+import { HotspotInfoPanel } from '@/components/viewer/HotspotInfoPanel'
+import { HotspotVideoModal } from '@/components/viewer/HotspotVideoModal'
+import { useViewerStore } from '@/hooks/useViewerStore'
 
 /* ── Lazy-load PanoramaViewer ── */
 const PanoramaViewer = dynamic(
@@ -158,6 +162,12 @@ export default function PublicTourViewerPage() {
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '' })
   const [leadSubmitting, setLeadSubmitting] = useState(false)
 
+  const activeHotspotId = useViewerStore((s) => s.activeHotspotId)
+  const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
+  const videoModalUrl = useViewerStore((s) => s.videoModalUrl)
+  const videoModalTitle = useViewerStore((s) => s.videoModalTitle)
+  const closeVideoModal = useViewerStore((s) => s.closeVideoModal)
+
   const verifyPassword = useAction(api.passwordUtils.verifyTourPassword)
 
   // After password is verified, load full tour data with scenes
@@ -225,14 +235,37 @@ export default function PublicTourViewerPage() {
 
   const activeHotspots = activeScene?.hotspots ?? []
 
-  /* ── Hotspot click → navigate scenes ── */
+  const activeHotspot = activeHotspotId
+    ? (activeHotspots.find((h: { _id: string }) => h._id === activeHotspotId) ?? null)
+    : null
+
+  // Close info panel when scene changes
+  useEffect(() => {
+    setActiveHotspot(null)
+  }, [activeSceneId, setActiveHotspot])
+
+  /* ── Hotspot click → navigate scenes, open info panel, or open video modal ── */
   const handleHotspotClick = useCallback(
-    (hotspot: { type: string; targetSceneId?: string }) => {
+    (hotspot: { type: string; targetSceneId?: string; _id?: string; content?: string; videoUrl?: string; title?: string }) => {
+      // Navigation: transition to target scene
       if (hotspot.type === 'navigation' && hotspot.targetSceneId) {
         setActiveSceneId(hotspot.targetSceneId)
+        return
+      }
+      // Media with video content: open full-screen video modal
+      if (hotspot.type === 'media') {
+        const videoSrc = (hotspot as Record<string, unknown>).videoUrl as string | undefined || hotspot.content
+        if (videoSrc) {
+          useViewerStore.getState().openVideoModal(videoSrc, hotspot.title)
+          return
+        }
+      }
+      // Info, link, or media without video: open info panel
+      if (hotspot._id) {
+        setActiveHotspot(hotspot._id)
       }
     },
-    []
+    [setActiveHotspot]
   )
 
   /* ── Fullscreen toggle ── */
@@ -527,6 +560,29 @@ export default function PublicTourViewerPage() {
         activeId={activeSceneId}
         onChange={setActiveSceneId}
       />
+
+      {/* ── Hotspot Info Panel (outside Canvas, driven by Zustand) ── */}
+      <AnimatePresence>
+        {activeHotspot && (
+          <HotspotInfoPanel
+            key={activeHotspot._id as string}
+            hotspot={activeHotspot as Parameters<typeof HotspotInfoPanel>[0]['hotspot']}
+            onClose={() => setActiveHotspot(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Full-Screen Video Modal ── */}
+      <AnimatePresence>
+        {videoModalUrl && (
+          <HotspotVideoModal
+            key={videoModalUrl}
+            url={videoModalUrl}
+            title={videoModalTitle}
+            onClose={closeVideoModal}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ── Lead Capture Button ── */}
       {/* Show Get in Touch by default — only hide when explicitly disabled */}
