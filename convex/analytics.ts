@@ -555,6 +555,18 @@ export const getDashboardOverview = query({
     const totalViewingHours = Math.floor(totalViewingSeconds / 3600)
     const totalViewingMinutes = Math.floor((totalViewingSeconds % 3600) / 60)
 
+    // Unique visitors — distinct sessionIds across all view events
+    const totalUniqueVisitors = new Set(viewEvents.map((e) => e.sessionId)).size
+
+    // Avg scene time — average duration in seconds across all events with a duration
+    const durationEvents = allEvents
+      .filter((e) => e.duration && e.duration > 0)
+      .map((e) => e.duration!)
+    const avgSceneTime =
+      durationEvents.length > 0
+        ? Math.round(durationEvents.reduce((sum, d) => sum + d, 0) / durationEvents.length)
+        : 0
+
     const currentDurations = allEvents
       .filter((e) => e.duration && e.duration > 0 && e.timestamp >= periodStart)
       .map((e) => e.duration!)
@@ -611,6 +623,8 @@ export const getDashboardOverview = query({
       publishedTours,
       totalViews,
       totalLeads,
+      totalUniqueVisitors,
+      avgSceneTime,
       totalViewingHours,
       totalViewingMinutes,
       completedAiJobs,
