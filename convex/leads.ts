@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { query, mutation, action, internalQuery, internalAction } from './_generated/server'
+import { query, mutation, action, internalQuery } from './_generated/server'
 import { internal } from './_generated/api'
 
 export const listByTour = query({
@@ -356,71 +356,3 @@ export const listAllInternal = internalQuery({
   },
 })
 
-// Send email notification to tour owner when a new lead is captured
-export const sendLeadNotification = internalAction({
-  args: {
-    ownerEmail: v.string(),
-    ownerName: v.string(),
-    leadName: v.string(),
-    leadEmail: v.string(),
-    leadPhone: v.optional(v.string()),
-    leadMessage: v.optional(v.string()),
-    tourTitle: v.string(),
-    tourSlug: v.string(),
-  },
-  handler: async (_ctx, args) => {
-    const resendApiKey = process.env.RESEND_API_KEY
-    if (!resendApiKey) {
-      console.warn('RESEND_API_KEY not configured, skipping lead notification email')
-      return
-    }
-
-    const contactDetails = [
-      `Name: ${args.leadName}`,
-      `Email: ${args.leadEmail}`,
-      args.leadPhone ? `Phone: ${args.leadPhone}` : null,
-      args.leadMessage ? `Message: ${args.leadMessage}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    try {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${resendApiKey}`,
-        },
-        body: JSON.stringify({
-          from: 'Spazeo <notifications@spazeo.io>',
-          to: [args.ownerEmail],
-          subject: `New lead on "${args.tourTitle}"`,
-          html: `
-            <div style="font-family: 'DM Sans', sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #D4A017;">New Lead Captured</h2>
-              <p>Hi ${args.ownerName},</p>
-              <p>Someone expressed interest in your tour <strong>"${args.tourTitle}"</strong>.</p>
-              <div style="background: #1B1916; border-radius: 8px; padding: 16px; margin: 16px 0; color: #F5F3EF;">
-                <p style="margin: 4px 0;"><strong>Name:</strong> ${args.leadName}</p>
-                <p style="margin: 4px 0;"><strong>Email:</strong> ${args.leadEmail}</p>
-                ${args.leadPhone ? `<p style="margin: 4px 0;"><strong>Phone:</strong> ${args.leadPhone}</p>` : ''}
-                ${args.leadMessage ? `<p style="margin: 4px 0;"><strong>Message:</strong> ${args.leadMessage}</p>` : ''}
-              </div>
-              <p>
-                <a href="https://spazeo.io/dashboard/leads" style="display: inline-block; background: #D4A017; color: #0A0908; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                  View in Dashboard
-                </a>
-              </p>
-              <p style="color: #6B6560; font-size: 12px; margin-top: 24px;">
-                You're receiving this because you have lead notifications enabled for your Spazeo account.
-              </p>
-            </div>
-          `,
-          text: `New lead on "${args.tourTitle}"\n\n${contactDetails}\n\nView in dashboard: https://spazeo.io/dashboard/leads`,
-        }),
-      })
-    } catch (error) {
-      console.error('Failed to send lead notification email:', error)
-    }
-  },
-})
