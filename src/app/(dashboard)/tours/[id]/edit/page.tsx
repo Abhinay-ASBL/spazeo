@@ -1316,6 +1316,109 @@ export default function TourEditorPage() {
                   </div>
                 )}
 
+                {/* Icon picker — show for non-navigation types */}
+                {hotspotType !== 'navigation' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                      Icon (optional)
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {/* None option — resets to type-default icon */}
+                      <button
+                        type="button"
+                        onClick={() => setHotspotIconName('')}
+                        title="Default (type icon)"
+                        style={{
+                          width: 34, height: 34, borderRadius: 6,
+                          border: `1px solid ${hotspotIconName === '' ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+                          backgroundColor: hotspotIconName === '' ? 'rgba(212,160,23,0.1)' : '#0A0908',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', color: '#6B6560', fontSize: 11,
+                        }}
+                      >
+                        —
+                      </button>
+                      {EDITOR_ICON_OPTIONS.map(({ key, label, icon: IconComp }) => (
+                        <button
+                          type="button"
+                          key={key}
+                          onClick={() => setHotspotIconName(key)}
+                          title={label}
+                          aria-label={label}
+                          style={{
+                            width: 34, height: 34, borderRadius: 6,
+                            border: `1px solid ${hotspotIconName === key ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+                            backgroundColor: hotspotIconName === key ? 'rgba(212,160,23,0.1)' : '#0A0908',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: hotspotIconName === key ? '#D4A017' : '#6B6560',
+                          }}
+                        >
+                          <IconComp size={15} strokeWidth={1.5} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Panel layout selector — show for non-navigation types */}
+                {hotspotType !== 'navigation' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                      Panel Layout
+                    </label>
+                    <select
+                      value={hotspotPanelLayout}
+                      onChange={(e) => setHotspotPanelLayout(e.target.value as 'compact' | 'rich' | 'video')}
+                      className="w-full h-9 px-3 rounded-lg text-[12px] outline-none"
+                      style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                    >
+                      <option value="compact">Compact</option>
+                      <option value="rich">Rich (image + CTA)</option>
+                      <option value="video">Video modal</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* CTA Label and URL fields — show for info and link types */}
+                {(hotspotType === 'info' || hotspotType === 'link') && (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                        CTA Button Label
+                      </label>
+                      <input
+                        type="text"
+                        value={hotspotCtaLabel}
+                        onChange={(e) => setHotspotCtaLabel(e.target.value)}
+                        placeholder="e.g. Schedule a Viewing"
+                        maxLength={40}
+                        className="w-full h-9 px-3 rounded-lg text-[12px] outline-none"
+                        style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = '#D4A017' }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212,160,23,0.15)' }}
+                      />
+                    </div>
+                    {hotspotCtaLabel.trim() && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                          CTA Button URL
+                        </label>
+                        <input
+                          type="url"
+                          value={hotspotCtaUrl}
+                          onChange={(e) => setHotspotCtaUrl(e.target.value)}
+                          placeholder="https://..."
+                          className="w-full h-9 px-3 rounded-lg text-[12px] outline-none"
+                          style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = '#D4A017' }}
+                          onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212,160,23,0.15)' }}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
               </div>
 
               {/* Footer */}
