@@ -13,7 +13,7 @@ Spazeo builds in three sequential sections, each layering on the last. Phase 1 h
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Tour Platform — Stabilize and Polish** - Fix live security bugs, wire lead capture, complete tour creation flow, and polish the 360° viewer for production (completed 2026-03-09)
-- [x] **Phase 2: 3D Capture Pipeline and Splat Viewer** - Build GPU reconstruction job queue, in-browser Gaussian Splat rendering, and all three 3D navigation modes (completed 2026-03-09)
+- [ ] **Phase 2: 3D Capture Pipeline and Splat Viewer** - Build GPU reconstruction job queue, in-browser Gaussian Splat rendering, and all three 3D navigation modes
 - [ ] **Phase 3: Furniture Catalog, Placement, and Room Sharing** - Seed the internal furniture catalog, build drag-and-drop 3D placement with cost tracking, and publish furnished rooms as shareable links
 - [ ] **Phase 4: Floor Plan Extraction** - Accept any floor plan file format, extract structured room geometry via GPT-4o, and provide an editable 2D correction step before proceeding
 - [ ] **Phase 5: Floor Plan to 3D and Full Section 3 Delivery** - Generate navigable 3D spaces from corrected room geometry, connect the furniture and cost tracking system, and publish as shareable tours
@@ -48,7 +48,7 @@ Plans:
   2. The user sees real-time progress updates while reconstruction runs and is notified when the job completes — no manual polling or page refresh required
   3. The completed Gaussian Splat (.spz) renders in-browser inside the R3F canvas using spark.js within 5 seconds of opening the viewer on a standard connection
   4. The user can switch between three navigation modes — overhead dollhouse view, first-person free-roam (click-to-move desktop / virtual joystick mobile), and room-to-room hotspot markers — without leaving the viewer
-**Plans**: 6 plans
+**Plans**: 7 plans
 
 Plans:
 - [ ] 02-01-PLAN.md — Convex schema: reconstructionJobs table, tours splat fields, job lifecycle CRUD with plan limits
@@ -57,6 +57,7 @@ Plans:
 - [ ] 02-04-PLAN.md — Reconstruction progress indicator, failure handling, and quality review (Accept/Re-capture)
 - [ ] 02-05-PLAN.md — RunPod integration: submit action, /gpu-callback webhook, stale job polling cron
 - [ ] 02-06-PLAN.md — Navigation modes (dollhouse, free-roam, hotspot), mode switcher, virtual joystick, public viewer conditional rendering
+- [ ] 02-07-PLAN.md — Gap closure: upload validation (react-dropzone, format/size limits), wire orphaned CapturePhotoGrid and CaptureTips, quota display
 
 ### Phase 3: Furniture Catalog, Placement, and Room Sharing
 **Goal**: Inside the reconstructed 3D room, a user can browse a curated catalog of 50+ GLB furniture items, drag and drop them onto the floor, scale and rotate them, track running cost in real time, undo mistakes, and save and share the furnished room as a public read-only link
@@ -100,8 +101,8 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tour Platform — Stabilize and Polish | 6/7 | In Progress|  |
-| 2. 3D Capture Pipeline and Splat Viewer | 6/6 | Complete   | 2026-03-09 |
+| 1. Tour Platform — Stabilize and Polish | 7/7 | Complete   | 2026-03-09 |
+| 2. 3D Capture Pipeline and Splat Viewer | 0/7 | Not started | - |
 | 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
@@ -111,7 +112,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 **Goal:** Hotspot interactions deliver a rich, responsive experience — custom Lucide icons per hotspot, a full-height info panel (right drawer on desktop, bottom sheet on mobile) with image and CTA support, full-screen video modal, and a viewer layout that meets 44px touch targets and safe-area requirements on all mobile devices
 **Requirements**: HS6-01, HS6-02, HS6-03, HS6-04, HS6-05, HS6-06
 **Depends on:** Phase 1 (inserted enhancement)
-**Plans:** 6/6 plans complete
+**Plans:** 6/6 plans complete (UAT fixing)
 
 Plans:
 - [ ] 06-01-PLAN.md — Convex schema + mutations: add 6 new optional hotspot customization fields
