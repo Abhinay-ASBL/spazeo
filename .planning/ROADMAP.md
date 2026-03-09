@@ -44,11 +44,19 @@ Plans:
 **Depends on**: Phase 1
 **Requirements**: CAP-01, CAP-02, CAP-03, CAP-04, VIEW3D-01, VIEW3D-02, VIEW3D-03, VIEW3D-04
 **Success Criteria** (what must be TRUE):
-  1. A user uploads a video walkthrough (up to 500MB MP4/MOV) or 10–30 multi-angle photos and triggers a reconstruction job that processes asynchronously on RunPod GPU without blocking the browser
+  1. A user uploads a video walkthrough (up to 500MB MP4/MOV) or 10-30 multi-angle photos and triggers a reconstruction job that processes asynchronously on RunPod GPU without blocking the browser
   2. The user sees real-time progress updates while reconstruction runs and is notified when the job completes — no manual polling or page refresh required
   3. The completed Gaussian Splat (.spz) renders in-browser inside the R3F canvas using spark.js within 5 seconds of opening the viewer on a standard connection
   4. The user can switch between three navigation modes — overhead dollhouse view, first-person free-roam (click-to-move desktop / virtual joystick mobile), and room-to-room hotspot markers — without leaving the viewer
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Convex schema: reconstructionJobs table, tours splat fields, job lifecycle CRUD with plan limits
+- [ ] 02-02-PLAN.md — spark.js compatibility spike: validate WASM/R3F/Turbopack, build GaussianSplatViewer shell
+- [ ] 02-03-PLAN.md — Capture upload UI: video/photo tabs, validation, preview, tips panel in tour editor
+- [ ] 02-04-PLAN.md — Reconstruction progress indicator, failure handling, and quality review (Accept/Re-capture)
+- [ ] 02-05-PLAN.md — RunPod integration: submit action, /gpu-callback webhook, stale job polling cron
+- [ ] 02-06-PLAN.md — Navigation modes (dollhouse, free-roam, hotspot), mode switcher, virtual joystick, public viewer conditional rendering
 
 ### Phase 3: Furniture Catalog, Placement, and Room Sharing
 **Goal**: Inside the reconstructed 3D room, a user can browse a curated catalog of 50+ GLB furniture items, drag and drop them onto the floor, scale and rotate them, track running cost in real time, undo mistakes, and save and share the furnished room as a public read-only link
@@ -93,7 +101,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Tour Platform — Stabilize and Polish | 6/7 | In Progress|  |
-| 2. 3D Capture Pipeline and Splat Viewer | 0/TBD | Not started | - |
+| 2. 3D Capture Pipeline and Splat Viewer | 0/6 | Planning | - |
 | 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
