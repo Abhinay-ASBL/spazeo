@@ -166,6 +166,13 @@ export default defineSchema({
     description: v.optional(v.string()),
     imageStorageId: v.optional(v.id('_storage')),
     visible: v.optional(v.boolean()),
+    // Phase 6 additions — all optional for backward compatibility
+    iconName: v.optional(v.string()),
+    panelLayout: v.optional(v.union(v.literal('compact'), v.literal('rich'), v.literal('video'))),
+    videoUrl: v.optional(v.string()),
+    ctaLabel: v.optional(v.string()),
+    ctaUrl: v.optional(v.string()),
+    accentColor: v.optional(v.string()),
   }).index('by_sceneId', ['sceneId']),
 
   floorPlans: defineTable({
