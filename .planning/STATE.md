@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-03-09T14:21:47.390Z"
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-03-09T19:41:37.620Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -68,6 +68,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02 P04 | 4m | 2 tasks | 4 files |
 | Phase 02 P03 | 6m | 2 tasks | 4 files |
 | Phase 02 P05 | 4m | 2 tasks | 4 files |
+| Phase 02 P06 | 8m | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,8 @@ Recent decisions affecting current work:
 - [Phase 02-05]: failById uses Convex job ID directly; fail uses runpodJobId lookup — both needed for different callers
 - [Phase 02-05]: RUNPOD_WEBHOOK_SECRET verification is optional in callback handler — skips check when unset for dev convenience
 - [Phase 02-05]: Three-layer job reliability pattern: scheduler fire-and-forget + webhook callback + 10min cron polling
+- [Phase 02-06]: Three navigation modes use lerp/slerp transitions instead of gsap — pure Three.js/R3F
+- [Phase 02-06]: Public tour page conditionally renders GaussianSplatViewer vs PanoramaViewer based on splatStorageId
 
 ### Roadmap Evolution
 
@@ -141,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T14:21:47.383Z
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-03-09T19:41:37.613Z
+Stopped at: Completed 02-06-PLAN.md
 Resume file: None

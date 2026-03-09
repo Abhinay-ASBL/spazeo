@@ -13,7 +13,7 @@ Spazeo builds in three sequential sections, each layering on the last. Phase 1 h
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Tour Platform — Stabilize and Polish** - Fix live security bugs, wire lead capture, complete tour creation flow, and polish the 360° viewer for production (completed 2026-03-09)
-- [ ] **Phase 2: 3D Capture Pipeline and Splat Viewer** - Build GPU reconstruction job queue, in-browser Gaussian Splat rendering, and all three 3D navigation modes
+- [x] **Phase 2: 3D Capture Pipeline and Splat Viewer** - Build GPU reconstruction job queue, in-browser Gaussian Splat rendering, and all three 3D navigation modes (completed 2026-03-09)
 - [ ] **Phase 3: Furniture Catalog, Placement, and Room Sharing** - Seed the internal furniture catalog, build drag-and-drop 3D placement with cost tracking, and publish furnished rooms as shareable links
 - [ ] **Phase 4: Floor Plan Extraction** - Accept any floor plan file format, extract structured room geometry via GPT-4o, and provide an editable 2D correction step before proceeding
 - [ ] **Phase 5: Floor Plan to 3D and Full Section 3 Delivery** - Generate navigable 3D spaces from corrected room geometry, connect the furniture and cost tracking system, and publish as shareable tours
@@ -101,7 +101,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Tour Platform — Stabilize and Polish | 6/7 | In Progress|  |
-| 2. 3D Capture Pipeline and Splat Viewer | 0/6 | Planning | - |
+| 2. 3D Capture Pipeline and Splat Viewer | 6/6 | Complete   | 2026-03-09 |
 | 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
