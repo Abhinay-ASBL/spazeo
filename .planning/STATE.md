@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-03-09T19:41:37.620Z"
-last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
+status: UAT fixing
+stopped_at: Completed 02-07-PLAN.md
+last_updated: "2026-03-09T20:23:42.979Z"
+last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 19
-  completed_plans: 19
-  percent: 0
+  total_plans: 20
+  completed_plans: 20
+  percent: 33
 ---
 
 # Project State
@@ -25,12 +25,13 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 1 of 5 (Tour Platform — Stabilize and Polish)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
+Phase: 6 (inserted) — Hotspot Customization (UAT fixing — 3 issues)
+Next up: Phase 2 — 3D Capture Pipeline and Splat Viewer
+Completed: Phase 1 (Tour Platform), Phase 6 (Hotspot Customization — plans done, UAT in progress)
+Status: UAT fixing
+Last activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaining)
 
 ## Performance Metrics
 
@@ -69,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02 P03 | 6m | 2 tasks | 4 files |
 | Phase 02 P05 | 4m | 2 tasks | 4 files |
 | Phase 02 P06 | 8m | 3 tasks | 11 files |
+| Phase 02 P07 | 4m | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -127,6 +129,7 @@ Recent decisions affecting current work:
 - [Phase 02-05]: Three-layer job reliability pattern: scheduler fire-and-forget + webhook callback + 10min cron polling
 - [Phase 02-06]: Three navigation modes use lerp/slerp transitions instead of gsap — pure Three.js/R3F
 - [Phase 02-06]: Public tour page conditionally renders GaussianSplatViewer vs PanoramaViewer based on splatStorageId
+- [Phase 02-07]: Dual dropzone instances for video/photos switched via selectedType; video thumbnail at 1s via canvas.toDataURL; photo count double-enforced in dropzone and on submit
 
 ### Roadmap Evolution
 
@@ -144,6 +147,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T19:41:37.613Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-03-09T20:23:42.976Z
+Stopped at: Completed 02-07-PLAN.md
 Resume file: None
