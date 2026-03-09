@@ -69,7 +69,15 @@ Plans:
   3. The cost tracker updates in real time as items are added or removed, showing the running subtotal and an itemized list
   4. A user presses Ctrl/Cmd+Z to undo the last placement action
   5. A user saves the furnished room and shares the link; anyone with the link sees the room in read-only mode with an itemized cost summary and product links — no login required
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Convex schema (furnitureItems, furnishedRooms, placedFurniture), backend CRUD with search/filter, useFurnitureStore Zustand store
+- [ ] 03-02-PLAN.md — Catalog sidebar UI: search bar, category tabs, style filter, 2-column item grid, CostTracker footer, mobile bottom sheet
+- [ ] 03-03-PLAN.md — R3F 3D components: FurnitureGhost (cursor preview), FurniturePiece (GLB + TransformControls), FurnitureLayer (click-to-place + keyboard shortcuts)
+- [ ] 03-04-PLAN.md — Integration: wire FurnitureLayer + CatalogSidebar into GaussianSplatViewer, Furnish mode toggle, FurnitureToolbar, disable nav click-to-move
+- [ ] 03-05-PLAN.md — Save/share flow: persist placements to Convex, public share page at /tour/[slug]/furnished/[id], CostSummaryPanel with Amazon links
+- [ ] 03-06-PLAN.md — Catalog seed data (52 items), tour editor wiring (enableFurniture for splat tours), end-to-end human verification
 
 ### Phase 4: Floor Plan Extraction
 **Goal**: A user can upload any floor plan file (PDF, JPG/PNG, or sketch photo), the AI extracts structured room geometry as a validated JSON payload, and the user reviews and corrects the extracted 2D diagram before the data is committed to Convex
@@ -103,7 +111,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 |-------|----------------|--------|-----------|
 | 1. Tour Platform — Stabilize and Polish | 7/7 | Complete   | 2026-03-09 |
 | 2. 3D Capture Pipeline and Splat Viewer | 7/7 | Complete   | 2026-03-09 |
-| 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
+| 3. Furniture Catalog, Placement, and Room Sharing | 0/6 | Planning complete | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
 
