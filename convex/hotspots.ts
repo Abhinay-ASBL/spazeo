@@ -55,6 +55,12 @@ export const create = mutation({
     description: v.optional(v.string()),
     imageStorageId: v.optional(v.id('_storage')),
     visible: v.optional(v.boolean()),
+    iconName: v.optional(v.string()),
+    panelLayout: v.optional(v.union(v.literal('compact'), v.literal('rich'), v.literal('video'))),
+    videoUrl: v.optional(v.string()),
+    ctaLabel: v.optional(v.string()),
+    ctaUrl: v.optional(v.string()),
+    accentColor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()
@@ -76,6 +82,12 @@ export const update = mutation({
     description: v.optional(v.string()),
     imageStorageId: v.optional(v.id('_storage')),
     visible: v.optional(v.boolean()),
+    iconName: v.optional(v.string()),
+    panelLayout: v.optional(v.union(v.literal('compact'), v.literal('rich'), v.literal('video'))),
+    videoUrl: v.optional(v.string()),
+    ctaLabel: v.optional(v.string()),
+    ctaUrl: v.optional(v.string()),
+    accentColor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()
