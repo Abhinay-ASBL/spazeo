@@ -121,6 +121,16 @@ export default defineSchema({
         socialImageStorageId: v.optional(v.id('_storage')),
       })
     ),
+    // Phase 2: 3D reconstruction splat fields — optional for backward compatibility
+    splatStorageId: v.optional(v.id('_storage')),
+    splatMetadata: v.optional(
+      v.object({
+        fileSizeBytes: v.number(),
+        gaussianCount: v.number(),
+        processingTimeMs: v.number(),
+        inputType: v.union(v.literal('video'), v.literal('photos')),
+      })
+    ),
   })
     .index('by_userId', ['userId'])
     .index('by_slug', ['slug'])
@@ -173,6 +183,7 @@ export default defineSchema({
     ctaLabel: v.optional(v.string()),
     ctaUrl: v.optional(v.string()),
     accentColor: v.optional(v.string()),
+    markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
   }).index('by_sceneId', ['sceneId']),
 
   floorPlans: defineTable({
@@ -513,6 +524,41 @@ export default defineSchema({
     .index('by_buildingId', ['buildingId'])
     .index('by_event', ['event']),
 
+  // --- Phase 2: 3D Reconstruction Job Queue ---
+
+  reconstructionJobs: defineTable({
+    tourId: v.id('tours'),
+    userId: v.id('users'),
+    inputType: v.union(v.literal('video'), v.literal('photos')),
+    inputStorageIds: v.array(v.id('_storage')),
+    status: v.union(
+      v.literal('uploading'),
+      v.literal('queued'),
+      v.literal('extracting_frames'),
+      v.literal('reconstructing'),
+      v.literal('compressing'),
+      v.literal('completed'),
+      v.literal('failed'),
+      v.literal('cancelled')
+    ),
+    progress: v.number(),
+    runpodJobId: v.optional(v.string()),
+    outputStorageId: v.optional(v.id('_storage')),
+    outputMetadata: v.optional(
+      v.object({
+        fileSizeBytes: v.number(),
+        gaussianCount: v.number(),
+        processingTimeMs: v.number(),
+      })
+    ),
+    error: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index('by_tourId', ['tourId'])
+    .index('by_userId', ['userId'])
+    .index('by_status', ['status']),
+
   blogPosts: defineTable({
     title: v.string(),
     slug: v.string(),
@@ -616,7 +662,8 @@ export default defineSchema({
       v.literal('tour_milestone'),
       v.literal('ai_completed'),
       v.literal('tour_error'),
-      v.literal('weekly_summary')
+      v.literal('weekly_summary'),
+      v.literal('system')
     ),
     title: v.string(),
     message: v.string(),
