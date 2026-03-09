@@ -41,7 +41,7 @@
 
 ### 3D Viewer (Section 2)
 
-- [ ] **VIEW3D-01**: Gaussian Splat renders in-browser using spark.js within the existing React Three Fiber canvas — no separate WebGL context
+- [x] **VIEW3D-01**: Gaussian Splat renders in-browser using spark.js within the existing React Three Fiber canvas — no separate WebGL context
 - [ ] **VIEW3D-02**: User can switch to a dollhouse/overhead orthographic view to see the full room layout from above
 - [ ] **VIEW3D-03**: User can navigate the 3D space in free-roam first-person mode (click-to-move on desktop, virtual joystick on mobile)
 - [ ] **VIEW3D-04**: User can navigate between reconstructed rooms using hotspot markers placed in the 3D space (reuses Section 1 hotspot model)
@@ -139,7 +139,7 @@
 | CAP-02 | Phase 2 | Pending |
 | CAP-03 | Phase 2 | Complete |
 | CAP-04 | Phase 2 | Complete |
-| VIEW3D-01 | Phase 2 | Pending |
+| VIEW3D-01 | Phase 2 | Complete |
 | VIEW3D-02 | Phase 2 | Pending |
 | VIEW3D-03 | Phase 2 | Pending |
 | VIEW3D-04 | Phase 2 | Pending |

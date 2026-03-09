@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-09T12:43:20.941Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-09T13:05:32.823Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P06 | 4m | 2 tasks | 1 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P05 | 3m | 2 tasks | 1 files |
 | Phase 02 P01 | 2m | 2 tasks | 3 files |
+| Phase 02 P02 | 2m | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,8 @@ Recent decisions affecting current work:
 - [Phase 02-01]: getRemainingQuota returns -1 for unlimited plans to avoid JSON Infinity serialization issues
 - [Phase 02-01]: complete/fail find jobs by runpodJobId via collect+filter since runpodJobId is optional and set post-creation
 - [Phase 02-01]: notifications type union extended with system literal to support reconstruction completion notifications
+- [Phase 02-02]: Turbopack cannot bundle spark.js — serve patched spark.module.js from public/lib/ with globalThis.__THREE bridge and webpackIgnore dynamic import
+- [Phase 02-02]: CSP requires data: in connect-src and wasm-unsafe-eval in script-src for spark.js WASM execution
 
 ### Roadmap Evolution
 
@@ -127,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T12:43:20.937Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-03-09T13:05:32.818Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
