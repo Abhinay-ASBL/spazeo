@@ -29,8 +29,8 @@ const GaussianSplatViewer = dynamic(
   }
 )
 
-// Public .spz demo file from spark.js examples
-const TEST_SPLAT_URL = 'https://sparkjsdev.github.io/spark/examples/guitar/bonsai.spz'
+// Public .spz demo file from spark.js docs
+const TEST_SPLAT_URL = 'https://sparkjs.dev/assets/splats/butterfly.spz'
 
 export default function SplatTestPage() {
   return (

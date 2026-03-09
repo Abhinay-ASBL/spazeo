@@ -1,46 +1,79 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
-import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark'
-import type * as THREE from 'three'
+import * as THREE from 'three'
+
+// Expose bundled THREE on globalThis so the patched spark.js module
+// (served from /lib/spark.module.js) can access it without bare imports.
+// This avoids Turbopack bundling issues with spark's inline Workers + WASM.
+if (typeof globalThis !== 'undefined') {
+  ;(globalThis as Record<string, unknown>).__THREE = THREE
+}
 
 interface SplatSceneProps {
   url: string
 }
 
 export function SplatScene({ url }: SplatSceneProps) {
-  const { gl, scene, camera } = useThree()
-  const sparkRef = useRef<SparkRenderer | null>(null)
-  const splatRef = useRef<SplatMesh | null>(null)
-  const [ready, setReady] = useState(false)
+  const { gl, scene } = useThree()
+  const sparkRef = useRef<THREE.Mesh | null>(null)
+  const splatRef = useRef<THREE.Object3D | null>(null)
+  const updateRef = useRef<((opts: { scene: THREE.Scene }) => void) | null>(
+    null
+  )
 
   useEffect(() => {
-    // Create SparkRenderer with the R3F WebGL renderer
-    const spark = new SparkRenderer({ renderer: gl as THREE.WebGLRenderer })
-    sparkRef.current = spark
-    scene.add(spark)
+    let cancelled = false
 
-    // Create SplatMesh with the target URL
-    const splat = new SplatMesh({ url })
-    splatRef.current = splat
-    scene.add(splat)
+    async function init() {
+      try {
+        // Load patched spark.js from public/ — bypasses Turbopack entirely
+        const spark = await import(
+          /* webpackIgnore: true */ '/lib/spark.module.js'
+        )
 
-    setReady(true)
+        if (cancelled) return
+
+        const renderer = new spark.SparkRenderer({
+          renderer: gl as THREE.WebGLRenderer,
+        })
+        sparkRef.current = renderer
+        updateRef.current = (opts: { scene: THREE.Scene }) =>
+          renderer.update(opts)
+        scene.add(renderer)
+
+        const splat = new spark.SplatMesh({ url })
+        splatRef.current = splat
+        scene.add(splat)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[SplatScene] Failed to initialize spark.js:', msg)
+      }
+    }
+
+    init()
 
     return () => {
-      scene.remove(spark)
-      scene.remove(splat)
-      sparkRef.current = null
-      splatRef.current = null
-      setReady(false)
+      cancelled = true
+      if (sparkRef.current) {
+        scene.remove(sparkRef.current)
+        sparkRef.current = null
+      }
+      if (splatRef.current) {
+        if ('dispose' in splatRef.current) {
+          ;(splatRef.current as unknown as { dispose: () => void }).dispose()
+        }
+        scene.remove(splatRef.current)
+        splatRef.current = null
+      }
+      updateRef.current = null
     }
   }, [gl, scene, url])
 
-  // Drive SparkRenderer update each frame
   useFrame(() => {
-    if (sparkRef.current) {
-      sparkRef.current.update({ scene })
+    if (updateRef.current) {
+      updateRef.current({ scene })
     }
   })
 
