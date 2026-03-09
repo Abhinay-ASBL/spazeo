@@ -9,8 +9,8 @@
 
 ### Stability (Critical Fixes — Ship Before Everything Else)
 
-- [ ] **FIX-01**: Lead email notification fires correctly when a buyer submits the lead form (fix missing tourSlug argument in leads.ts scheduler call)
-- [ ] **FIX-02**: Tour passwords are hashed with bcrypt before storage and compared server-side (remove plaintext storage)
+- [x] **FIX-01**: Lead email notification fires correctly when a buyer submits the lead form (fix missing tourSlug argument in leads.ts scheduler call)
+- [x] **FIX-02**: Tour passwords are hashed with bcrypt before storage and compared server-side (remove plaintext storage)
 - [ ] **FIX-03**: Stripe webhook handlers process checkout.session.completed, subscription updates, and cancellations correctly (complete empty stubs in convex/http.ts)
 
 ### Tour Creation
@@ -122,8 +122,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FIX-01 | Phase 1 | Pending |
-| FIX-02 | Phase 1 | Pending |
+| FIX-01 | Phase 1 | Complete |
+| FIX-02 | Phase 1 | Complete |
 | FIX-03 | Phase 1 | Pending |
 | TOUR-01 | Phase 1 | Pending |
 | TOUR-02 | Phase 1 | Pending |

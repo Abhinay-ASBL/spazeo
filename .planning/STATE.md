@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-09T07:03:27.652Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-03-09T07:04:54.913Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -51,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-tour-platform-stabilize-and-polish P03 | 4 | 2 tasks | 2 files |
+| Phase 01 P01 | 4m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,8 @@ Recent decisions affecting current work:
 - [Roadmap]: RunPod + nerfstudio/gsplat is primary reconstruction pipeline; Luma AI is secondary until API availability confirmed
 - [Phase 01-03]: OrbitControls distance zoom and CameraController FOV zoom kept independent — operate on different camera properties without conflict for panorama use
 - [Phase 01-03]: Idle timer pattern: manualRotate (user intent) + idleActive (timer state) derive isAutoRotating — clean separation of concerns
+- [Phase 01]: bcryptjs (pure JS) chosen over native bcrypt — Convex Node runtime has no native binaries
+- [Phase 01]: setTourPassword is an action so it can call bcrypt and internal mutations in one flow; mutations cannot call actions
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T07:03:27.647Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-03-09T07:04:54.909Z
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None
