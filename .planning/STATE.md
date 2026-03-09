@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-03-09T07:12:53.487Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-03-09T07:39:21.011Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 0
+  total_plans: 7
+  completed_plans: 6
   percent: 0
 ---
 
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-tour-platform-stabilize-and-polish P05 | 6 | 3 tasks | 3 files |
 | Phase 01 P04 | 7m | 2 tasks | 5 files |
 | Phase 01-tour-platform-stabilize-and-polish P02 | 3m | 2 tasks | 4 files |
+| Phase 01-tour-platform-stabilize-and-polish P06 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 01-04]: visible field added as optional boolean in Convex schema — undefined defaults to visible for backward compatibility
 - [Phase 01-02]: getBySlugWithScenes skips password re-check — caller (client) is trusted to have verified via action before calling this query
 - [Phase 01-02]: Editor password input uses defaultValue='' — hashed passwords must not round-trip to client
+- [Phase 01-06]: atan2(x,-z) bearing formula for equirectangular panorama hotspot arrow direction
+- [Phase 01-06]: IIFE JSX pattern for media content branching in popup card — readable without extracting named function
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T07:12:53.482Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-03-09T07:39:21.007Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
