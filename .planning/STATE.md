@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-06-PLAN.md
-last_updated: "2026-03-09T09:11:15.734Z"
+stopped_at: Completed 06-05-PLAN.md
+last_updated: "2026-03-09T09:17:20.296Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
   percent: 0
 ---
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P03 | 2m | 1 tasks | 1 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P04 | 3m | 2 tasks | 2 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P06 | 4m | 2 tasks | 1 files |
+| Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P05 | 3m | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,8 @@ Recent decisions affecting current work:
 - [Phase Phase 06-06]: EDITOR_ICON_OPTIONS defined as module-level constant to avoid re-creation on each render
 - [Phase Phase 06-06]: None button in icon grid uses empty string sentinel matching hotspotIconName initial state
 - [Phase Phase 06-06]: CTA URL input only renders when CTA Label is non-empty — progressive disclosure keeps form compact
+- [Phase 06-05]: AnimatePresence children require stable key props (hotspot._id and videoModalUrl) for exit animations to fire on unmount
+- [Phase 06-05]: handleHotspotClick routes navigation first (early return), then media+video, then info panel fallback
 
 ### Roadmap Evolution
 
@@ -120,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T09:11:15.730Z
-Stopped at: Completed 06-06-PLAN.md
+Last session: 2026-03-09T09:17:20.292Z
+Stopped at: Completed 06-05-PLAN.md
 Resume file: None
