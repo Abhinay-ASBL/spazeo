@@ -42,8 +42,11 @@ import {
   Sun,
   Building2,
   Key,
+  Pencil,
+  Check,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { CaptureUpload } from '@/components/tour/CaptureUpload'
 
 /* ── Lazy-load PanoramaViewer (Three.js — client only) ── */
 const PanoramaViewer = dynamic(
@@ -142,6 +145,22 @@ export default function TourEditorPage() {
   const [hotspotPanelLayout, setHotspotPanelLayout] = useState<'compact' | 'rich' | 'video'>('compact')
   const [hotspotCtaLabel, setHotspotCtaLabel] = useState('')
   const [hotspotCtaUrl, setHotspotCtaUrl] = useState('')
+  const [hotspotMarkerStyle, setHotspotMarkerStyle] = useState<'ring' | 'arrow' | 'dot' | 'label'>('ring')
+
+  // Hotspot editing state
+  const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null)
+  const [editFields, setEditFields] = useState<{
+    title: string; description: string; content: string; tooltip: string
+    iconName: string; panelLayout: 'compact' | 'rich' | 'video'
+    ctaLabel: string; ctaUrl: string; accentColor: string
+    markerStyle: 'ring' | 'arrow' | 'dot' | 'label'
+    targetSceneId: string; visible: boolean
+  }>({
+    title: '', description: '', content: '', tooltip: '',
+    iconName: '', panelLayout: 'compact',
+    ctaLabel: '', ctaUrl: '', accentColor: '',
+    markerStyle: 'ring', targetSceneId: '', visible: true,
+  })
 
   // Active info/media/link hotspot popup
   const [activePopupHotspot, setActivePopupHotspot] = useState<{
@@ -154,7 +173,7 @@ export default function TourEditorPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   // Right panel tab state
-  const [rightPanelTab, setRightPanelTab] = useState<'properties' | 'settings'>('properties')
+  const [rightPanelTab, setRightPanelTab] = useState<'properties' | 'settings' | 'capture'>('properties')
 
   // Tour settings local state
   const [tourSettings, setTourSettings] = useState({
@@ -484,6 +503,7 @@ export default function TourEditorPage() {
         panelLayout: hotspotPanelLayout,
         ctaLabel: hotspotCtaLabel || undefined,
         ctaUrl: hotspotCtaUrl || undefined,
+        markerStyle: hotspotType === 'navigation' ? hotspotMarkerStyle : undefined,
       })
       toast.success('Hotspot added')
       setPendingPosition(null)
@@ -499,6 +519,7 @@ export default function TourEditorPage() {
       setHotspotPanelLayout('compact')
       setHotspotCtaLabel('')
       setHotspotCtaUrl('')
+      setHotspotMarkerStyle('ring')
       setIsPlacingHotspot(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
@@ -521,6 +542,7 @@ export default function TourEditorPage() {
     hotspotPanelLayout,
     hotspotCtaLabel,
     hotspotCtaUrl,
+    hotspotMarkerStyle,
   ])
 
   /* ── Update hotspot tooltip ── */
@@ -548,14 +570,63 @@ export default function TourEditorPage() {
     [removeHotspot]
   )
 
+  /* ── Start editing a hotspot ── */
+  const startEditingHotspot = useCallback(
+    (hotspot: Record<string, unknown>) => {
+      setEditingHotspotId(hotspot._id as string)
+      setEditFields({
+        title: (hotspot.title as string) || '',
+        description: (hotspot.description as string) || '',
+        content: (hotspot.content as string) || '',
+        tooltip: (hotspot.tooltip as string) || '',
+        iconName: (hotspot.iconName as string) || '',
+        panelLayout: (hotspot.panelLayout as 'compact' | 'rich' | 'video') || 'compact',
+        ctaLabel: (hotspot.ctaLabel as string) || '',
+        ctaUrl: (hotspot.ctaUrl as string) || '',
+        accentColor: (hotspot.accentColor as string) || '',
+        markerStyle: (hotspot.markerStyle as 'ring' | 'arrow' | 'dot' | 'label') || 'ring',
+        targetSceneId: (hotspot.targetSceneId as string) || '',
+        visible: (hotspot.visible as boolean) ?? true,
+      })
+    },
+    []
+  )
+
+  /* ── Save edited hotspot ── */
+  const saveEditingHotspot = useCallback(
+    async () => {
+      if (!editingHotspotId) return
+      try {
+        await updateHotspot({
+          hotspotId: editingHotspotId as Id<'hotspots'>,
+          title: editFields.title || undefined,
+          description: editFields.description || undefined,
+          content: editFields.content || undefined,
+          tooltip: editFields.tooltip || undefined,
+          iconName: editFields.iconName || undefined,
+          panelLayout: editFields.panelLayout,
+          ctaLabel: editFields.ctaLabel || undefined,
+          ctaUrl: editFields.ctaUrl || undefined,
+          accentColor: editFields.accentColor || undefined,
+          markerStyle: editFields.markerStyle || undefined,
+          targetSceneId: editFields.targetSceneId ? editFields.targetSceneId as Id<'scenes'> : undefined,
+          visible: editFields.visible,
+        })
+        toast.success('Hotspot updated')
+        setEditingHotspotId(null)
+      } catch {
+        toast.error('Failed to update hotspot')
+      }
+    },
+    [editingHotspotId, editFields, updateHotspot]
+  )
+
   /* ── Hotspot click in viewer ── */
   const handleHotspotClick = useCallback(
     (hotspot: { _id: string; targetSceneId?: string; type: string; tooltip?: string; title?: string; description?: string; content?: string; imageUrl?: string | null }) => {
       if (hotspot.type === 'navigation' && hotspot.targetSceneId) {
         setActiveSceneId(hotspot.targetSceneId as Id<'scenes'>)
-      } else if (hotspot.type === 'link' && hotspot.content) {
-        window.open(hotspot.content, '_blank', 'noopener,noreferrer')
-      } else if (hotspot.type === 'info' || hotspot.type === 'media') {
+      } else {
         setActivePopupHotspot(hotspot)
       }
     },
@@ -1225,6 +1296,48 @@ export default function TourEditorPage() {
                   </div>
                 )}
 
+                {/* Navigation: marker style picker */}
+                {hotspotType === 'navigation' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                      Marker Style
+                    </label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {([
+                        { key: 'ring' as const, label: 'Ring', preview: '◎' },
+                        { key: 'arrow' as const, label: 'Arrow', preview: '▲' },
+                        { key: 'dot' as const, label: 'Dot', preview: '●' },
+                        { key: 'label' as const, label: 'Label', preview: 'Aa' },
+                      ]).map(({ key, label, preview }) => (
+                        <button
+                          type="button"
+                          key={key}
+                          onClick={() => setHotspotMarkerStyle(key)}
+                          title={label}
+                          style={{
+                            flex: 1,
+                            height: 40,
+                            borderRadius: 8,
+                            border: `1.5px solid ${hotspotMarkerStyle === key ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+                            backgroundColor: hotspotMarkerStyle === key ? 'rgba(212,160,23,0.1)' : '#0A0908',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: hotspotMarkerStyle === key ? '#D4A017' : '#6B6560',
+                            fontSize: 14,
+                            gap: 1,
+                          }}
+                        >
+                          <span style={{ fontSize: 16, lineHeight: 1 }}>{preview}</span>
+                          <span style={{ fontSize: 9, fontWeight: 500 }}>{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Info: description */}
                 {hotspotType === 'info' && (
                   <div className="flex flex-col gap-1.5">
@@ -1316,9 +1429,8 @@ export default function TourEditorPage() {
                   </div>
                 )}
 
-                {/* Icon picker — show for non-navigation types */}
-                {hotspotType !== 'navigation' && (
-                  <div className="flex flex-col gap-1.5">
+                {/* Icon picker — show for all hotspot types */}
+                <div className="flex flex-col gap-1.5">
                     <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
                       Icon (optional)
                     </label>
@@ -1358,8 +1470,7 @@ export default function TourEditorPage() {
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
+                </div>
 
                 {/* Panel layout selector — show for non-navigation types */}
                 {hotspotType !== 'navigation' && (
@@ -1449,7 +1560,7 @@ export default function TourEditorPage() {
                 {/* Image */}
                 {activePopupHotspot.imageUrl && (
                   <img
-                    src={activePopupHotspot.imageUrl}
+                    src={proxyImageUrl(activePopupHotspot.imageUrl) ?? activePopupHotspot.imageUrl}
                     alt={activePopupHotspot.title ?? activePopupHotspot.tooltip ?? ''}
                     className="w-full object-cover"
                     style={{ maxHeight: '200px' }}
@@ -1460,7 +1571,7 @@ export default function TourEditorPage() {
                 {activePopupHotspot.type === 'media' && activePopupHotspot.content && !activePopupHotspot.imageUrl && (
                   <div className="w-full" style={{ aspectRatio: '16/9', backgroundColor: '#0A0908' }}>
                     <iframe
-                      src={activePopupHotspot.content}
+                      src={proxyImageUrl(activePopupHotspot.content) ?? activePopupHotspot.content}
                       className="w-full h-full"
                       allow="autoplay; fullscreen"
                       allowFullScreen
@@ -1508,7 +1619,7 @@ export default function TourEditorPage() {
         </div>
 
         {/* ── Properties Panel (Right) ── */}
-        {activeScene && !previewMode && (
+        {(activeScene || rightPanelTab === 'capture') && !previewMode && (
           <div
             className="hidden lg:flex flex-col w-[280px] flex-shrink-0"
             style={{
@@ -1541,6 +1652,18 @@ export default function TourEditorPage() {
                 }}
               >
                 Settings
+              </button>
+              <button
+                onClick={() => setRightPanelTab('capture')}
+                className="flex-1 px-4 py-3 text-sm font-semibold text-center transition-colors"
+                style={{
+                  color: rightPanelTab === 'capture' ? '#D4A017' : '#A8A29E',
+                  fontFamily: 'var(--font-display)',
+                  borderBottom: rightPanelTab === 'capture' ? '2px solid #D4A017' : 'none',
+                  backgroundColor: rightPanelTab === 'capture' ? 'rgba(212,160,23,0.05)' : 'transparent',
+                }}
+              >
+                3D Capture
               </button>
             </div>
 
@@ -1649,87 +1772,320 @@ export default function TourEditorPage() {
                 {activeSceneHotspots.map((hotspot) => {
                   const config = HOTSPOT_TYPES.find((ht) => ht.value === hotspot.type) ?? HOTSPOT_TYPES[0]
                   const Icon = config.icon
+                  const isEditing = editingHotspotId === hotspot._id
                   return (
                     <div
                       key={hotspot._id}
-                      className="flex items-center gap-2 p-2 rounded-lg group"
+                      className="rounded-lg group"
                       style={{
-                        backgroundColor: 'rgba(255,255,255,0.02)',
-                        border: '1px solid rgba(212,160,23,0.08)',
+                        backgroundColor: isEditing ? 'rgba(212,160,23,0.04)' : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${isEditing ? 'rgba(212,160,23,0.2)' : 'rgba(212,160,23,0.08)'}`,
                       }}
                     >
-                      <div
-                        className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: `${config.color}15`, color: config.color }}
-                      >
-                        <Icon size={14} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <input
-                          type="text"
-                          defaultValue={hotspot.tooltip || ''}
-                          key={hotspot._id}
-                          placeholder={config.label}
-                          onBlur={(e) => {
-                            const val = e.target.value.trim()
-                            if (val !== (hotspot.tooltip ?? '')) {
-                              handleUpdateHotspotTooltip(hotspot._id as Id<'hotspots'>, val)
+                      {/* Header row */}
+                      <div className="flex items-center gap-2 p-2">
+                        <div
+                          className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${config.color}15`, color: config.color }}
+                        >
+                          <Icon size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-medium truncate" style={{ color: '#F5F3EF' }}>
+                            {hotspot.title || hotspot.tooltip || config.label}
+                          </p>
+                          <p className="text-[10px] capitalize" style={{ color: '#6B6560' }}>
+                            {hotspot.type}{hotspot.markerStyle ? ` · ${hotspot.markerStyle}` : ''}
+                          </p>
+                        </div>
+                        {/* Edit button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isEditing) {
+                              setEditingHotspotId(null)
+                            } else {
+                              startEditingHotspot(hotspot as unknown as Record<string, unknown>)
                             }
                           }}
-                          className="w-full text-[12px] font-medium truncate bg-transparent outline-none"
-                          style={{ color: '#F5F3EF' }}
-                        />
-                        <p className="text-[10px] capitalize" style={{ color: '#6B6560' }}>
-                          {hotspot.type}
-                        </p>
+                          className="p-1 rounded transition-opacity"
+                          style={{ color: isEditing ? '#D4A017' : '#6B6560' }}
+                          title={isEditing ? 'Cancel edit' : 'Edit hotspot'}
+                        >
+                          {isEditing ? <X size={12} /> : <Pencil size={12} />}
+                        </button>
+                        {/* Delete button */}
+                        <button
+                          onClick={() => handleDeleteHotspot(hotspot._id as Id<'hotspots'>)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded"
+                          style={{ color: '#F87171' }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
-                      {/* Visibility toggle for existing hotspot */}
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const newVisible = !(hotspot.visible ?? true)
-                          try {
-                            await updateHotspot({ hotspotId: hotspot._id as Id<'hotspots'>, visible: newVisible })
-                          } catch {
-                            toast.error('Failed to update visibility')
-                          }
-                        }}
-                        role="switch"
-                        aria-checked={hotspot.visible ?? true}
-                        aria-label="Toggle hotspot visibility"
-                        title={`${(hotspot.visible ?? true) ? 'Hide' : 'Show'} hotspot`}
-                        style={{
-                          width: 28,
-                          height: 16,
-                          borderRadius: 8,
-                          border: 'none',
-                          cursor: 'pointer',
-                          backgroundColor: (hotspot.visible ?? true) ? '#D4A017' : '#2E2A24',
-                          position: 'relative',
-                          transition: 'background-color 0.15s',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            position: 'absolute',
-                            top: 2,
-                            borderRadius: '50%',
-                            width: 12,
-                            height: 12,
-                            backgroundColor: '#F5F3EF',
-                            transition: 'left 0.15s',
-                            left: (hotspot.visible ?? true) ? 14 : 2,
-                          }}
-                        />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteHotspot(hotspot._id as Id<'hotspots'>)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded"
-                        style={{ color: '#F87171' }}
-                      >
-                        <Trash2 size={12} />
-                      </button>
+
+                      {/* Inline edit form */}
+                      {isEditing && (
+                        <div className="px-2 pb-3 flex flex-col gap-2.5" style={{ borderTop: '1px solid rgba(212,160,23,0.1)' }}>
+                          {/* Title */}
+                          <div className="flex flex-col gap-1 mt-2">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Title</label>
+                            <input
+                              type="text"
+                              value={editFields.title}
+                              onChange={(e) => setEditFields(f => ({ ...f, title: e.target.value }))}
+                              placeholder="Hotspot title"
+                              className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                              style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                            />
+                          </div>
+
+                          {/* Tooltip/Label */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Label</label>
+                            <input
+                              type="text"
+                              value={editFields.tooltip}
+                              onChange={(e) => setEditFields(f => ({ ...f, tooltip: e.target.value }))}
+                              placeholder="e.g. Go to Living Room"
+                              className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                              style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                            />
+                          </div>
+
+                          {/* Description */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Description</label>
+                            <textarea
+                              value={editFields.description}
+                              onChange={(e) => setEditFields(f => ({ ...f, description: e.target.value }))}
+                              placeholder="Hotspot description..."
+                              rows={2}
+                              className="w-full px-2 py-1.5 rounded-md text-[11px] outline-none resize-none"
+                              style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                            />
+                          </div>
+
+                          {/* Content (URL or text) */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Content / URL</label>
+                            <input
+                              type="text"
+                              value={editFields.content}
+                              onChange={(e) => setEditFields(f => ({ ...f, content: e.target.value }))}
+                              placeholder={hotspot.type === 'link' ? 'https://...' : 'Content text or URL'}
+                              className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                              style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                            />
+                          </div>
+
+                          {/* Navigate to Scene — navigation only */}
+                          {hotspot.type === 'navigation' && (
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Navigate to Scene</label>
+                              <select
+                                value={editFields.targetSceneId}
+                                onChange={(e) => setEditFields(f => ({ ...f, targetSceneId: e.target.value }))}
+                                className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                                style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                              >
+                                <option value="">Select a scene...</option>
+                                {sceneList.filter((s) => s._id !== activeScene?._id).map((s) => (
+                                  <option key={s._id} value={s._id}>{s.title}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Marker Style — navigation only */}
+                          {hotspot.type === 'navigation' && (
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Marker Style</label>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                {([
+                                  { key: 'ring' as const, label: 'Ring', preview: '◎' },
+                                  { key: 'arrow' as const, label: 'Arrow', preview: '▲' },
+                                  { key: 'dot' as const, label: 'Dot', preview: '●' },
+                                  { key: 'label' as const, label: 'Label', preview: 'Aa' },
+                                ]).map(({ key, label, preview }) => (
+                                  <button
+                                    type="button"
+                                    key={key}
+                                    onClick={() => setEditFields(f => ({ ...f, markerStyle: key }))}
+                                    title={label}
+                                    style={{
+                                      flex: 1, height: 34, borderRadius: 6,
+                                      border: `1.5px solid ${editFields.markerStyle === key ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+                                      backgroundColor: editFields.markerStyle === key ? 'rgba(212,160,23,0.1)' : '#0A0908',
+                                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                      cursor: 'pointer', color: editFields.markerStyle === key ? '#D4A017' : '#6B6560',
+                                      gap: 0,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 13, lineHeight: 1 }}>{preview}</span>
+                                    <span style={{ fontSize: 8, fontWeight: 500 }}>{label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Icon picker */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Icon</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                              <button
+                                type="button"
+                                onClick={() => setEditFields(f => ({ ...f, iconName: '' }))}
+                                title="Default"
+                                style={{
+                                  width: 28, height: 28, borderRadius: 5,
+                                  border: `1px solid ${editFields.iconName === '' ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+                                  backgroundColor: editFields.iconName === '' ? 'rgba(212,160,23,0.1)' : '#0A0908',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  cursor: 'pointer', color: '#6B6560', fontSize: 10,
+                                }}
+                              >
+                                —
+                              </button>
+                              {EDITOR_ICON_OPTIONS.map(({ key, label: iconLabel, icon: IconComp }) => (
+                                <button
+                                  type="button"
+                                  key={key}
+                                  onClick={() => setEditFields(f => ({ ...f, iconName: key }))}
+                                  title={iconLabel}
+                                  style={{
+                                    width: 28, height: 28, borderRadius: 5,
+                                    border: `1px solid ${editFields.iconName === key ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+                                    backgroundColor: editFields.iconName === key ? 'rgba(212,160,23,0.1)' : '#0A0908',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', color: editFields.iconName === key ? '#D4A017' : '#6B6560',
+                                  }}
+                                >
+                                  <IconComp size={13} strokeWidth={1.5} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Accent Color */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Accent Color</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={editFields.accentColor || '#D4A017'}
+                                onChange={(e) => setEditFields(f => ({ ...f, accentColor: e.target.value }))}
+                                style={{ width: 28, height: 28, border: 'none', borderRadius: 4, cursor: 'pointer', backgroundColor: 'transparent' }}
+                              />
+                              <input
+                                type="text"
+                                value={editFields.accentColor}
+                                onChange={(e) => setEditFields(f => ({ ...f, accentColor: e.target.value }))}
+                                placeholder="#D4A017"
+                                className="flex-1 h-8 px-2 rounded-md text-[11px] outline-none"
+                                style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                              />
+                              {editFields.accentColor && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditFields(f => ({ ...f, accentColor: '' }))}
+                                  className="text-[10px] px-1.5 py-0.5 rounded"
+                                  style={{ color: '#6B6560', border: '1px solid rgba(255,255,255,0.08)' }}
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Panel Layout — non-navigation */}
+                          {hotspot.type !== 'navigation' && (
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Panel Layout</label>
+                              <select
+                                value={editFields.panelLayout}
+                                onChange={(e) => setEditFields(f => ({ ...f, panelLayout: e.target.value as 'compact' | 'rich' | 'video' }))}
+                                className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                                style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                              >
+                                <option value="compact">Compact</option>
+                                <option value="rich">Rich (image + CTA)</option>
+                                <option value="video">Video modal</option>
+                              </select>
+                            </div>
+                          )}
+
+                          {/* CTA Label & URL */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>CTA Label</label>
+                            <input
+                              type="text"
+                              value={editFields.ctaLabel}
+                              onChange={(e) => setEditFields(f => ({ ...f, ctaLabel: e.target.value }))}
+                              placeholder="e.g. Schedule a Viewing"
+                              maxLength={40}
+                              className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                              style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                            />
+                          </div>
+                          {editFields.ctaLabel.trim() && (
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>CTA URL</label>
+                              <input
+                                type="url"
+                                value={editFields.ctaUrl}
+                                onChange={(e) => setEditFields(f => ({ ...f, ctaUrl: e.target.value }))}
+                                placeholder="https://..."
+                                className="w-full h-8 px-2 rounded-md text-[11px] outline-none"
+                                style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                              />
+                            </div>
+                          )}
+
+                          {/* Visibility toggle */}
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Visible</label>
+                            <button
+                              type="button"
+                              onClick={() => setEditFields(f => ({ ...f, visible: !f.visible }))}
+                              role="switch"
+                              aria-checked={editFields.visible}
+                              style={{
+                                width: 28, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer',
+                                backgroundColor: editFields.visible ? '#D4A017' : '#2E2A24',
+                                position: 'relative', transition: 'background-color 0.15s', flexShrink: 0,
+                              }}
+                            >
+                              <span style={{
+                                position: 'absolute', top: 2, borderRadius: '50%', width: 12, height: 12,
+                                backgroundColor: '#F5F3EF', transition: 'left 0.15s',
+                                left: editFields.visible ? 14 : 2,
+                              }} />
+                            </button>
+                          </div>
+
+                          {/* Save / Cancel buttons */}
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={saveEditingHotspot}
+                              className="flex-1 h-8 rounded-md flex items-center justify-center gap-1.5 text-[11px] font-semibold"
+                              style={{ backgroundColor: '#D4A017', color: '#0A0908' }}
+                            >
+                              <Check size={12} /> Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingHotspotId(null)}
+                              className="flex-1 h-8 rounded-md flex items-center justify-center gap-1.5 text-[11px] font-semibold"
+                              style={{ backgroundColor: 'transparent', color: '#6B6560', border: '1px solid rgba(255,255,255,0.08)' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -2110,6 +2466,13 @@ export default function TourEditorPage() {
             </div>
             )}
 
+            {/* 3D Capture Tab Content */}
+            {rightPanelTab === 'capture' && (
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <CaptureUpload tourId={tourId} />
+            </div>
+            )}
+
             {/* Footer */}
             <div
               className="p-4 flex flex-col gap-2"
@@ -2211,6 +2574,17 @@ export default function TourEditorPage() {
                     }}
                   >
                     Settings
+                  </button>
+                  <button
+                    onClick={() => setRightPanelTab('capture')}
+                    className="px-3 py-2 text-sm font-semibold transition-colors"
+                    style={{
+                      color: rightPanelTab === 'capture' ? '#D4A017' : '#A8A29E',
+                      fontFamily: 'var(--font-display)',
+                      borderBottom: rightPanelTab === 'capture' ? '2px solid #D4A017' : 'none',
+                    }}
+                  >
+                    3D Capture
                   </button>
                 </div>
 
@@ -2516,6 +2890,13 @@ export default function TourEditorPage() {
                         </p>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* 3D Capture Tab Content */}
+                {rightPanelTab === 'capture' && (
+                  <div>
+                    <CaptureUpload tourId={tourId} />
                   </div>
                 )}
               </div>
