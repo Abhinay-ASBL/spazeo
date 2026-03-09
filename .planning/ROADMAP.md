@@ -97,3 +97,18 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 | 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
+
+### Phase 6: Hotspot customization options, icons, info panels, video support, and adaptive screen layout
+
+**Goal:** Hotspot interactions deliver a rich, responsive experience — custom Lucide icons per hotspot, a full-height info panel (right drawer on desktop, bottom sheet on mobile) with image and CTA support, full-screen video modal, and a viewer layout that meets 44px touch targets and safe-area requirements on all mobile devices
+**Requirements**: HS6-01, HS6-02, HS6-03, HS6-04, HS6-05, HS6-06
+**Depends on:** Phase 1 (inserted enhancement)
+**Plans:** 6 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Convex schema + mutations: add 6 new optional hotspot customization fields
+- [ ] 06-02-PLAN.md — Shared infrastructure: parseVideoUrl utility and useViewerStore Zustand store
+- [ ] 06-03-PLAN.md — HotspotMarker refactor: delegate panel open to store, support iconName and accentColor
+- [ ] 06-04-PLAN.md — New viewer components: HotspotInfoPanel (responsive drawer) and HotspotVideoModal (full-screen)
+- [ ] 06-05-PLAN.md — Public viewer wiring: AnimatePresence integration + adaptive mobile layout
+- [ ] 06-06-PLAN.md — Tour editor: icon picker grid, panel layout selector, video URL, and CTA fields
