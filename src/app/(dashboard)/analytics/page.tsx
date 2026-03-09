@@ -139,25 +139,22 @@ export default function AnalyticsPage() {
       icon: Eye,
     },
     {
-      label: 'Total Leads',
-      value: formatNumber(overview.totalLeads),
-      trend: overview.trends.leads,
-      icon: UserPlus,
-    },
-    {
-      label: 'Conversion Rate',
-      value: `${overview.conversionRate}%`,
+      label: 'Unique Visitors',
+      value: formatNumber(overview.totalUniqueVisitors),
       trend: 0,
       icon: Users,
     },
     {
-      label: 'Viewing Time',
-      value:
-        overview.totalViewingHours > 0
-          ? `${overview.totalViewingHours}h ${overview.totalViewingMinutes}m`
-          : `${overview.totalViewingMinutes}m`,
-      trend: overview.trends.viewingTime,
+      label: 'Avg. Scene Time',
+      value: formatDuration(overview.avgSceneTime),
+      trend: 0,
       icon: Clock,
+    },
+    {
+      label: 'Total Leads',
+      value: formatNumber(overview.totalLeads),
+      trend: overview.trends.leads,
+      icon: UserPlus,
     },
   ]
 
