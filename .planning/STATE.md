@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-09T08:55:35.390Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-09T08:58:06.482Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 13
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-tour-platform-stabilize-and-polish P06 | 5 | 2 tasks | 1 files |
 | Phase 01-tour-platform-stabilize-and-polish P07 | 2 | 2 tasks | 2 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P01 | 8m | 2 tasks | 2 files |
+| Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P02 | 5m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 06-01]: All 6 Phase 6 hotspot fields use v.optional() — backward compatibility with existing documents, no data migration needed
 - [Phase 06-01]: panelLayout is a typed union ('compact'|'rich'|'video') not a free string — constrains valid values at DB layer
 - [Phase 06-01]: iconName is v.string() not a union enum — allows any Lucide icon name without schema changes for new icons
+- [Phase 06-02]: parseVideoUrl returns type='unknown' for unrecognized URLs rather than throwing — callers render fallback text safely
+- [Phase 06-02]: useViewerStore uses 'use client' directive — Zustand stores consumed exclusively in client components; prevents accidental server-side import
+- [Phase 06-02]: videoModalTitle typed as string | undefined (not null) matching optional parameter semantics — undefined signals absence without explicit clearing
 
 ### Roadmap Evolution
 
@@ -104,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T08:55:35.385Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-09T08:58:06.478Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
