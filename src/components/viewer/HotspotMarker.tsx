@@ -41,6 +41,9 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
   if (hotspot.visible === false) return null
 
   if (hotspot.type === 'navigation') {
+    // Derive horizontal yaw angle from position on sphere
+    const yawDeg = Math.round((Math.atan2(hotspot.position.x, -hotspot.position.z) * 180) / Math.PI)
+
     return (
       <Html
         position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
@@ -125,7 +128,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
                 outline: 'none',
               }}
             >
-              <ChevronRight size={14} strokeWidth={2} />
+              <ChevronRight size={14} strokeWidth={2} style={{ transform: `rotate(${yawDeg}deg)` }} />
             </button>
           </div>
         </div>
@@ -261,12 +264,55 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
               </p>
             )}
 
-            {/* Content text (fallback for info/media) */}
-            {!hotspot.description && hotspot.content && hotspot.type !== 'link' && (
-              <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
-                {hotspot.content}
-              </p>
-            )}
+            {/* Content: video player for media type, plain text for info type */}
+            {!hotspot.description && hotspot.content && hotspot.type !== 'link' && (() => {
+              if (hotspot.type === 'media' && hotspot.content) {
+                const isYoutube = /youtube\.com|youtu\.be/.test(hotspot.content)
+                const isVimeo = /vimeo\.com/.test(hotspot.content)
+                if (isYoutube || isVimeo) {
+                  // Build embed URL
+                  let embedSrc = hotspot.content
+                  if (isYoutube) {
+                    const vidId = hotspot.content.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
+                    if (vidId) embedSrc = `https://www.youtube.com/embed/${vidId}`
+                  } else if (isVimeo) {
+                    const vidId = hotspot.content.match(/vimeo\.com\/(\d+)/)?.[1]
+                    if (vidId) embedSrc = `https://player.vimeo.com/video/${vidId}`
+                  }
+                  return (
+                    <iframe
+                      src={embedSrc}
+                      style={{ width: '100%', height: 135, borderRadius: 6, marginBottom: 8, border: 'none' }}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      title={hotspot.title || 'Video'}
+                    />
+                  )
+                }
+                // Direct video file URL (.mp4, .webm, .ogg)
+                if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(hotspot.content)) {
+                  return (
+                    <video
+                      src={hotspot.content}
+                      controls
+                      style={{ width: '100%', borderRadius: 6, marginBottom: 8, maxHeight: 160 }}
+                    />
+                  )
+                }
+                // Fallback: render as text if URL pattern not matched
+                return (
+                  <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
+                    {hotspot.content}
+                  </p>
+                )
+              }
+              // info type — plain text
+              return (
+                <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
+                  {hotspot.content}
+                </p>
+              )
+            })()}
 
             {/* Image if provided */}
             {hotspot.imageUrl && (
