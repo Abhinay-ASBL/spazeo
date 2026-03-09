@@ -34,8 +34,8 @@
 
 ### 3D Capture & Reconstruction
 
-- [ ] **CAP-01**: User can upload a video walkthrough (MP4/MOV, up to 500MB) to trigger 3D reconstruction
-- [ ] **CAP-02**: User can upload 10–30 multi-angle JPG/PNG photos to trigger 3D reconstruction as an alternative to video
+- [x] **CAP-01**: User can upload a video walkthrough (MP4/MOV, up to 500MB) to trigger 3D reconstruction
+- [x] **CAP-02**: User can upload 10–30 multi-angle JPG/PNG photos to trigger 3D reconstruction as an alternative to video
 - [x] **CAP-03**: 3D reconstruction job processes input via RunPod + nerfstudio/gsplat pipeline asynchronously; user sees real-time progress updates while job runs
 - [x] **CAP-04**: Completed reconstruction is stored as a Gaussian Splat file (.spz) in Convex storage and linked to the tour
 
@@ -135,8 +135,8 @@
 | VIEW-03 | Phase 1 | Complete |
 | LEAD-01 | Phase 1 | Complete |
 | ANLT-01 | Phase 1 | Complete |
-| CAP-01 | Phase 2 | Pending |
-| CAP-02 | Phase 2 | Pending |
+| CAP-01 | Phase 2 | Complete |
+| CAP-02 | Phase 2 | Complete |
 | CAP-03 | Phase 2 | Complete |
 | CAP-04 | Phase 2 | Complete |
 | VIEW3D-01 | Phase 2 | Complete |
