@@ -87,6 +87,20 @@ export const getStaleJobs = internalQuery({
   },
 })
 
+/**
+ * Find a reconstruction job by its RunPod job ID.
+ * Used by the webhook handler for IN_PROGRESS updates.
+ */
+export const findByRunpodJobId = internalQuery({
+  args: { runpodJobId: v.string() },
+  handler: async (ctx, args) => {
+    const allJobs = await ctx.db
+      .query('reconstructionJobs')
+      .collect()
+    return allJobs.find((j) => j.runpodJobId === args.runpodJobId) ?? null
+  },
+})
+
 // --- Internal Mutations ---
 
 /**

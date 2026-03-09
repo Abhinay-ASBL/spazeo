@@ -503,4 +503,139 @@ http.route({
   }),
 })
 
+// --- RunPod GPU Callback (Reconstruction Webhook) ---
+
+http.route({
+  path: '/gpu-callback',
+  method: 'OPTIONS',
+  handler: httpAction(async () => new Response(null, { status: 204, headers: corsHeaders })),
+})
+
+http.route({
+  path: '/gpu-callback',
+  method: 'POST',
+  handler: httpAction(async (ctx, request) => {
+    // 1. Verify shared secret
+    const url = new URL(request.url)
+    const secret = url.searchParams.get('secret')
+    const expectedSecret = process.env.RUNPOD_WEBHOOK_SECRET
+
+    if (expectedSecret && secret !== expectedSecret) {
+      console.error('GPU callback: invalid webhook secret')
+      return new Response('Unauthorized', { status: 401 })
+    }
+
+    // 2. Parse body
+    let body: {
+      id: string
+      status: string
+      output?: {
+        splatUrl?: string
+        error?: string
+        stage?: string
+        metadata?: {
+          fileSizeBytes: number
+          gaussianCount: number
+          processingTimeMs: number
+        }
+      }
+      executionTime?: number
+      delayTime?: number
+    }
+
+    try {
+      body = await request.json()
+    } catch {
+      return new Response('Invalid JSON', { status: 400 })
+    }
+
+    if (!body.id || !body.status) {
+      return new Response('Missing id or status', { status: 400 })
+    }
+
+    try {
+      // 3. Handle status cases
+      if (body.status === 'COMPLETED' && body.output?.splatUrl) {
+        // Download SPZ file from temporary RunPod URL and store in Convex
+        const splatResponse = await fetch(body.output.splatUrl)
+        if (!splatResponse.ok) {
+          console.error(
+            `Failed to download SPZ from ${body.output.splatUrl}: ${splatResponse.status}`
+          )
+          return new Response('Failed to download SPZ', { status: 500 })
+        }
+
+        const splatBlob = await splatResponse.blob()
+        const storageId = await ctx.storage.store(splatBlob)
+
+        await ctx.runMutation(internal.reconstructionJobs.complete, {
+          runpodJobId: body.id,
+          outputStorageId: storageId,
+          outputMetadata: body.output.metadata ?? {
+            fileSizeBytes: splatBlob.size,
+            gaussianCount: 0,
+            processingTimeMs: body.executionTime ?? 0,
+          },
+        })
+
+        console.log(`GPU callback: job ${body.id} completed, stored SPZ`)
+      } else if (body.status === 'FAILED') {
+        await ctx.runMutation(internal.reconstructionJobs.fail, {
+          runpodJobId: body.id,
+          error:
+            body.output?.error ?? 'Reconstruction failed on GPU worker',
+        })
+
+        console.log(`GPU callback: job ${body.id} failed`)
+      } else if (body.status === 'IN_PROGRESS') {
+        // Intermediate progress update — map RunPod stage to our status
+        const stage = body.output?.stage
+        let mappedStatus: string = 'reconstructing'
+        let progress = 50
+
+        if (stage === 'extracting_frames') {
+          mappedStatus = 'extracting_frames'
+          progress = 30
+        } else if (stage === 'reconstructing') {
+          mappedStatus = 'reconstructing'
+          progress = 60
+        } else if (stage === 'compressing') {
+          mappedStatus = 'compressing'
+          progress = 85
+        } else if (body.executionTime) {
+          // Estimate progress from execution time (typical job ~15 min)
+          const estimatedTotalMs = 15 * 60 * 1000
+          progress = Math.min(
+            90,
+            Math.round((body.executionTime / estimatedTotalMs) * 90)
+          )
+        }
+
+        // Find job by runpodJobId to get the Convex jobId
+        const allJobs = await ctx.runQuery(
+          internal.reconstructionJobs.findByRunpodJobId,
+          { runpodJobId: body.id }
+        )
+
+        if (allJobs) {
+          await ctx.runMutation(internal.reconstructionJobs.updateStatus, {
+            jobId: allJobs._id,
+            status: mappedStatus as 'extracting_frames' | 'reconstructing' | 'compressing' | 'queued' | 'uploading' | 'completed' | 'failed' | 'cancelled',
+            progress,
+          })
+        }
+
+        console.log(
+          `GPU callback: job ${body.id} in progress (stage: ${stage ?? 'unknown'}, progress: ${progress}%)`
+        )
+      }
+
+      return new Response('OK', { status: 200, headers: corsHeaders })
+    } catch (error) {
+      console.error('GPU callback processing error:', error)
+      return new Response('Processing failed', { status: 500 })
+    }
+  }),
+})
+
 export default http

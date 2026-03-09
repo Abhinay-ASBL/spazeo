@@ -17,4 +17,11 @@ crons.monthly(
   internal.users.resetMonthlyCredits,
 )
 
+// Poll for stale reconstruction jobs every 10 minutes (missed webhooks / timed-out jobs)
+crons.interval(
+  'poll stale reconstruction jobs',
+  { minutes: 10 },
+  internal.reconstructionActions.pollStaleReconstructionJobs
+)
+
 export default crons
