@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-03-09T09:06:37.540Z"
+stopped_at: Completed 06-06-PLAN.md
+last_updated: "2026-03-09T09:11:15.734Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P02 | 5m | 2 tasks | 2 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P03 | 2m | 1 tasks | 1 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P04 | 3m | 2 tasks | 2 files |
+| Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P06 | 4m | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,9 @@ Recent decisions affecting current work:
 - [Phase 06-04]: HotspotInfoPanel and HotspotVideoModal rendered as DOM siblings outside R3F Canvas to avoid z-index stacking context conflicts
 - [Phase 06-04]: No autoPlay on video element — mobile browsers block it; user clicks play manually
 - [Phase 06-04]: z-50 for HotspotInfoPanel, zIndex 60 for HotspotVideoModal — video always renders above info panel
+- [Phase Phase 06-06]: EDITOR_ICON_OPTIONS defined as module-level constant to avoid re-creation on each render
+- [Phase Phase 06-06]: None button in icon grid uses empty string sentinel matching hotspotIconName initial state
+- [Phase Phase 06-06]: CTA URL input only renders when CTA Label is non-empty — progressive disclosure keeps form compact
 
 ### Roadmap Evolution
 
@@ -116,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T09:06:37.536Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-03-09T09:11:15.730Z
+Stopped at: Completed 06-06-PLAN.md
 Resume file: None

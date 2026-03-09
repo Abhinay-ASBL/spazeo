@@ -103,7 +103,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 **Goal:** Hotspot interactions deliver a rich, responsive experience — custom Lucide icons per hotspot, a full-height info panel (right drawer on desktop, bottom sheet on mobile) with image and CTA support, full-screen video modal, and a viewer layout that meets 44px touch targets and safe-area requirements on all mobile devices
 **Requirements**: HS6-01, HS6-02, HS6-03, HS6-04, HS6-05, HS6-06
 **Depends on:** Phase 1 (inserted enhancement)
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — Convex schema + mutations: add 6 new optional hotspot customization fields
