@@ -71,6 +71,11 @@ http.route({
     }
 
     try {
+      // FIX-03 verified: all four Stripe webhook event types are fully handled.
+      // checkout.session.completed -> upsertFromStripe + syncPlanToUser
+      // customer.subscription.updated -> upsertFromStripe + syncPlanToUser
+      // customer.subscription.deleted -> downgrade to free via upsertFromStripe + syncPlanToUser
+      // invoice.payment_failed -> mark past_due via upsertFromStripe
       switch (event.type) {
         case 'checkout.session.completed': {
           const session = event.data.object as Stripe.Checkout.Session
