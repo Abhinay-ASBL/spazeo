@@ -29,6 +29,19 @@ import {
   Layers,
   ChevronDown,
   Copy,
+  Home,
+  Bed,
+  Bath,
+  Car,
+  Wifi,
+  Camera,
+  Star,
+  DollarSign,
+  Ruler,
+  Trees,
+  Sun,
+  Building2,
+  Key,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -55,6 +68,27 @@ const HOTSPOT_TYPES = [
   { value: 'media' as const, label: 'Media', desc: 'Play video or audio', icon: Play, color: '#FB7A54' },
   { value: 'link' as const, label: 'Link', desc: 'Open an external URL', icon: ExternalLink, color: '#8B5CF6' },
 ]
+
+/* ── Editor icon picker options (17 icons) ── */
+const EDITOR_ICON_OPTIONS = [
+  { key: 'navigation', label: 'Navigate', icon: Navigation },
+  { key: 'info', label: 'Info', icon: Info },
+  { key: 'play', label: 'Play', icon: Play },
+  { key: 'link', label: 'Link', icon: ExternalLink },
+  { key: 'home', label: 'Home', icon: Home },
+  { key: 'bed', label: 'Bedroom', icon: Bed },
+  { key: 'bath', label: 'Bathroom', icon: Bath },
+  { key: 'car', label: 'Parking', icon: Car },
+  { key: 'wifi', label: 'WiFi', icon: Wifi },
+  { key: 'camera', label: 'Photo', icon: Camera },
+  { key: 'star', label: 'Feature', icon: Star },
+  { key: 'price', label: 'Price', icon: DollarSign },
+  { key: 'area', label: 'Area', icon: Ruler },
+  { key: 'garden', label: 'Garden', icon: Trees },
+  { key: 'balcony', label: 'Balcony', icon: Sun },
+  { key: 'building', label: 'Building', icon: Building2 },
+  { key: 'key', label: 'Key', icon: Key },
+] as const
 
 /* ── Page ── */
 export default function TourEditorPage() {
@@ -104,6 +138,10 @@ export default function TourEditorPage() {
   const [hotspotImagePreview, setHotspotImagePreview] = useState<string | null>(null)
   const hotspotImageInputRef = useRef<HTMLInputElement>(null)
   const [hotspotVisible, setHotspotVisible] = useState(true)
+  const [hotspotIconName, setHotspotIconName] = useState<string>('')
+  const [hotspotPanelLayout, setHotspotPanelLayout] = useState<'compact' | 'rich' | 'video'>('compact')
+  const [hotspotCtaLabel, setHotspotCtaLabel] = useState('')
+  const [hotspotCtaUrl, setHotspotCtaUrl] = useState('')
 
   // Active info/media/link hotspot popup
   const [activePopupHotspot, setActivePopupHotspot] = useState<{
@@ -442,6 +480,10 @@ export default function TourEditorPage() {
         content: hotspotContent || undefined,
         imageStorageId,
         visible: hotspotVisible,
+        iconName: hotspotIconName || undefined,
+        panelLayout: hotspotPanelLayout,
+        ctaLabel: hotspotCtaLabel || undefined,
+        ctaUrl: hotspotCtaUrl || undefined,
       })
       toast.success('Hotspot added')
       setPendingPosition(null)
@@ -453,6 +495,10 @@ export default function TourEditorPage() {
       setHotspotImageFile(null)
       setHotspotImagePreview(null)
       setHotspotVisible(true)
+      setHotspotIconName('')
+      setHotspotPanelLayout('compact')
+      setHotspotCtaLabel('')
+      setHotspotCtaUrl('')
       setIsPlacingHotspot(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
@@ -471,6 +517,10 @@ export default function TourEditorPage() {
     hotspotContent,
     hotspotImageFile,
     hotspotVisible,
+    hotspotIconName,
+    hotspotPanelLayout,
+    hotspotCtaLabel,
+    hotspotCtaUrl,
   ])
 
   /* ── Update hotspot tooltip ── */
