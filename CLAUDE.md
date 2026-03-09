@@ -33,10 +33,11 @@ Gaussian Splatting, AI staging, depth estimation, and smart search.
 | Authentication | Clerk + Convex Auth | User management, JWT tokens, social login, role-based access |
 | Panorama Viewer | @photo-sphere-viewer (core, autorotate-plugin, markers-plugin) | 360° equirectangular panorama viewer, hotspot markers |
 | 3D Building Viewer | Three.js via @react-three/fiber + drei | Interactive 3D building models, exterior views, floor/unit navigation |
-| AI — Vision | OpenAI GPT-4o Vision API | Scene analysis, object detection, room classification |
-| AI — Generation | Replicate (Stable Diffusion) | Virtual staging, style transfer, background generation |
-| AI — 3D | Gaussian Splatting pipeline | Point cloud to 3D scene, Luma AI integration |
-| AI — NLP | OpenAI GPT-4o + Embeddings | Tour descriptions, chatbot, semantic search via Convex vectors |
+| AI — Vision | Alibaba DashScope qwen3.5-plus | Scene analysis, object detection, room classification (OpenAI-compatible API) |
+| AI — Image Edit | Alibaba DashScope qwen-image-edit-max | Virtual staging, style transfer, inpainting (DashScope native API) |
+| AI — Image Gen | Alibaba DashScope qwen-image-2.0-pro | Image enhancement, 2K photorealistic output (DashScope native API) |
+| AI — 3D | Gaussian Splatting pipeline | Point cloud to 3D scene, spark.js viewer |
+| AI — NLP | Alibaba DashScope qwen3.5-plus | Tour descriptions, chatbot, marketing copy (OpenAI-compatible API) |
 | AI — Floor Plans | CubiCasa API / Custom model | 2D panorama to floor plan generation |
 | Payments | Stripe | Subscription billing, usage metering, webhooks via Convex HTTP Actions |
 | Email | Resend (via Convex component) | Transactional emails, lead notifications, tour sharing |
@@ -417,8 +418,7 @@ xl: 0 20px 25px rgba(0,0,0,0.15) → tour viewer overlay
 | `NEXT_PUBLIC_CONVEX_URL` | Vercel | Connects frontend to Convex backend |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Vercel | Clerk frontend auth |
 | `CLERK_SECRET_KEY` | Vercel | Clerk server-side auth (middleware) |
-| `OPENAI_API_KEY` | Convex | GPT-4o Vision, embeddings, chat |
-| `REPLICATE_API_TOKEN` | Convex | Stable Diffusion, Real-ESRGAN |
+| `DASHSCOPE_API_KEY` | Convex | Alibaba Cloud Model Studio — qwen3.5-plus (vision/text), qwen-image-edit-max (staging), qwen-image-2.0-pro (enhancement) |
 | `STRIPE_SECRET_KEY` | Both | Stripe API calls |
 | `STRIPE_WEBHOOK_SECRET` | Convex | Verify Stripe webhook signatures |
 | `RESEND_API_KEY` | Convex | Send transactional emails |

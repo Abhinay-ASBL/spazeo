@@ -7,6 +7,87 @@ import { Id } from './_generated/dataModel'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const internal = _internal as any
 
+// ── Alibaba Cloud Model Studio (DashScope) Configuration ──
+// Vision + Text: OpenAI-compatible endpoint
+const DASHSCOPE_CHAT_URL =
+  'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'
+// Image generation + editing: DashScope native endpoint
+const DASHSCOPE_IMAGE_URL =
+  'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+// Task status polling (for async image jobs)
+const DASHSCOPE_TASK_URL =
+  'https://dashscope-intl.aliyuncs.com/api/v1/tasks'
+
+// Model assignments:
+// - Scene analysis (vision):     qwen3.5-plus  — best visual understanding + structured JSON output
+// - Tour descriptions (text):    qwen3.5-plus  — highest quality marketing copy
+// - Scene descriptions (vision): qwen3.5-plus  — image analysis + text generation in one call
+// - Virtual staging (img edit):  qwen-image-edit-max — style transfer, object editing, inpainting
+// - Image enhancement (img gen): qwen-image-2.0-pro  — 2K photorealistic output
+
+const VISION_MODEL = 'qwen3.5-plus'
+const TEXT_MODEL = 'qwen3.5-plus'
+const IMAGE_EDIT_MODEL = 'qwen-image-edit-max'
+const IMAGE_GEN_MODEL = 'qwen-image-2.0-pro'
+
+function getDashScopeKey(): string {
+  const key = process.env.DASHSCOPE_API_KEY
+  if (!key) throw new Error('DASHSCOPE_API_KEY environment variable is not set')
+  return key
+}
+
+// ── Helper: Call DashScope OpenAI-compatible chat endpoint ──
+async function callChat(
+  model: string,
+  messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>,
+  maxTokens: number
+): Promise<{ choices: Array<{ message: { content: string } }> }> {
+  const response = await fetch(DASHSCOPE_CHAT_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getDashScopeKey()}`,
+    },
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`DashScope chat error ${response.status}: ${errText}`)
+  }
+
+  return response.json()
+}
+
+// ── Helper: Call DashScope image generation/editing endpoint ──
+async function callImageGen(
+  model: string,
+  messages: Array<{ role: string; content: Array<{ text?: string; image?: string }> }>,
+  params?: Record<string, unknown>
+): Promise<{ output: { choices: Array<{ message: { content: Array<{ image?: string }> } }> }; request_id: string }> {
+  const response = await fetch(DASHSCOPE_IMAGE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getDashScopeKey()}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: { messages },
+      parameters: { ...params },
+    }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`DashScope image error ${response.status}: ${errText}`)
+  }
+
+  return response.json()
+}
+
+// ── Scene Analysis (Vision) — qwen3.5-plus ──
+
 export const analyzeScene = action({
   returns: v.any(),
   args: {
@@ -32,7 +113,7 @@ export const analyzeScene = action({
       tourId: args.tourId,
       sceneId: args.sceneId,
       type: 'scene_analysis',
-      provider: 'openai',
+      provider: 'dashscope',
       userId: user._id,
       creditsUsed: 1,
     })
@@ -46,32 +127,26 @@ export const analyzeScene = action({
       const imageUrl = await ctx.storage.getUrl(args.sceneStorageId)
       if (!imageUrl) throw new Error('Image not found in storage')
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'Analyze this 360° panorama image. Return JSON with: roomType (string), objects (array of strings), features (array of strings), qualityScore (1-10), suggestions (array of 2-3 strings with improvement tips for the photo or space). Only return valid JSON.',
-                },
-                { type: 'image_url', image_url: { url: imageUrl } },
-              ],
-            },
-          ],
-          max_tokens: 600,
-        }),
-      })
+      const data = await callChat(
+        VISION_MODEL,
+        [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analyze this 360° panorama image. Return JSON with: roomType (string), objects (array of strings), features (array of strings), qualityScore (1-10), suggestions (array of 2-3 strings with improvement tips for the photo or space). Only return valid JSON.',
+              },
+              { type: 'image_url', image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        600
+      )
 
-      const data = await response.json()
-      const analysis = JSON.parse(data.choices[0].message.content)
+      const raw = data.choices[0].message.content
+      const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      const analysis = JSON.parse(cleaned)
       const duration = Date.now() - startTime
 
       await ctx.runMutation(internal.scenes.updateAiAnalysis, {
@@ -146,35 +221,28 @@ export const processAnalyzeScene = internalAction({
       const imageUrl = await ctx.storage.getUrl(args.sceneStorageId)
       if (!imageUrl) throw new Error('Image not found in storage')
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'Analyze this 360° panorama image. Return JSON with: roomType (string), objects (array of strings), features (array of strings), qualityScore (1-10), suggestions (array of 2-3 strings with improvement tips for the photo or space). Only return valid JSON.',
-                },
-                { type: 'image_url', image_url: { url: imageUrl } },
-              ],
-            },
-          ],
-          max_tokens: 600,
-        }),
-      })
+      const data = await callChat(
+        VISION_MODEL,
+        [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analyze this 360° panorama image. Return JSON with: roomType (string), objects (array of strings), features (array of strings), qualityScore (1-10), suggestions (array of 2-3 strings with improvement tips for the photo or space). Only return valid JSON.',
+              },
+              { type: 'image_url', image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        600
+      )
 
-      const data = await response.json()
-      const analysis = JSON.parse(data.choices[0].message.content)
+      const raw = data.choices[0].message.content
+      const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      const analysis = JSON.parse(cleaned)
       const duration = Date.now() - startTime
 
-      // Update scene with AI analysis results if sceneId was provided
       if (args.sceneId) {
         await ctx.runMutation(internal.scenes.updateAiAnalysis, {
           sceneId: args.sceneId,
@@ -195,7 +263,6 @@ export const processAnalyzeScene = internalAction({
         duration,
       })
 
-      // Deduct credits and log activity if userId was provided
       if (args.userId) {
         await ctx.runMutation(internal.aiHelpers.deductUserCredits, {
           userId: args.userId,
@@ -233,6 +300,8 @@ export const processAnalyzeScene = internalAction({
   },
 })
 
+// ── Virtual Staging (Image Editing) — qwen-image-edit-max ──
+
 export const stageScene = action({
   returns: v.any(),
   args: {
@@ -265,7 +334,7 @@ export const stageScene = action({
       tourId: args.tourId,
       sceneId: args.sceneId,
       type: 'staging',
-      provider: 'replicate',
+      provider: 'dashscope',
       userId: user._id,
       creditsUsed: 2,
       input: { style: args.style },
@@ -288,51 +357,34 @@ export const stageScene = action({
         industrial: 'industrial interior, exposed brick, metal elements, raw materials, loft style',
       }
 
-      const response = await fetch('https://api.replicate.com/v1/predictions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          version: 'db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf',
-          input: {
-            image: imageUrl,
-            prompt: `Virtual staging of this room with ${stylePrompts[args.style]}. Photorealistic, high quality, maintain room structure.`,
-            num_inference_steps: 30,
-            guidance_scale: 7.5,
-          },
-        }),
-      })
-
-      const prediction = await response.json()
-
-      let result = prediction
-      while (result.status !== 'succeeded' && result.status !== 'failed') {
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-        const pollResponse = await fetch(
-          `https://api.replicate.com/v1/predictions/${result.id}`,
+      const result = await callImageGen(
+        IMAGE_EDIT_MODEL,
+        [
           {
-            headers: {
-              Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-            },
-          }
-        )
-        result = await pollResponse.json()
-      }
+            role: 'user',
+            content: [
+              { image: imageUrl },
+              {
+                text: `Virtual staging: transform this room with ${stylePrompts[args.style]}. Photorealistic, high quality, maintain the room structure and architecture. Add appropriate furniture and decor.`,
+              },
+            ],
+          },
+        ],
+        { size: '1024*1024' }
+      )
 
-      if (result.status === 'failed') {
-        throw new Error(result.error || 'Staging generation failed')
-      }
+      const stagedImageUrl = result.output.choices[0]?.message?.content?.[0]?.image
+      if (!stagedImageUrl) throw new Error('No image returned from staging model')
 
-      const stagedImageUrl = Array.isArray(result.output) ? result.output[0] : result.output
+      // Download the generated image and upload to Convex storage
+      // DashScope image URLs expire after 24 hours
       const imageResponse = await fetch(stagedImageUrl)
       const imageBlob = await imageResponse.blob()
 
       const uploadUrl = await ctx.storage.generateUploadUrl()
       const uploadResponse = await fetch(uploadUrl, {
         method: 'POST',
-        headers: { 'Content-Type': imageBlob.type },
+        headers: { 'Content-Type': imageBlob.type || 'image/png' },
         body: imageBlob,
       })
       const { storageId } = await uploadResponse.json()
@@ -406,44 +458,29 @@ export const processStageScene = internalAction({
         industrial: 'industrial interior, exposed brick, metal elements, raw materials, loft style',
       }
 
-      const response = await fetch('https://api.replicate.com/v1/predictions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          version: 'db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf',
-          input: {
-            image: imageUrl,
-            prompt: `Virtual staging of this room with ${stylePrompts[args.style] ?? stylePrompts.modern}. Photorealistic, high quality, maintain room structure.`,
-            num_inference_steps: 30,
-            guidance_scale: 7.5,
-          },
-        }),
-      })
-
-      const prediction = await response.json()
-      let result = prediction
-      while (result.status !== 'succeeded' && result.status !== 'failed') {
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-        const pollResponse = await fetch(
-          `https://api.replicate.com/v1/predictions/${result.id}`,
+      const result = await callImageGen(
+        IMAGE_EDIT_MODEL,
+        [
           {
-            headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` },
-          }
-        )
-        result = await pollResponse.json()
-      }
+            role: 'user',
+            content: [
+              { image: imageUrl },
+              {
+                text: `Virtual staging: transform this room with ${stylePrompts[args.style] ?? stylePrompts.modern}. Photorealistic, high quality, maintain the room structure and architecture. Add appropriate furniture and decor.`,
+              },
+            ],
+          },
+        ],
+        { size: '1024*1024' }
+      )
 
-      if (result.status === 'failed') {
-        throw new Error(result.error || 'Staging generation failed')
-      }
+      const stagedImageUrl = result.output.choices[0]?.message?.content?.[0]?.image
+      if (!stagedImageUrl) throw new Error('No image returned from staging model')
 
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
         jobId: args.jobId,
         status: 'completed',
-        output: { resultUrl: Array.isArray(result.output) ? result.output[0] : result.output },
+        output: { resultUrl: stagedImageUrl },
         duration: Date.now() - startTime,
       })
     } catch (error) {
@@ -457,6 +494,8 @@ export const processStageScene = internalAction({
     }
   },
 })
+
+// ── Image Enhancement — qwen-image-2.0-pro ──
 
 export const enhanceImage = action({
   returns: v.any(),
@@ -483,7 +522,7 @@ export const enhanceImage = action({
       tourId: args.tourId,
       sceneId: args.sceneId,
       type: 'enhancement',
-      provider: 'replicate',
+      provider: 'dashscope',
       userId: user._id,
       creditsUsed: 1,
     })
@@ -497,46 +536,45 @@ export const enhanceImage = action({
       const imageUrl = await ctx.storage.getUrl(args.sceneStorageId)
       if (!imageUrl) throw new Error('Image not found in storage')
 
-      const response = await fetch('https://api.replicate.com/v1/predictions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          version: '42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b',
-          input: {
-            image: imageUrl,
-            scale: 2,
-            face_enhance: false,
-          },
-        }),
-      })
-
-      const prediction = await response.json()
-      let result = prediction
-      while (result.status !== 'succeeded' && result.status !== 'failed') {
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-        const pollResponse = await fetch(
-          `https://api.replicate.com/v1/predictions/${result.id}`,
+      // Use qwen-image-2.0-pro to regenerate at higher quality + 2K resolution
+      const result = await callImageGen(
+        IMAGE_GEN_MODEL,
+        [
           {
-            headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` },
-          }
-        )
-        result = await pollResponse.json()
-      }
+            role: 'user',
+            content: [
+              { image: imageUrl },
+              {
+                text: 'Enhance this interior photo: improve lighting, sharpen details, correct colors, increase resolution. Keep the exact same composition and content. Photorealistic output.',
+              },
+            ],
+          },
+        ],
+        { size: '2048*2048' }
+      )
 
-      if (result.status === 'failed') {
-        throw new Error(result.error || 'Image enhancement failed')
-      }
+      const enhancedImageUrl = result.output.choices[0]?.message?.content?.[0]?.image
+      if (!enhancedImageUrl) throw new Error('No image returned from enhancement model')
 
-      const enhancedUrl = result.output
+      // Download and store — DashScope URLs expire in 24h
+      const imageResponse = await fetch(enhancedImageUrl)
+      const imageBlob = await imageResponse.blob()
+
+      const uploadUrl = await ctx.storage.generateUploadUrl()
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': imageBlob.type || 'image/png' },
+        body: imageBlob,
+      })
+      const { storageId } = await uploadResponse.json()
+
+      const enhancedStorageUrl = await ctx.storage.getUrl(storageId)
       const duration = Date.now() - startTime
 
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
         jobId,
         status: 'completed',
-        output: { enhancedUrl },
+        output: { enhancedUrl: enhancedStorageUrl, enhancedStorageId: storageId },
         duration,
       })
 
@@ -560,7 +598,7 @@ export const enhanceImage = action({
         tourId: args.tourId,
       })
 
-      return { jobId, enhancedUrl }
+      return { jobId, enhancedUrl: enhancedStorageUrl }
     } catch (error) {
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
         jobId,
@@ -591,43 +629,29 @@ export const processEnhanceImage = internalAction({
       const imageUrl = await ctx.storage.getUrl(args.sceneStorageId)
       if (!imageUrl) throw new Error('Image not found in storage')
 
-      const response = await fetch('https://api.replicate.com/v1/predictions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          version: '42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b',
-          input: {
-            image: imageUrl,
-            scale: 2,
-            face_enhance: false,
-          },
-        }),
-      })
-
-      const prediction = await response.json()
-      let result = prediction
-      while (result.status !== 'succeeded' && result.status !== 'failed') {
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-        const pollResponse = await fetch(
-          `https://api.replicate.com/v1/predictions/${result.id}`,
+      const result = await callImageGen(
+        IMAGE_GEN_MODEL,
+        [
           {
-            headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` },
-          }
-        )
-        result = await pollResponse.json()
-      }
+            role: 'user',
+            content: [
+              { image: imageUrl },
+              {
+                text: 'Enhance this interior photo: improve lighting, sharpen details, correct colors, increase resolution. Keep the exact same composition and content. Photorealistic output.',
+              },
+            ],
+          },
+        ],
+        { size: '2048*2048' }
+      )
 
-      if (result.status === 'failed') {
-        throw new Error(result.error || 'Image enhancement failed')
-      }
+      const enhancedImageUrl = result.output.choices[0]?.message?.content?.[0]?.image
+      if (!enhancedImageUrl) throw new Error('No image returned from enhancement model')
 
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
         jobId: args.jobId,
         status: 'completed',
-        output: { enhancedUrl: result.output },
+        output: { enhancedUrl: enhancedImageUrl },
         duration: Date.now() - startTime,
       })
     } catch (error) {
@@ -641,6 +665,8 @@ export const processEnhanceImage = internalAction({
     }
   },
 })
+
+// ── Tour Description Generation (Text) — qwen3.5-plus ──
 
 export const generateDescription = action({
   returns: v.any(),
@@ -670,7 +696,7 @@ export const generateDescription = action({
     const jobId = await ctx.runMutation(internal.aiHelpers.createJob, {
       tourId: args.tourId,
       type: 'description',
-      provider: 'openai',
+      provider: 'dashscope',
       userId: user._id,
       creditsUsed: 1,
       input: { tourTitle: args.tourTitle, sceneAnalyses: args.sceneAnalyses, tone },
@@ -691,29 +717,21 @@ export const generateDescription = action({
           'Write in an aspirational, premium tone that emphasizes exclusivity and sophistication.',
       }
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a real estate marketing copywriter. ${toneInstructions[tone]} Write compelling property descriptions based on scene analysis data.`,
-            },
-            {
-              role: 'user',
-              content: `Write a property marketing description for "${args.tourTitle}" based on these room analyses: ${JSON.stringify(args.sceneAnalyses)}. Keep it under 200 words, highlight key features, and make it engaging for potential buyers.`,
-            },
-          ],
-          max_tokens: 400,
-        }),
-      })
+      const data = await callChat(
+        TEXT_MODEL,
+        [
+          {
+            role: 'system',
+            content: `You are a real estate marketing copywriter. ${toneInstructions[tone]} Write compelling property descriptions based on scene analysis data.`,
+          },
+          {
+            role: 'user',
+            content: `Write a property marketing description for "${args.tourTitle}" based on these room analyses: ${JSON.stringify(args.sceneAnalyses)}. Keep it under 200 words, highlight key features, and make it engaging for potential buyers.`,
+          },
+        ],
+        400
+      )
 
-      const data = await response.json()
       const description = data.choices[0].message.content
       const duration = Date.now() - startTime
 
@@ -783,29 +801,21 @@ export const processGenerateDescription = internalAction({
           'Write in an aspirational, premium tone that emphasizes exclusivity and sophistication.',
       }
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a real estate marketing copywriter. ${toneInstructions[args.tone] ?? toneInstructions.professional}`,
-            },
-            {
-              role: 'user',
-              content: `Write a property marketing description for "${args.tourTitle}" based on these room analyses: ${JSON.stringify(args.sceneAnalyses)}. Keep it under 200 words.`,
-            },
-          ],
-          max_tokens: 400,
-        }),
-      })
+      const data = await callChat(
+        TEXT_MODEL,
+        [
+          {
+            role: 'system',
+            content: `You are a real estate marketing copywriter. ${toneInstructions[args.tone] ?? toneInstructions.professional}`,
+          },
+          {
+            role: 'user',
+            content: `Write a property marketing description for "${args.tourTitle}" based on these room analyses: ${JSON.stringify(args.sceneAnalyses)}. Keep it under 200 words.`,
+          },
+        ],
+        400
+      )
 
-      const data = await response.json()
       const description = data.choices[0].message.content
 
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
@@ -825,6 +835,8 @@ export const processGenerateDescription = internalAction({
     }
   },
 })
+
+// ── Scene Description (Vision + Text) — qwen3.5-plus ──
 
 export const generateSceneDescription = action({
   returns: v.any(),
@@ -856,7 +868,7 @@ export const generateSceneDescription = action({
       tourId: args.tourId,
       sceneId: args.sceneId,
       type: 'description',
-      provider: 'openai',
+      provider: 'dashscope',
       userId: user._id,
       creditsUsed: 1,
     })
@@ -876,31 +888,23 @@ export const generateSceneDescription = action({
         luxury: 'aspirational and premium',
       }
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Write a ${toneInstructions[tone]} description for this room scene titled "${args.sceneTitle}". 2-3 sentences, highlight key features visible in the image. Return only the description text.`,
-                },
-                { type: 'image_url', image_url: { url: imageUrl } },
-              ],
-            },
-          ],
-          max_tokens: 200,
-        }),
-      })
+      const data = await callChat(
+        VISION_MODEL,
+        [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Write a ${toneInstructions[tone]} description for this room scene titled "${args.sceneTitle}". 2-3 sentences, highlight key features visible in the image. Return only the description text.`,
+              },
+              { type: 'image_url', image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        200
+      )
 
-      const data = await response.json()
       const description = data.choices[0].message.content
       const duration = Date.now() - startTime
 
