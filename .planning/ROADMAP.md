@@ -92,7 +92,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tour Platform — Stabilize and Polish | 2/5 | In Progress|  |
+| 1. Tour Platform — Stabilize and Polish | 3/5 | In Progress|  |
 | 2. 3D Capture Pipeline and Splat Viewer | 0/TBD | Not started | - |
 | 3. Furniture Catalog, Placement, and Room Sharing | 0/TBD | Not started | - |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |

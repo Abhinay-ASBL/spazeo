@@ -15,10 +15,10 @@
 
 ### Tour Creation
 
-- [ ] **TOUR-01**: User can complete the full tour creation flow end-to-end — upload panoramas, arrange scenes, set title/settings, and publish in one session
+- [x] **TOUR-01**: User can complete the full tour creation flow end-to-end — upload panoramas, arrange scenes, set title/settings, and publish in one session
 - [ ] **TOUR-02**: User can add, move, and delete hotspots visually inside the tour editor without editing JSON
 - [ ] **TOUR-03**: User can customize each hotspot with: animated directional arrow (points toward target room), info popup card (text, image, video), external link, and visibility toggle
-- [ ] **TOUR-04**: User can generate an embeddable iframe snippet from the tour settings page that works cross-origin on any website
+- [x] **TOUR-04**: User can generate an embeddable iframe snippet from the tour settings page that works cross-origin on any website
 - [ ] **TOUR-05**: User can share the tour via a clean public URL and optionally set a password-protected link
 
 ### Viewer UX
@@ -29,8 +29,8 @@
 
 ### Lead & Analytics
 
-- [ ] **LEAD-01**: Agent receives email notification with buyer name, email, and tour title within 60 seconds of lead form submission
-- [ ] **ANLT-01**: Analytics dashboard shows total views, unique visitors, average time per scene, and lead count per tour
+- [x] **LEAD-01**: Agent receives email notification with buyer name, email, and tour title within 60 seconds of lead form submission
+- [x] **ANLT-01**: Analytics dashboard shows total views, unique visitors, average time per scene, and lead count per tour
 
 ### 3D Capture & Reconstruction
 
@@ -125,16 +125,16 @@
 | FIX-01 | Phase 1 | Complete |
 | FIX-02 | Phase 1 | Complete |
 | FIX-03 | Phase 1 | Pending |
-| TOUR-01 | Phase 1 | Pending |
+| TOUR-01 | Phase 1 | Complete |
 | TOUR-02 | Phase 1 | Pending |
 | TOUR-03 | Phase 1 | Pending |
-| TOUR-04 | Phase 1 | Pending |
+| TOUR-04 | Phase 1 | Complete |
 | TOUR-05 | Phase 1 | Pending |
 | VIEW-01 | Phase 1 | Complete |
 | VIEW-02 | Phase 1 | Complete |
 | VIEW-03 | Phase 1 | Complete |
-| LEAD-01 | Phase 1 | Pending |
-| ANLT-01 | Phase 1 | Pending |
+| LEAD-01 | Phase 1 | Complete |
+| ANLT-01 | Phase 1 | Complete |
 | CAP-01 | Phase 2 | Pending |
 | CAP-02 | Phase 2 | Pending |
 | CAP-03 | Phase 2 | Pending |
