@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-09T06:17:24.459Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-03-09T07:03:27.652Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 5
+  completed_plans: 1
   percent: 0
 ---
 
@@ -62,6 +62,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Phase 4 (floor plan extraction) depends only on Phase 1, not Phase 2/3 — can begin after Phase 1 ships
 - [Roadmap]: Phase 5 depends on both Phase 3 (furniture system) and Phase 4 (geometry data)
 - [Roadmap]: RunPod + nerfstudio/gsplat is primary reconstruction pipeline; Luma AI is secondary until API availability confirmed
+- [Phase 01-03]: OrbitControls distance zoom and CameraController FOV zoom kept independent — operate on different camera properties without conflict for panorama use
+- [Phase 01-03]: Idle timer pattern: manualRotate (user intent) + idleActive (timer state) derive isAutoRotating — clean separation of concerns
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T06:17:24.456Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-tour-platform-stabilize-and-polish/01-CONTEXT.md
+Last session: 2026-03-09T07:03:27.647Z
+Stopped at: Completed 01-03-PLAN.md
+Resume file: None

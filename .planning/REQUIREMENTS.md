@@ -23,9 +23,9 @@
 
 ### Viewer UX
 
-- [ ] **VIEW-01**: Public tour viewer supports mobile touch gestures — pinch to zoom, swipe to rotate panorama — with no degradation vs desktop
-- [ ] **VIEW-02**: Public tour viewer has a fullscreen button and keyboard shortcut (F key) that fills the browser window
-- [ ] **VIEW-03**: Tour auto-rotates when idle for more than 5 seconds and stops rotating on any user interaction
+- [x] **VIEW-01**: Public tour viewer supports mobile touch gestures — pinch to zoom, swipe to rotate panorama — with no degradation vs desktop
+- [x] **VIEW-02**: Public tour viewer has a fullscreen button and keyboard shortcut (F key) that fills the browser window
+- [x] **VIEW-03**: Tour auto-rotates when idle for more than 5 seconds and stops rotating on any user interaction
 
 ### Lead & Analytics
 
@@ -130,9 +130,9 @@
 | TOUR-03 | Phase 1 | Pending |
 | TOUR-04 | Phase 1 | Pending |
 | TOUR-05 | Phase 1 | Pending |
-| VIEW-01 | Phase 1 | Pending |
-| VIEW-02 | Phase 1 | Pending |
-| VIEW-03 | Phase 1 | Pending |
+| VIEW-01 | Phase 1 | Complete |
+| VIEW-02 | Phase 1 | Complete |
+| VIEW-03 | Phase 1 | Complete |
 | LEAD-01 | Phase 1 | Pending |
 | ANLT-01 | Phase 1 | Pending |
 | CAP-01 | Phase 2 | Pending |
