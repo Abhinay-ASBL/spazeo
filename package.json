@@ -19,6 +19,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
+    "@sparkjsdev/spark": "^0.1.10",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "convex": "^1.32.0",

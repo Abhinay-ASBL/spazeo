@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-09T11:57:20.179Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-09T12:43:20.941Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 19
+  completed_plans: 14
   percent: 0
 ---
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P04 | 3m | 2 tasks | 2 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P06 | 4m | 2 tasks | 1 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P05 | 3m | 2 tasks | 1 files |
+| Phase 02 P01 | 2m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,9 @@ Recent decisions affecting current work:
 - [Phase Phase 06-06]: CTA URL input only renders when CTA Label is non-empty — progressive disclosure keeps form compact
 - [Phase 06-05]: AnimatePresence children require stable key props (hotspot._id and videoModalUrl) for exit animations to fire on unmount
 - [Phase 06-05]: handleHotspotClick routes navigation first (early return), then media+video, then info panel fallback
+- [Phase 02-01]: getRemainingQuota returns -1 for unlimited plans to avoid JSON Infinity serialization issues
+- [Phase 02-01]: complete/fail find jobs by runpodJobId via collect+filter since runpodJobId is optional and set post-creation
+- [Phase 02-01]: notifications type union extended with system literal to support reconstruction completion notifications
 
 ### Roadmap Evolution
 
@@ -123,6 +127,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T11:57:20.174Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-3d-capture-pipeline-and-splat-viewer/02-CONTEXT.md
+Last session: 2026-03-09T12:43:20.937Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

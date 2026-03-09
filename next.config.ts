@@ -22,8 +22,8 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https://*.convex.cloud https://img.clerk.com https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://picsum.photos https://images.unsplash.com",
       "font-src 'self' https://fonts.gstatic.com",
-      "connect-src 'self' https://*.convex.cloud wss://*.convex.cloud ws://127.0.0.1:3210 ws://localhost:* http://127.0.0.1:3210 http://localhost:* https://clerk.spazeo.io https://*.clerk.accounts.dev https://api.stripe.com https://us.i.posthog.com",
-      "frame-src https://challenges.cloudflare.com https://js.stripe.com https://*.clerk.accounts.dev",
+      "connect-src 'self' https://*.convex.cloud wss://*.convex.cloud ws://127.0.0.1:3210 ws://localhost:* http://127.0.0.1:3210 http://localhost:* https://clerk.spazeo.io https://*.clerk.accounts.dev https://api.stripe.com https://us.i.posthog.com https://sparkjsdev.github.io",
+      "frame-src https://challenges.cloudflare.com https://js.stripe.com https://*.clerk.accounts.dev https://www.youtube.com https://youtube.com https://player.vimeo.com",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",
@@ -33,6 +33,8 @@ const securityHeaders = [
 ]
 
 const nextConfig: NextConfig = {
+  // Prevent spark.js WASM/Worker from being bundled server-side
+  serverExternalPackages: ['@sparkjsdev/spark'],
   async headers() {
     return [
       {
