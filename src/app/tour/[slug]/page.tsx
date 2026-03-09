@@ -40,6 +40,25 @@ const PanoramaViewer = dynamic(
   }
 )
 
+/* ── Lazy-load GaussianSplatViewer ── */
+const GaussianSplatViewer = dynamic(
+  () =>
+    import('@/components/viewer/GaussianSplatViewer').then((m) => ({
+      default: m.GaussianSplatViewer,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="flex h-full w-full items-center justify-center"
+        style={{ backgroundColor: '#0A0908' }}
+      >
+        <Loader2 size={32} className="animate-spin" style={{ color: '#D4A017' }} />
+      </div>
+    ),
+  }
+)
+
 /* ── Proxy helper for local Convex storage URLs ── */
 function proxyUrl(url: string | null | undefined): string | null {
   if (!url) return null
@@ -148,6 +167,13 @@ export default function PublicTourViewerPage() {
   const captureLead = useMutation(api.leads.capture)
   const trackAnalytics = useMutation(api.analytics.track)
 
+  // Resolve splat URL when tour has a splatStorageId (3D viewer)
+  const hasSplat = !!(tourData && '_id' in tourData && tourData.splatStorageId)
+  const splatUrl = useQuery(
+    api.tours.getTourSplatUrl,
+    hasSplat && tourData && '_id' in tourData ? { tourId: tourData._id as Id<'tours'> } : 'skip'
+  )
+
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [manualRotate, setManualRotate] = useState(true)
@@ -247,9 +273,13 @@ export default function PublicTourViewerPage() {
   /* ── Hotspot click → navigate scenes, open info panel, or open video modal ── */
   const handleHotspotClick = useCallback(
     (hotspot: { type: string; targetSceneId?: string; _id?: string; content?: string; videoUrl?: string; title?: string }) => {
-      // Navigation: transition to target scene
+      // Navigation: transition to target scene, then optionally show info panel if hotspot has content
       if (hotspot.type === 'navigation' && hotspot.targetSceneId) {
         setActiveSceneId(hotspot.targetSceneId)
+        // If navigation hotspot has description/content, show info panel after transition
+        if (hotspot._id && ((hotspot as Record<string, unknown>).description || hotspot.content)) {
+          setTimeout(() => setActiveHotspot(hotspot._id!), 300)
+        }
         return
       }
       // Media with video content: open full-screen video modal
@@ -438,8 +468,16 @@ export default function PublicTourViewerPage() {
       onTouchStart={resetIdle}
       onKeyDown={resetIdle}
     >
-      {/* ── 360° Panorama Viewport ── */}
-      {activeScene?.imageUrl ? (
+      {/* ── Viewer: 3D Splat or 360 Panorama ── */}
+      {splatUrl ? (
+        <div className="w-full h-full">
+          <GaussianSplatViewer
+            splatUrl={splatUrl}
+            tourTitle={currentTour.title}
+            hotspots={[]}
+          />
+        </div>
+      ) : activeScene?.imageUrl ? (
         <PanoramaViewer
           imageUrl={proxyUrl(activeScene.imageUrl as string) ?? ''}
           height="100vh"
@@ -454,8 +492,8 @@ export default function PublicTourViewerPage() {
         </div>
       )}
 
-      {/* ── Top Header Bar ── */}
-      <div
+      {/* ── Top Header Bar (only for panorama mode — splat viewer has its own) ── */}
+      {!splatUrl && <div
         className="absolute top-0 left-0 w-full h-14 z-10 flex items-center justify-between px-5"
         style={{
           background: 'linear-gradient(to bottom, rgba(10,9,8,0.6), transparent)',
@@ -502,9 +540,10 @@ export default function PublicTourViewerPage() {
             <Share2 size={18} color="#F5F3EF" strokeWidth={1.5} />
           </button>
         </div>
-      </div>
+      </div>}
 
-      {/* ── Viewer Controls (bottom center, above scene nav) ── */}
+      {/* ── Viewer Controls (bottom center, above scene nav) — panorama only ── */}
+      {!splatUrl &&
       <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10 pb-[env(safe-area-inset-bottom,0px)]">
         <div
           className="rounded-full px-4 py-2 flex items-center gap-2"
@@ -552,14 +591,14 @@ export default function PublicTourViewerPage() {
             <RotateCw size={16} strokeWidth={1.5} />
           </button>
         </div>
-      </div>
+      </div>}
 
-      {/* ── Scene Navigator (bottom) ── */}
-      <SceneNav
+      {/* ── Scene Navigator (bottom) — panorama only ── */}
+      {!splatUrl && <SceneNav
         scenes={scenes as any[]}
         activeId={activeSceneId}
         onChange={setActiveSceneId}
-      />
+      />}
 
       {/* ── Hotspot Info Panel (outside Canvas, driven by Zustand) ── */}
       <AnimatePresence>

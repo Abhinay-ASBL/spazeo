@@ -810,6 +810,20 @@ export const linkSplat = internalMutation({
   },
 })
 
+/**
+ * Public query: resolve the splat storage URL for a tour.
+ * Returns null if the tour has no linked splat.
+ */
+export const getTourSplatUrl = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || !tour.splatStorageId) return null
+    const url = await ctx.storage.getUrl(tour.splatStorageId)
+    return url
+  },
+})
+
 // --- Password hashing support ---
 
 // Returns only the passwordHash field — never exposed to the client.

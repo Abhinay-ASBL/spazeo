@@ -77,5 +77,13 @@ export function SplatScene({ url }: SplatSceneProps) {
     }
   })
 
-  return null
+  return (
+    <>
+      {/* Invisible floor plane at y=0 for click-to-move raycasting */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} visible={false}>
+        <planeGeometry args={[200, 200]} />
+        <meshBasicMaterial transparent opacity={0} />
+      </mesh>
+    </>
+  )
 }
