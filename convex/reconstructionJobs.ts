@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation } from './_generated/server'
+import { query, mutation, internalMutation, internalQuery } from './_generated/server'
 import { internal } from './_generated/api'
 
 /** Monthly reconstruction limits per plan tier */
@@ -50,6 +50,63 @@ async function countMonthlyJobs(
   ).length
 }
 
+// --- Internal Queries ---
+
+/**
+ * Get a reconstruction job by ID. Internal query used by actions.
+ */
+export const getById = internalQuery({
+  args: { jobId: v.id('reconstructionJobs') },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.jobId)
+  },
+})
+
+/**
+ * Get stale reconstruction jobs (started >30 min ago, still in active status).
+ * Used by the polling cron to detect stuck jobs.
+ */
+export const getStaleJobs = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const THIRTY_MINUTES_MS = 30 * 60 * 1000
+    const cutoff = Date.now() - THIRTY_MINUTES_MS
+    const activeStatuses = ['queued', 'extracting_frames', 'reconstructing', 'compressing']
+
+    const allActive = await ctx.db
+      .query('reconstructionJobs')
+      .withIndex('by_status')
+      .collect()
+
+    return allActive.filter(
+      (j) =>
+        activeStatuses.includes(j.status) &&
+        j.startedAt !== undefined &&
+        j.startedAt < cutoff
+    )
+  },
+})
+
+// --- Internal Mutations ---
+
+/**
+ * Mark a job as failed by job ID (not runpodJobId).
+ * Used when we have the Convex ID but not necessarily a runpodJobId.
+ */
+export const failById = internalMutation({
+  args: {
+    jobId: v.id('reconstructionJobs'),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.jobId, {
+      status: 'failed' as const,
+      error: args.error,
+      completedAt: Date.now(),
+    })
+  },
+})
+
 // --- Mutations ---
 
 /**
@@ -88,6 +145,9 @@ export const create = mutation({
       status: 'uploading',
       progress: 0,
     })
+
+    // Auto-schedule submission to RunPod GPU after mutation commits
+    await ctx.scheduler.runAfter(0, internal.reconstructionActions.submitToRunPod, { jobId })
 
     return jobId
   },
