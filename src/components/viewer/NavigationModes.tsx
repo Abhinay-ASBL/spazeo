@@ -112,11 +112,6 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
     return () => gl.domElement.removeEventListener('click', handleCanvasClick)
   }, [gl.domElement, handleCanvasClick])
 
-  // Public flyTo method for hotspot clicks
-  useSplatViewerStore.setState({
-    // We communicate flyTo through a ref-based approach instead
-  })
-
   // Frame loop: handle transitions, movement, and joystick
   useFrame(() => {
     // Mode transition animation
