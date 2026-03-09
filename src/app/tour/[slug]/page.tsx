@@ -36,6 +36,18 @@ const PanoramaViewer = dynamic(
   }
 )
 
+/* ── Proxy helper for local Convex storage URLs ── */
+function proxyUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    const p = new URL(url)
+    if ((p.hostname === '127.0.0.1' || p.hostname === 'localhost') && p.port === '3210') {
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`
+    }
+  } catch { /* invalid url */ }
+  return url
+}
+
 /* ── SceneNavigator (inline for public viewer) ── */
 function SceneNav({
   scenes,
@@ -48,47 +60,73 @@ function SceneNav({
 }) {
   if (scenes.length <= 1) return null
   return (
-    <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 z-10">
+    <div className="absolute bottom-0 left-0 right-0 z-10" style={{ padding: '0 16px 16px' }}>
       <div
-        className="rounded-xl p-2 overflow-x-auto flex gap-2"
+        className="rounded-xl overflow-x-auto flex gap-2 items-center"
         style={{
-          backgroundColor: 'rgba(10,9,8,0.75)',
-          backdropFilter: 'blur(12px)',
+          backgroundColor: 'rgba(10,9,8,0.85)',
+          backdropFilter: 'blur(16px)',
           border: '1px solid rgba(212,160,23,0.12)',
+          padding: '8px 10px',
           scrollbarWidth: 'none',
         }}
       >
+        {/* Powered by — inside the nav bar, left side */}
+        <div
+          className="flex-shrink-0 flex items-center gap-1 mr-2 pr-3"
+          style={{ borderRight: '1px solid rgba(212,160,23,0.1)' }}
+        >
+          <span className="text-[9px] leading-none" style={{ color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}>
+            Powered by
+          </span>
+          <span className="text-[9px] font-bold leading-none" style={{ color: '#D4A017', fontFamily: 'var(--font-display)' }}>
+            Spazeo
+          </span>
+        </div>
+
         {scenes.map((scene) => {
           const isActive = scene._id === activeId
+          const src = proxyUrl(scene.imageUrl)
           return (
             <button
               key={scene._id}
               onClick={() => onChange(scene._id)}
               aria-label={`Go to ${scene.title}`}
-              className="relative w-20 h-14 rounded-lg overflow-hidden cursor-pointer flex-shrink-0 transition-all duration-150"
+              className="relative flex-shrink-0 rounded-lg overflow-hidden cursor-pointer transition-all duration-150"
               style={{
-                border: isActive
-                  ? '2px solid #D4A017'
-                  : '2px solid rgba(255,255,255,0.15)',
+                width: 80,
+                height: 52,
+                border: isActive ? '2px solid #D4A017' : '2px solid rgba(255,255,255,0.12)',
+                boxShadow: isActive ? '0 0 0 1px rgba(212,160,23,0.3)' : 'none',
               }}
             >
-              {scene.imageUrl ? (
+              {src ? (
                 <img
-                  src={scene.imageUrl}
+                  src={src}
                   alt={scene.title}
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
               ) : (
                 <div
-                  className="w-full h-full flex items-center justify-center"
+                  className="w-full h-full flex items-end justify-start p-1"
                   style={{ backgroundColor: '#1B1916' }}
-                >
-                  <span className="text-[10px]" style={{ color: '#6B6560' }}>
-                    {scene.title}
-                  </span>
-                </div>
+                />
               )}
+              {/* Always show label overlay */}
+              <div
+                className="absolute inset-x-0 bottom-0 px-1 py-0.5"
+                style={{
+                  background: 'linear-gradient(to top, rgba(10,9,8,0.85), transparent)',
+                }}
+              >
+                <span
+                  className="text-[9px] font-medium leading-none block truncate"
+                  style={{ color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                >
+                  {scene.title}
+                </span>
+              </div>
             </button>
           )
         })}
@@ -108,8 +146,10 @@ export default function PublicTourViewerPage() {
 
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isAutoRotating, setIsAutoRotating] = useState(true)
+  const [manualRotate, setManualRotate] = useState(true)
+  const [idleActive, setIdleActive] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [password, setPassword] = useState('')
   const [submittedPassword, setSubmittedPassword] = useState<string | null>(null)
@@ -128,6 +168,27 @@ export default function PublicTourViewerPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef(crypto.randomUUID())
   const viewTrackedRef = useRef(false)
+
+  // Derived auto-rotate value from idle timer + manual toggle (VIEW-03)
+  const isAutoRotating = manualRotate && idleActive
+
+  const startIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    idleTimerRef.current = setTimeout(() => setIdleActive(true), 5000)
+  }, [])
+
+  const resetIdle = useCallback(() => {
+    setIdleActive(false)
+    if (manualRotate) startIdleTimer()
+  }, [manualRotate, startIdleTimer])
+
+  // Start idle timer on mount; restart when manualRotate changes; clean up on unmount
+  useEffect(() => {
+    if (manualRotate) startIdleTimer()
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    }
+  }, [manualRotate, startIdleTimer])
 
   // Set initial active scene when tour loads
   useEffect(() => {
@@ -179,6 +240,26 @@ export default function PublicTourViewerPage() {
       document.exitFullscreen().then(() => setIsFullscreen(false))
     }
   }, [])
+
+  // Sync isFullscreen with browser fullscreenchange event (e.g. Escape key exit) (VIEW-02)
+  useEffect(() => {
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', handleFsChange)
+    return () => document.removeEventListener('fullscreenchange', handleFsChange)
+  }, [])
+
+  // F key keyboard shortcut for fullscreen (VIEW-02)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault()
+        toggleFullscreen()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [toggleFullscreen])
 
   /* ── Share ── */
   const handleShare = useCallback(() => {
@@ -304,19 +385,15 @@ export default function PublicTourViewerPage() {
       ref={containerRef}
       className="fixed inset-0 overflow-hidden"
       style={{ backgroundColor: '#0A0908' }}
+      onMouseMove={resetIdle}
+      onClick={resetIdle}
+      onTouchStart={resetIdle}
+      onKeyDown={resetIdle}
     >
       {/* ── 360° Panorama Viewport ── */}
       {activeScene?.imageUrl ? (
         <PanoramaViewer
-          imageUrl={(() => {
-            try {
-              const p = new URL(activeScene.imageUrl as string)
-              if ((p.hostname === '127.0.0.1' || p.hostname === 'localhost') && p.port === '3210') {
-                return `/api/proxy-image?url=${encodeURIComponent(activeScene.imageUrl as string)}`
-              }
-            } catch { /* invalid url */ }
-            return activeScene.imageUrl as string
-          })()}
+          imageUrl={proxyUrl(activeScene.imageUrl as string) ?? ''}
           height="100vh"
           hotspots={activeHotspots as any[]}
           onHotspotClick={handleHotspotClick as any}
@@ -379,8 +456,8 @@ export default function PublicTourViewerPage() {
         </div>
       </div>
 
-      {/* ── Viewer Controls (bottom center) ── */}
-      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10">
+      {/* ── Viewer Controls (bottom center, above scene nav) ── */}
+      <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10">
         <div
           className="rounded-full px-4 py-2 flex items-center gap-2"
           style={{
@@ -410,10 +487,19 @@ export default function PublicTourViewerPage() {
           </button>
           <div className="h-4 w-px" style={{ backgroundColor: '#6B6560' }} />
           <button
-            onClick={() => setIsAutoRotating(!isAutoRotating)}
+            onClick={() => {
+              const next = !manualRotate
+              setManualRotate(next)
+              if (!next) {
+                setIdleActive(false)
+                if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+              } else {
+                startIdleTimer()
+              }
+            }}
             aria-label="Toggle auto-rotate"
             className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ color: isAutoRotating ? '#D4A017' : '#A8A29E' }}
+            style={{ color: manualRotate ? '#D4A017' : '#A8A29E' }}
           >
             <RotateCw size={16} strokeWidth={1.5} />
           </button>
@@ -427,21 +513,9 @@ export default function PublicTourViewerPage() {
         onChange={setActiveSceneId}
       />
 
-      {/* ── Powered By Badge ── */}
-      <div
-        className="absolute bottom-4 left-4 z-10 flex items-center gap-1 px-3 py-1.5 rounded-md"
-        style={{ backgroundColor: 'rgba(10,9,8,0.53)' }}
-      >
-        <span className="text-[10px]" style={{ color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}>
-          Powered by
-        </span>
-        <span className="text-[10px] font-bold" style={{ color: '#D4A017', fontFamily: 'var(--font-display)' }}>
-          Spazeo
-        </span>
-      </div>
-
       {/* ── Lead Capture Button ── */}
-      {currentTour.leadCaptureConfig?.enabled && (
+      {/* Show Get in Touch by default — only hide when explicitly disabled */}
+      {(currentTour.leadCaptureConfig?.enabled ?? true) && (
         <button
           onClick={() => setPanelOpen(true)}
           className="absolute top-20 right-4 z-10 px-4 py-2 rounded-lg text-sm font-semibold"
