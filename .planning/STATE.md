@@ -84,6 +84,10 @@ Recent decisions affecting current work:
 - [Phase 01-07]: Used durationEvents name (not allDurations) to avoid shadowing existing allDurations in getDashboardOverview
 - [Phase 01-07]: Conversion Rate and Viewing Time removed from analytics headline stats per CONTEXT.md spec — replaced by Unique Visitors and Avg. Scene Time
 
+### Roadmap Evolution
+
+- Phase 6 added: Hotspot customization options, icons, info panels, video support, and adaptive screen layout
+
 ### Pending Todos
 
 None yet.
