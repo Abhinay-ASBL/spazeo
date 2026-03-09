@@ -1,8 +1,23 @@
 # Phase 6: Hotspot Customization, Icons, Info Panels, Video Support, and Adaptive Screen Layout — Research
 
-**Researched:** 2026-03-09
+**Researched:** 2026-03-09 (revised 2026-03-09)
 **Domain:** @react-three/drei Html markers, Framer Motion panels, responsive viewer layout, Convex schema extensions, Zustand ephemeral state
 **Confidence:** HIGH
+
+---
+
+<phase_requirements>
+## Phase Requirements
+
+| ID | Description | Research Support |
+|----|-------------|-----------------|
+| HS6-01 | Convex hotspots schema and mutations extended with 6 new optional fields: iconName, panelLayout, videoUrl, ctaLabel, ctaUrl, accentColor | Schema extension pattern verified in convex/schema.ts; all fields must use v.optional() for backward compat — hotspots table at lines 153–169 has no new fields yet |
+| HS6-02 | Shared infrastructure: parseVideoUrl utility and useViewerStore Zustand store | Video URL parsing logic exists inline in HotspotMarker.tsx lines 270–303; needs extraction. useViewerStore does not yet exist in hooks/ |
+| HS6-03 | HotspotMarker refactored: delegates panel open to useViewerStore, supports iconName and accentColor | Current HotspotMarker manages its own popup via local useState (isPopupOpen); needs to call setActiveHotspot instead. Type-based ICON_REGISTRY and accentColor override not present |
+| HS6-04 | New viewer components: HotspotInfoPanel (responsive drawer) and HotspotVideoModal (full-screen) | Neither component exists yet. Architecture: render outside R3F Canvas (not inside Html drei) to avoid z-index stacking context fights |
+| HS6-05 | Public viewer wiring: AnimatePresence integration + adaptive mobile layout | tour/[slug]/page.tsx currently has no AnimatePresence, no useViewerStore integration, fixed 280px lead panel, 36px touch targets. Needs responsive wiring |
+| HS6-06 | Tour editor: icon picker grid, panel layout selector, video URL field, and CTA fields | edit/page.tsx hotspot form currently has tooltip, type, title, description, content, visible fields only — no icon picker, no panelLayout, no videoUrl, no CTA fields |
+</phase_requirements>
 
 ---
 
@@ -12,7 +27,7 @@ Phase 6 builds on a fully working hotspot system from Phase 1. The existing `Hot
 
 The viewer renders hotspots via `@react-three/drei`'s `Html` component inside a React Three Fiber `Canvas`. This means hotspot popups live in a DOM sub-tree projected over the WebGL canvas. Rich panel UIs (wide sliding panels, modals) work best rendered outside the Canvas in normal React DOM and driven by state. The architecture choice for Phase 6 is: keep the hotspot marker (the circle/button) inside `Html`, but lift rich panel content outside the Canvas into a portal rendered at the page root level — driven by Zustand viewer state.
 
-**Primary recommendation:** Extend the hotspot schema with `iconName`, `panelLayout`, and `videoUrl` fields; add a Zustand `useViewerStore` slice for `activeHotspotId`; render the info panel as a normal React component outside the R3F Canvas (not inside `Html`); use Framer Motion `AnimatePresence` for panel enter/exit; handle mobile breakpoints with CSS container queries or Tailwind responsive classes on the outer viewer wrapper.
+**Primary recommendation:** Extend the hotspot schema with `iconName`, `panelLayout`, and `videoUrl` fields; add a Zustand `useViewerStore` slice for `activeHotspotId`; render the info panel as a normal React component outside the R3F Canvas (not inside `Html`); use Framer Motion `AnimatePresence` for panel enter/exit; handle mobile breakpoints with CSS Tailwind responsive classes on the outer viewer wrapper.
 
 ---
 
@@ -26,9 +41,11 @@ The viewer renders hotspots via `@react-three/drei`'s `Html` component inside a 
 | `convex/hotspots.ts` | `convex/hotspots.ts` | `listByScene`, `listByTour`, `create`, `update`, `remove` mutations with auth |
 | Convex schema | `convex/schema.ts` lines 153–169 | `hotspots` table: type, position, tooltip, icon, content, title, description, imageStorageId, visible |
 | Public tour viewer | `src/app/tour/[slug]/page.tsx` | Full viewer page: password gate, scene nav, lead capture, idle auto-rotate, fullscreen |
-| Tour editor | `src/app/(dashboard)/tours/[id]/edit/page.tsx` | Hotspot type picker, placement mode, editor sidebar |
+| Tour editor | `src/app/(dashboard)/tours/[id]/edit/page.tsx` | Hotspot type picker, placement mode, editor sidebar; has `activePopupHotspot` local state for showing hotspot popups in editor |
 
 **Key decision from Phase 1 (STATE.md):** Popup card uses IIFE JSX pattern for media branching — keep this pattern consistent.
+
+**Critical editor note:** The tour editor (`edit/page.tsx`) has `activePopupHotspot` state (line 109) for showing inline popups when a non-navigation hotspot is clicked in the editor canvas. Plan 06-06 adds new fields to the hotspot creation form but does not change the editor's popup behavior — `activePopupHotspot` is editor-local state that is separate from the public viewer's `useViewerStore`. These are two independent systems.
 
 ---
 
@@ -59,12 +76,14 @@ src/
 │       ├── HotspotMarker.tsx          # Extend: keep marker, delegate panel open to store
 │       ├── HotspotInfoPanel.tsx       # NEW: rich panel rendered OUTSIDE canvas
 │       ├── HotspotVideoModal.tsx      # NEW: full-screen video modal
-│       ├── PanoramaViewer.tsx         # Extend: pass activeHotspot state up
-│       └── ViewerControls.tsx         # No changes needed
+│       ├── PanoramaViewer.tsx         # Unchanged
+│       └── ViewerControls.tsx         # Unchanged
 ├── hooks/
-│   └── useViewerStore.ts              # NEW or extend: activeHotspotId slice
+│   └── useViewerStore.ts              # NEW: activeHotspotId + videoModal slice
+├── lib/
+│   └── videoUtils.ts                  # NEW: parseVideoUrl utility
 convex/
-├── schema.ts                          # Extend hotspots table with new fields
+├── schema.ts                          # Extend hotspots table with 6 new optional fields
 ├── hotspots.ts                        # Extend create/update args to accept new fields
 ```
 
@@ -72,28 +91,32 @@ convex/
 
 **What:** The `HotspotMarker` inside R3F `Html` handles click → sets `activeHotspotId` in Zustand. The `HotspotInfoPanel` is a normal React component rendered outside `<Canvas>` in the viewer page, reads from Zustand, and renders the rich panel.
 
-**Why:** R3F `Html` component creates a separate DOM sub-tree projected into the canvas. Popups wider than ~280px, modals, or panels with focus traps inside `Html` cause z-index fights and portal rendering issues. Rendering the rich panel as a normal DOM sibling to the Canvas avoids all these issues. The existing 240px popup card in `Html` can remain for tooltip-level info; rich expanded panels should be DOM-level.
+**Why:** R3F `Html` component creates a separate DOM sub-tree projected into the canvas. Popups wider than ~280px, modals, or panels with focus traps inside `Html` cause z-index fights and portal rendering issues. Rendering the rich panel as a normal DOM sibling to the Canvas avoids all these issues. The existing 240px popup card in `Html` is replaced by this external panel.
 
 **When to use:** Any panel wider than 300px, any modal, any element requiring focus management (forms, video controls), any element that must slide in from screen edge.
 
 **Example:**
 ```typescript
 // Source: Zustand v5 pattern (zustand.docs.pmnd.rs)
-// src/hooks/useViewerStore.ts (extend existing if present, create if not)
+// src/hooks/useViewerStore.ts
 import { create } from 'zustand'
 
-interface ViewerState {
+interface ViewerStore {
   activeHotspotId: string | null
   setActiveHotspot: (id: string | null) => void
   videoModalUrl: string | null
-  setVideoModalUrl: (url: string | null) => void
+  videoModalTitle: string | undefined
+  openVideoModal: (url: string, title?: string) => void
+  closeVideoModal: () => void
 }
 
-export const useViewerStore = create<ViewerState>((set) => ({
+export const useViewerStore = create<ViewerStore>((set) => ({
   activeHotspotId: null,
   setActiveHotspot: (id) => set({ activeHotspotId: id }),
   videoModalUrl: null,
-  setVideoModalUrl: (url) => set({ videoModalUrl: url }),
+  videoModalTitle: undefined,
+  openVideoModal: (url, title) => set({ videoModalUrl: url, videoModalTitle: title }),
+  closeVideoModal: () => set({ videoModalUrl: null, videoModalTitle: undefined }),
 }))
 ```
 
@@ -101,15 +124,15 @@ export const useViewerStore = create<ViewerState>((set) => ({
 // In HotspotMarker.tsx — click opens panel via store, not local state
 import { useViewerStore } from '@/hooks/useViewerStore'
 
-// Navigation type: call onClick prop (scene transition)
+// Navigation type: call onClick prop (scene transition) — UNCHANGED
 // Info/media/link types: set activeHotspotId in store
 const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
 // On click: setActiveHotspot(hotspot._id)
 ```
 
 ```typescript
-// In viewer page (tour/[slug]/page.tsx or editor) — outside Canvas
-import { AnimatePresence, motion } from 'framer-motion'
+// In viewer page (tour/[slug]/page.tsx) — outside Canvas
+import { AnimatePresence } from 'framer-motion'
 import { useViewerStore } from '@/hooks/useViewerStore'
 import { HotspotInfoPanel } from '@/components/viewer/HotspotInfoPanel'
 
@@ -157,9 +180,9 @@ const mobileVariants = {
 
 ### Pattern 3: Icon Customization
 
-**What:** The existing `icon` field in the Convex schema stores a string. Treat it as a Lucide icon name string. Map icon name to component at render time.
+**What:** The existing `icon` field in the Convex schema stores a string. Phase 6 adds `iconName` as a named Lucide icon key. Map icon name to component at render time.
 
-**Icon name to component map (don't hand-roll a full registry, use a curated subset for real estate):**
+**Icon name to component map (curated subset for real estate):**
 ```typescript
 // Source: lucide.dev — icon names are kebab-case, React components are PascalCase
 import {
@@ -188,63 +211,90 @@ const ICON_REGISTRY: Record<string, React.ComponentType<{ size?: number; strokeW
 }
 
 // Fallback to type-based icon if iconName not found
+const IconComponent = (hotspot.iconName ? ICON_REGISTRY[hotspot.iconName] : undefined) ?? config.icon
 ```
 
 ### Pattern 4: Video Modal (Full Screen)
 
-**What:** For `type === 'media'`, clicking the hotspot opens a full-screen overlay with the video player, not just a 135px iframe in a 240px card.
+**What:** For `type === 'media'`, clicking the hotspot opens a full-screen overlay with the video player.
 
 **When to use:** Video content that benefits from full attention (property walkthrough video, room detail video).
 
-**Implementation:** `HotspotVideoModal` is a `fixed inset-0 z-50` overlay with backdrop blur. Video URL already stored in `content` field. Existing URL detection logic (YouTube/Vimeo/mp4) in `HotspotMarker.tsx` should be extracted to a shared `parseVideoUrl(url)` utility.
+**Implementation:** `HotspotVideoModal` is a `fixed inset-0 z-[60]` overlay. Video URL stored in `videoUrl` field (new) or falls back to `content` field (existing). Existing URL detection logic in `HotspotMarker.tsx` is extracted to a shared `parseVideoUrl()` utility.
 
 ```typescript
 // Extract from HotspotMarker.tsx into src/lib/videoUtils.ts
-export function parseVideoUrl(url: string): { type: 'youtube' | 'vimeo' | 'direct' | 'unknown'; embedSrc: string } {
+export type VideoType = 'youtube' | 'vimeo' | 'direct' | 'unknown'
+
+export interface ParsedVideo {
+  type: VideoType
+  embedSrc: string
+}
+
+export function parseVideoUrl(url: string): ParsedVideo {
   const isYoutube = /youtube\.com|youtu\.be/.test(url)
   const isVimeo = /vimeo\.com/.test(url)
   const isDirect = /\.(mp4|webm|ogg)(\?.*)?$/i.test(url)
-  // ... build embed src
+
+  if (isYoutube) {
+    const vidId = url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
+    return { type: 'youtube', embedSrc: vidId ? `https://www.youtube.com/embed/${vidId}` : url }
+  }
+  if (isVimeo) {
+    const vidId = url.match(/vimeo\.com\/(\d+)/)?.[1]
+    return { type: 'vimeo', embedSrc: vidId ? `https://player.vimeo.com/video/${vidId}` : url }
+  }
+  if (isDirect) {
+    return { type: 'direct', embedSrc: url }
+  }
+  return { type: 'unknown', embedSrc: url }
 }
 ```
 
 ### Pattern 5: Convex Schema Extension (Backward Compatible)
 
-**What:** Add new optional fields to `hotspots` table using `v.optional()`. Existing documents without these fields remain valid — Convex treats missing optional fields as `undefined`.
+**What:** Add new optional fields to `hotspots` table using `v.optional()`. Existing documents without these fields remain valid.
 
 **Schema additions:**
 ```typescript
 // convex/schema.ts — hotspots table additions (all v.optional for compat)
 hotspots: defineTable({
   // ... existing fields unchanged ...
-  // NEW fields for Phase 6:
+  // Phase 6 additions — all optional for backward compatibility:
   iconName: v.optional(v.string()),         // lucide icon name override (e.g. 'bed', 'bath')
-  panelLayout: v.optional(               // rich panel layout variant
+  panelLayout: v.optional(
     v.union(v.literal('compact'), v.literal('rich'), v.literal('video'))
   ),
   videoUrl: v.optional(v.string()),         // explicit video URL (separate from content)
   ctaLabel: v.optional(v.string()),         // call-to-action button label
   ctaUrl: v.optional(v.string()),           // call-to-action button URL
   accentColor: v.optional(v.string()),      // per-hotspot color override (#hex)
-})
+}).index('by_sceneId', ['sceneId']),
 ```
 
-**Mutation updates:** Add same optional fields to `create` and `update` mutation args in `convex/hotspots.ts`.
+**Mutation updates:** Add same optional fields to both `create` and `update` mutation args in `convex/hotspots.ts`. The existing `create` handler (`ctx.db.insert('hotspots', args)`) already spreads all args. The existing `update` handler already uses `cleanUpdates` pattern (filters out undefined values) — no handler logic changes required.
 
 ### Pattern 6: Adaptive Screen Layout
 
-**What:** The viewer already uses `fixed inset-0` at full screen. Adaptive layout means:
-1. Hotspot info panel: right-side drawer on desktop (≥768px), bottom sheet on mobile (<768px)
-2. Scene navigator thumbnails: scroll horizontally, shrink on mobile
-3. Viewer controls bar: move closer to bottom on mobile, avoid overlapping thumb-reach zones
-4. Lead capture panel: full-width slide-in on mobile instead of 280px fixed
+**What:** Adaptive layout for the public viewer means:
+1. Hotspot info panel: right-side drawer on desktop (≥640px), bottom sheet on mobile (<640px)
+2. Lead capture panel: full-width on mobile (`w-full sm:w-[280px]`)
+3. Viewer controls bar: safe-area-inset-bottom padding for iPhone home indicator
+4. Touch targets: minimum 44px for all interactive buttons (current viewer controls are 36px w-9/h-9)
 
-**How:** Use Tailwind responsive prefixes (`sm:`, `md:`) on the viewer page wrapper divs. The `PanoramaViewer` itself is already `width: 100%, height: 100%` so it fills its container correctly on all sizes. The `touchAction: 'none'` on the canvas wrapper already prevents scroll interference.
+**How:** Use Tailwind responsive prefixes (`sm:`) on the viewer page wrapper divs. The `PanoramaViewer` is already `width: 100%, height: 100%` filling its container correctly.
 
-**Mobile-specific considerations:**
-- Bottom sheet height: `max-h-[70vh]` with overflow scroll for long info panels
-- Safe area insets: `pb-[env(safe-area-inset-bottom)]` for iPhone home indicator
-- Touch targets: minimum 44x44px for all hotspot buttons (existing 36px buttons need +4px padding at minimum or size increase to 44px on mobile)
+**Mobile-specific patterns:**
+```typescript
+// Bottom sheet panel height
+"max-h-[75vh] overflow-y-auto"
+
+// Safe area inset (iPhone home indicator)
+"pb-[env(safe-area-inset-bottom,0px)]"
+
+// Touch target minimum (WCAG 2.5.5, Apple HIG: 44px minimum)
+// Current buttons: w-9 h-9 = 36px — need min-h-[44px] or padding adjustment
+```
 
 ---
 
@@ -253,13 +303,13 @@ hotspots: defineTable({
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
 | Video URL parsing | Custom regex parser | Extract existing regex from `HotspotMarker.tsx` into `lib/videoUtils.ts` | Logic already written and tested; just refactor |
-| Icon registry | Dynamic import or complex registry | Static import map of ~15-20 real-estate-relevant icons | Only ~15 icon types needed; tree-shaking handles bundle size |
+| Icon registry | Dynamic import or complex registry | Static import map of ~17 real-estate-relevant icons | Only ~17 icon types needed; tree-shaking handles bundle size |
 | Panel animation | CSS keyframe animations | Framer Motion `AnimatePresence` + `motion.div` | Already installed; handles exit animations which CSS cannot do cleanly on React unmount |
 | State management | React Context or local useState chains | Zustand store with `activeHotspotId` | Already installed v5; avoids prop drilling through Canvas component tree |
 | Mobile detection | `navigator.userAgent` parsing | CSS media queries + Tailwind responsive prefixes | Server-safe, no hydration mismatch |
 | Video player | Custom HTML5 player | Native `<video controls>` or iframe embed | Sufficient for real estate use case; custom players are maintenance burden |
 
-**Key insight:** The existing popup card in `HotspotMarker.tsx` is 200 lines of working, tested code. Do not rewrite it — extend it. Move the "open rich panel" responsibility to Zustand and keep the small tooltip-level popup in the Html component for quick info glances.
+**Key insight:** The existing popup card in `HotspotMarker.tsx` is 200 lines of working code. Do not rewrite it piecemeal — replace it cleanly. Move the "open rich panel" responsibility to Zustand and remove the inline popup entirely. The navigation hotspot branch stays unchanged.
 
 ---
 
@@ -281,7 +331,7 @@ hotspots: defineTable({
 
 **Why it happens:** All major mobile browsers block autoplay with sound. iOS Safari additionally blocks autoplay entirely without user gesture, even muted.
 
-**How to avoid:** Never auto-play video. Set `autoPlay={false}` on `<video>` elements. For the `<iframe>` embed, do not append `?autoplay=1` to the embed URL. The user must explicitly press play.
+**How to avoid:** Never auto-play video. Set `autoPlay={false}` (or omit the prop) on `<video>` elements. For the `<iframe>` embed, do not append `?autoplay=1` to the embed URL.
 
 **Warning signs:** Video shows spinner forever or shows black screen on mobile.
 
@@ -289,9 +339,9 @@ hotspots: defineTable({
 
 **What goes wrong:** Panel disappears instantly without exit animation.
 
-**Why it happens:** `AnimatePresence` only animates exit when the child conditionally renders via `{condition && <Component />}`. If the component stays mounted but changes content, exit does not fire. Also, each child needs a stable `key` prop.
+**Why it happens:** `AnimatePresence` only animates exit when the child conditionally renders via `{condition && <Component />}`. Each child needs a stable `key` prop.
 
-**How to avoid:** Wrap the conditional render in `AnimatePresence`. Give the `motion.div` a `key` tied to the hotspot ID. When closing (setting `activeHotspotId` to null), `AnimatePresence` will keep the component in DOM until exit animation completes before unmounting.
+**How to avoid:** Wrap the conditional render in `AnimatePresence`. Give the `motion.div` a `key` tied to the hotspot ID.
 
 ```typescript
 // Source: motion.dev/docs/react-animate-presence
@@ -306,11 +356,11 @@ hotspots: defineTable({
 
 ### Pitfall 4: Convex Schema Migration Breaking Existing Hotspots
 
-**What goes wrong:** Adding new required fields to the hotspots table schema without `v.optional()` causes Convex to reject existing documents as invalid on push.
+**What goes wrong:** Adding new required fields to the hotspots table schema without `v.optional()` causes Convex to reject existing documents as invalid on `convex dev`.
 
 **Why it happens:** Convex validates all documents against schema on `convex dev` and `convex deploy`. Existing documents without new required fields fail validation.
 
-**How to avoid:** All new hotspot fields MUST use `v.optional()`. Never add required fields to an existing table that has live data.
+**How to avoid:** All new hotspot fields MUST use `v.optional()`. The current hotspots table has 9 fields — adding 6 more, all optional, is safe.
 
 **Warning signs:** `convex dev` fails with schema validation error after schema change.
 
@@ -328,7 +378,7 @@ hotspots: defineTable({
 
 **Why it happens:** `Html` from drei computes world-to-screen projection on every R3F render frame for each instance.
 
-**How to avoid:** Only render hotspots for the active scene (already done — `activeHotspots = activeScene?.hotspots`). Limit to reasonable counts (10 hotspots per scene max). For hotspots that are not visible (`visible === false`), return null early (already done in Phase 1).
+**How to avoid:** Only render hotspots for the active scene (already done). Limit to reasonable counts. For hotspots with `visible === false`, return null early (already implemented in Phase 1).
 
 ### Pitfall 7: Mobile Touch Target Size
 
@@ -337,6 +387,14 @@ hotspots: defineTable({
 **Why it happens:** WCAG 2.5.5 and Apple HIG both recommend 44px minimum touch target.
 
 **How to avoid:** Increase hotspot button to 44px on mobile, or add invisible padding around the 36px button using `padding: 4px` on the wrapping div.
+
+### Pitfall 8: Tour Editor activePopupHotspot State Conflict
+
+**What goes wrong:** Plan 06-06 adds new form fields to the editor, but the editor also has `activePopupHotspot` state (line 109) for showing non-navigation hotspot popups in the editor canvas. If Plan 06-06 also changes `HotspotMarker` behavior (calling `useViewerStore`) inside the editor canvas, the editor's local popup state and the Zustand store could conflict.
+
+**Why it happens:** The editor uses `HotspotMarker` inside its canvas. After Plan 06-03 refactors `HotspotMarker` to call `useViewerStore`, clicking hotspots in the editor canvas will also set `activeHotspotId` in the store — but the editor doesn't render `HotspotInfoPanel` (that's only in the public viewer). The editor's `activePopupHotspot` local state is separate from the store.
+
+**How to avoid:** Plan 06-03 and 06-06 only change the hotspot creation form. In the editor, clicking a placed hotspot still uses `onHotspotClick` prop → sets `activePopupHotspot` (local state). The `useViewerStore` call in `HotspotMarker` fires but has no visible effect in the editor (no `HotspotInfoPanel` is mounted). This is acceptable — the store state is orphaned but harmless. No editor-specific `HotspotInfoPanel` is needed.
 
 ---
 
@@ -372,27 +430,19 @@ interface Props {
 
 export function HotspotInfoPanel({ hotspot, onClose }: Props) {
   return (
-    // Desktop: right-side panel. Mobile: bottom sheet (CSS responsive)
+    // Desktop: right-side panel. Mobile: bottom sheet (CSS responsive via Tailwind)
     <motion.div
       initial={{ opacity: 0, x: 40 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 40 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="fixed right-0 top-0 h-full w-full sm:w-80 z-50 overflow-y-auto"
       style={{
-        position: 'fixed',
-        right: 0,
-        top: 0,
-        height: '100%',
-        width: 320,
         backgroundColor: '#12100E',
         borderLeft: '1px solid rgba(212,160,23,0.15)',
-        zIndex: 50,
-        overflowY: 'auto',
         fontFamily: 'var(--font-dmsans)',
         padding: '24px',
       }}
-      // Mobile bottom-sheet adjustments via className with Tailwind responsive
-      className="w-full max-w-xs sm:max-w-[320px] sm:h-full h-auto max-h-[75vh] sm:max-h-full bottom-0 sm:bottom-auto sm:right-0 sm:top-0"
     >
       {/* content */}
     </motion.div>
@@ -403,7 +453,7 @@ export function HotspotInfoPanel({ hotspot, onClose }: Props) {
 ### Video Modal Component Structure
 ```typescript
 // src/components/viewer/HotspotVideoModal.tsx
-// Full-screen overlay — fixed inset-0 z-50
+// Full-screen overlay — fixed inset-0 z-[60]
 
 'use client'
 import { motion } from 'framer-motion'
@@ -437,7 +487,7 @@ export function HotspotVideoModal({ url, title, onClose }: { url: string; title?
 
 ### Convex Schema Extension (hotspots table)
 ```typescript
-// convex/schema.ts — hotspots table — add v.optional() fields
+// convex/schema.ts — hotspots table — add v.optional() fields after visible line
 hotspots: defineTable({
   sceneId: v.id('scenes'),
   targetSceneId: v.optional(v.id('scenes')),
@@ -464,13 +514,13 @@ hotspots: defineTable({
 ```typescript
 // src/hooks/useViewerStore.ts
 // Source: Zustand v5 docs (zustand.docs.pmnd.rs)
+'use client'
+
 import { create } from 'zustand'
 
 interface ViewerStore {
-  // Hotspot panel
   activeHotspotId: string | null
   setActiveHotspot: (id: string | null) => void
-  // Video modal
   videoModalUrl: string | null
   videoModalTitle: string | undefined
   openVideoModal: (url: string, title?: string) => void
@@ -485,6 +535,41 @@ export const useViewerStore = create<ViewerStore>((set) => ({
   openVideoModal: (url, title) => set({ videoModalUrl: url, videoModalTitle: title }),
   closeVideoModal: () => set({ videoModalUrl: null, videoModalTitle: undefined }),
 }))
+```
+
+### Tour Editor Icon Picker (edit/page.tsx addition)
+```tsx
+// Pattern for the icon grid in the hotspot creation form
+// Only shown when hotspotType !== 'navigation'
+{hotspotType !== 'navigation' && (
+  <div>
+    <label style={{ color: '#A8A29E', fontSize: 11, display: 'block', marginBottom: 6 }}>
+      Icon (optional)
+    </label>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {/* "None" reset button */}
+      <button type="button" onClick={() => setHotspotIconName('')}
+        style={{ width: 36, height: 36, borderRadius: 6,
+          border: `1px solid ${hotspotIconName === '' ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+          backgroundColor: hotspotIconName === '' ? 'rgba(212,160,23,0.1)' : '#1B1916',
+          cursor: 'pointer', color: '#6B6560', fontSize: 10,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>—</button>
+      {EDITOR_ICON_OPTIONS.map(({ key, label, icon: IconComp }) => (
+        <button type="button" key={key} onClick={() => setHotspotIconName(key)} title={label} aria-label={label}
+          style={{ width: 36, height: 36, borderRadius: 6,
+            border: `1px solid ${hotspotIconName === key ? '#D4A017' : 'rgba(255,255,255,0.08)'}`,
+            backgroundColor: hotspotIconName === key ? 'rgba(212,160,23,0.1)' : '#1B1916',
+            cursor: 'pointer',
+            color: hotspotIconName === key ? '#D4A017' : '#6B6560',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          <IconComp size={16} strokeWidth={1.5} />
+        </button>
+      ))}
+    </div>
+  </div>
+)}
 ```
 
 ---
@@ -511,70 +596,71 @@ export const useViewerStore = create<ViewerStore>((set) => ({
 1. **Should the existing 240px inline popup card in HotspotMarker remain?**
    - What we know: It works for compact info. The rich panel is additive.
    - What's unclear: Whether two interaction patterns (tooltip popup + rich panel) will confuse users.
-   - Recommendation: Keep compact popup for `type === 'info'` with short description only. Use rich panel when `panelLayout === 'rich'` or when content + image both present. Navigation type keeps its existing directional arrow behavior unchanged.
+   - Recommendation: Remove the inline popup card entirely in Plan 06-03. The rich panel handles all non-navigation hotspot interaction. The navigation hotspot keeps its existing directional arrow behavior unchanged.
 
 2. **Icon customization in the editor UI**
    - What we know: Convex stores `iconName` as string. The editor needs a picker UI.
    - What's unclear: Whether a dropdown with icon previews or a grid picker is better UX.
-   - Recommendation: A small grid picker with the ~15 real-estate icons shown as icons + labels. Keep it simple — this is a nice-to-have, not a core feature.
+   - Recommendation: A small grid picker with the ~17 real-estate icons shown as icons + labels. Keep it simple.
 
 3. **Per-hotspot accent color (`accentColor` field)**
    - What we know: Current colors are type-based (Gold/Teal/Coral/Purple). Per-hotspot override adds flexibility.
    - What's unclear: Whether agents will actually use this; design consistency risk.
-   - Recommendation: Include schema field but make it optional in editor. Only apply if explicitly set; fall back to type color.
+   - Recommendation: Include schema field (HS6-01 requires it) but make editor field optional. Only apply if explicitly set; fall back to type color.
 
 4. **Mobile bottom sheet vs. full-screen panel**
-   - What we know: `max-h-[70vh]` bottom sheet pattern is standard for mobile. Doesn't work well for video.
-   - What's unclear: Whether video should open full-screen modal on mobile regardless of panel layout.
-   - Recommendation: Video always opens full-screen modal (`fixed inset-0 z-60`) on all screen sizes. Info/link content uses the responsive drawer (side on desktop, bottom sheet on mobile).
+   - What we know: `max-h-[75vh]` bottom sheet pattern is standard for mobile. Doesn't work well for video.
+   - Recommendation: Video always opens full-screen modal (`fixed inset-0 z-[60]`) on all screen sizes. Info/link content uses the responsive drawer (side on desktop, bottom sheet on mobile).
+
+5. **Editor activePopupHotspot after HotspotMarker refactor**
+   - What we know: The editor has its own `activePopupHotspot` local state for the viewer panel. After Plan 06-03, clicking a hotspot in the editor canvas will call `useViewerStore.setActiveHotspot` — but no `HotspotInfoPanel` is rendered in the editor page.
+   - Recommendation: This is harmless — the store fires but nothing listens in the editor. The editor's existing hotspot click behavior (`setActivePopupHotspot` via `onHotspotClick` prop) is unchanged. No additional work needed.
 
 ---
 
 ## Implementation Scope
 
-Phase 6 adds these specific deliverables:
+Phase 6 adds these specific deliverables across 6 plans:
 
-1. **Convex schema + mutations** — extend hotspots table with `iconName`, `panelLayout`, `videoUrl`, `ctaLabel`, `ctaUrl`, `accentColor` (all optional)
-2. **`lib/videoUtils.ts`** — extract and centralize video URL parsing from `HotspotMarker.tsx`
-3. **`hooks/useViewerStore.ts`** — Zustand store with `activeHotspotId` and `videoModalUrl` slices
-4. **`HotspotMarker.tsx` refactor** — keep marker button and tooltip in Html; on click for non-navigation types, call `setActiveHotspot` instead of local `setIsPopupOpen`; support `iconName` field for custom icon
-5. **`HotspotInfoPanel.tsx`** — new component, outside Canvas, responsive side-drawer/bottom-sheet with Framer Motion, handles info/link/media panel layouts
-6. **`HotspotVideoModal.tsx`** — new full-screen video modal component
-7. **Public tour viewer page** — wire `AnimatePresence` + panel/modal components
-8. **Tour editor hotspot form** — add `iconName` picker, `panelLayout` select, `videoUrl` field, `ctaLabel`/`ctaUrl` fields, `accentColor` input
-9. **Adaptive layout** — add Tailwind responsive classes to viewer page wrapper; safe-area-inset padding; 44px touch targets on mobile
+1. **Plan 06-01 (Wave 1)** — `convex/schema.ts` + `convex/hotspots.ts`: extend hotspots table with 6 optional fields
+2. **Plan 06-02 (Wave 1)** — `src/lib/videoUtils.ts` + `src/hooks/useViewerStore.ts`: shared infrastructure
+3. **Plan 06-03 (Wave 2, depends on 02)** — `HotspotMarker.tsx` refactor: ICON_REGISTRY, store delegation, accentColor
+4. **Plan 06-04 (Wave 2, depends on 02)** — `HotspotInfoPanel.tsx` + `HotspotVideoModal.tsx`: new components
+5. **Plan 06-05 (Wave 3, depends on 03+04)** — `tour/[slug]/page.tsx`: wiring + adaptive mobile layout
+6. **Plan 06-06 (Wave 2, depends on 01+02)** — `tours/[id]/edit/page.tsx`: editor form extensions
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `src/components/viewer/HotspotMarker.tsx` — full existing implementation read
-- `src/components/viewer/PanoramaViewer.tsx` — full existing implementation read
-- `convex/schema.ts` — full schema read; hotspots table lines 153–169
-- `convex/hotspots.ts` — full mutations read
-- `src/app/tour/[slug]/page.tsx` — full public viewer read
+- `src/components/viewer/HotspotMarker.tsx` — full implementation read; video URL logic at lines 270–303
+- `src/components/viewer/PanoramaViewer.tsx` — full implementation read
+- `convex/schema.ts` — full schema read; hotspots table lines 153–169 confirmed no new fields yet
+- `convex/hotspots.ts` — full mutations read; create/update args confirmed
+- `src/app/tour/[slug]/page.tsx` — full public viewer read; fixed 280px lead panel, 36px buttons confirmed
+- `src/app/(dashboard)/tours/[id]/edit/page.tsx` — read through line 320; hotspot form state at lines 94–112
 - [drei Html docs](https://drei.docs.pmnd.rs/misc/html) — props verified: `zIndexRange`, `occlude`, `portal`
 - [Framer Motion AnimatePresence](https://motion.dev/docs/react-animate-presence) — `AnimatePresence`, `mode="wait"`, exit animation requirements
 
 ### Secondary (MEDIUM confidence)
 - `.planning/STATE.md` — Phase 1 decisions: IIFE JSX pattern, atan2 bearing formula, Gold pulse ring design
-- `.planning/REQUIREMENTS.md` — TOUR-03 requirement (already complete): hotspot customization scope confirmed
-- [Zustand v5 selectors discussion](https://github.com/pmndrs/zustand/discussions/2867) — selector patterns verified
+- `.planning/REQUIREMENTS.md` — Phase 6 is an inserted enhancement; HS6-01 through HS6-06 are phase-specific IDs not in the global requirements file
+- [Zustand v5 pattern](https://zustand.docs.pmnd.rs) — `import { create } from 'zustand'` pattern confirmed vs v4 default export
 
 ### Tertiary (LOW confidence — needs validation)
-- WebSearch findings on video autoplay browser restrictions: consistent across multiple sources, treat as HIGH but verify on iOS Safari before shipping
-- WebSearch findings on mobile touch target 44px: WCAG 2.5.5, Apple HIG — should be treated as standard practice
+- Video autoplay mobile restrictions: consistent across multiple sources (iOS Safari, Chrome Android), treat as HIGH but validate on device before shipping
+- Mobile touch target 44px standard: WCAG 2.5.5, Apple HIG — treat as standard practice
 
 ---
 
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH — all libraries already installed and in use; verified via source code
-- Architecture patterns: HIGH — Html-outside-canvas pattern verified via drei docs and R3F discussions; Zustand store pattern from existing codebase (`import { create } from 'zustand'` already confirmed)
-- Pitfalls: HIGH for schema/animation/z-index (all verified by source); MEDIUM for video autoplay (browser policy, consistent cross-source)
-- Schema changes: HIGH — v.optional() backward compatibility is a Convex fundamental
+- Standard stack: HIGH — all libraries already installed and in use; verified via source code read
+- Architecture patterns: HIGH — Html-outside-canvas pattern verified via drei docs; Zustand v5 store pattern from CLAUDE.md confirmed
+- Pitfalls: HIGH for schema/animation/z-index (all verified by source code inspection); MEDIUM for video autoplay (browser policy, consistent cross-source)
+- Schema changes: HIGH — v.optional() backward compatibility is a Convex fundamental; current schema read confirms fields don't exist yet
 
 **Research date:** 2026-03-09
 **Valid until:** 2026-06-09 (stable ecosystem — next.js, drei, framer-motion, convex change slowly)
