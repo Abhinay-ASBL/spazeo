@@ -484,7 +484,7 @@ export default function PublicTourViewerPage() {
           <button
             onClick={toggleFullscreen}
             aria-label="Toggle fullscreen"
-            className="w-9 h-9 flex items-center justify-center rounded-lg transition-colors"
+            className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
             style={{ backgroundColor: 'rgba(10,9,8,0.4)' }}
           >
             {isFullscreen ? (
@@ -496,7 +496,7 @@ export default function PublicTourViewerPage() {
           <button
             onClick={handleShare}
             aria-label="Share tour"
-            className="w-9 h-9 flex items-center justify-center rounded-lg transition-colors"
+            className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
             style={{ backgroundColor: 'rgba(10,9,8,0.4)' }}
           >
             <Share2 size={18} color="#F5F3EF" strokeWidth={1.5} />
@@ -505,7 +505,7 @@ export default function PublicTourViewerPage() {
       </div>
 
       {/* ── Viewer Controls (bottom center, above scene nav) ── */}
-      <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10">
+      <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10 pb-[env(safe-area-inset-bottom,0px)]">
         <div
           className="rounded-full px-4 py-2 flex items-center gap-2"
           style={{
@@ -604,7 +604,7 @@ export default function PublicTourViewerPage() {
       {/* ── Lead Capture Panel ── */}
       {panelOpen && (
         <div
-          className="absolute right-0 top-0 h-full w-[280px] z-20 flex flex-col gap-6 overflow-y-auto"
+          className="absolute right-0 top-0 h-full w-full sm:w-[280px] z-20 flex flex-col gap-6 overflow-y-auto"
           style={{
             backgroundColor: '#12100E',
             borderLeft: '1px solid rgba(212,160,23,0.12)',
@@ -677,7 +677,7 @@ export default function PublicTourViewerPage() {
                 setLeadSubmitting(false)
               }
             }}
-            className="w-full py-3 rounded-lg text-sm font-semibold disabled:opacity-50"
+            className="w-full py-3 rounded-lg text-sm font-semibold disabled:opacity-50 min-h-[44px]"
             style={{
               backgroundColor: '#D4A017',
               color: '#0A0908',
