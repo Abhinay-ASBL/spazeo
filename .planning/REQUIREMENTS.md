@@ -11,7 +11,7 @@
 
 - [x] **FIX-01**: Lead email notification fires correctly when a buyer submits the lead form (fix missing tourSlug argument in leads.ts scheduler call)
 - [x] **FIX-02**: Tour passwords are hashed with bcrypt before storage and compared server-side (remove plaintext storage)
-- [ ] **FIX-03**: Stripe webhook handlers process checkout.session.completed, subscription updates, and cancellations correctly (complete empty stubs in convex/http.ts)
+- [x] **FIX-03**: Stripe webhook handlers process checkout.session.completed, subscription updates, and cancellations correctly (complete empty stubs in convex/http.ts)
 
 ### Tour Creation
 
@@ -19,7 +19,7 @@
 - [x] **TOUR-02**: User can add, move, and delete hotspots visually inside the tour editor without editing JSON
 - [x] **TOUR-03**: User can customize each hotspot with: animated directional arrow (points toward target room), info popup card (text, image, video), external link, and visibility toggle
 - [x] **TOUR-04**: User can generate an embeddable iframe snippet from the tour settings page that works cross-origin on any website
-- [ ] **TOUR-05**: User can share the tour via a clean public URL and optionally set a password-protected link
+- [x] **TOUR-05**: User can share the tour via a clean public URL and optionally set a password-protected link
 
 ### Viewer UX
 
@@ -124,12 +124,12 @@
 |-------------|-------|--------|
 | FIX-01 | Phase 1 | Complete |
 | FIX-02 | Phase 1 | Complete |
-| FIX-03 | Phase 1 | Pending |
+| FIX-03 | Phase 1 | Complete |
 | TOUR-01 | Phase 1 | Complete |
 | TOUR-02 | Phase 1 | Complete |
 | TOUR-03 | Phase 1 | Complete |
 | TOUR-04 | Phase 1 | Complete |
-| TOUR-05 | Phase 1 | Pending |
+| TOUR-05 | Phase 1 | Complete |
 | VIEW-01 | Phase 1 | Complete |
 | VIEW-02 | Phase 1 | Complete |
 | VIEW-03 | Phase 1 | Complete |

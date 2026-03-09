@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-03-09T07:07:49.616Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-09T07:12:53.487Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -54,6 +54,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 4m | 2 tasks | 5 files |
 | Phase 01-tour-platform-stabilize-and-polish P05 | 6 | 3 tasks | 3 files |
 | Phase 01 P04 | 7m | 2 tasks | 5 files |
+| Phase 01-tour-platform-stabilize-and-polish P02 | 3m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Recent decisions affecting current work:
 - [Phase 01-05]: Embed code conditional: show textarea only when status===published AND embedCode is set; show publish hint otherwise
 - [Phase 01-04]: Navigation hotspot uses Gold pulse ring with two staggered rings for depth effect — separate from Teal ping used previously
 - [Phase 01-04]: visible field added as optional boolean in Convex schema — undefined defaults to visible for backward compatibility
+- [Phase 01-02]: getBySlugWithScenes skips password re-check — caller (client) is trusted to have verified via action before calling this query
+- [Phase 01-02]: Editor password input uses defaultValue='' — hashed passwords must not round-trip to client
 
 ### Pending Todos
 
@@ -87,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T07:07:49.604Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-03-09T07:12:53.482Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
