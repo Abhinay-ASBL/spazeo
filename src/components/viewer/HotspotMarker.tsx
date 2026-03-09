@@ -2,7 +2,27 @@
 
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
-import { Navigation, Info, Play, ExternalLink, ChevronRight, X } from 'lucide-react'
+import {
+  Navigation,
+  Info,
+  Play,
+  ExternalLink,
+  ChevronRight,
+  Home,
+  Bed,
+  Bath,
+  Car,
+  Wifi,
+  Camera,
+  Star,
+  DollarSign,
+  Ruler,
+  Trees,
+  Sun,
+  Building2,
+  Key,
+} from 'lucide-react'
+import { useViewerStore } from '@/hooks/useViewerStore'
 
 interface HotspotData {
   _id: string
@@ -17,6 +37,13 @@ interface HotspotData {
   description?: string
   imageUrl?: string | null
   visible?: boolean
+  // Phase 6 fields
+  iconName?: string
+  panelLayout?: 'compact' | 'rich' | 'video'
+  videoUrl?: string
+  ctaLabel?: string
+  ctaUrl?: string
+  accentColor?: string
 }
 
 interface Props {
@@ -32,10 +59,32 @@ const TYPE_CONFIG = {
   link: { icon: ExternalLink, color: '#8B5CF6', label: 'Link' },
 }
 
+const ICON_REGISTRY: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
+  navigation: Navigation,
+  info: Info,
+  play: Play,
+  link: ExternalLink,
+  home: Home,
+  bed: Bed,
+  bath: Bath,
+  car: Car,
+  wifi: Wifi,
+  camera: Camera,
+  star: Star,
+  price: DollarSign,
+  area: Ruler,
+  garden: Trees,
+  balcony: Sun,
+  building: Building2,
+  key: Key,
+}
+
 export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
   const [isHovered, setIsHovered] = useState(false)
-  const [isPopupOpen, setIsPopupOpen] = useState(false)
+  const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
   const config = TYPE_CONFIG[hotspot.type] ?? TYPE_CONFIG.navigation
+  const IconComponent = (hotspot.iconName ? ICON_REGISTRY[hotspot.iconName] : undefined) ?? config.icon
+  const markerColor = hotspot.accentColor ?? config.color
 
   // Visibility toggle — return null to skip rendering hidden hotspots
   if (hotspot.visible === false) return null
@@ -136,9 +185,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
     )
   }
 
-  // Info / Media / Link types — popup card on click
-  const IconComponent = config.icon
-
+  // Info / Media / Link types — delegate panel open to Zustand store
   return (
     <Html
       position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
@@ -146,8 +193,8 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
       zIndexRange={[10, 0]}
     >
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        {/* Tooltip label — shown on hover (when popup is closed) */}
-        {isHovered && !isPopupOpen && (hotspot.title || hotspot.tooltip || config.label) && (
+        {/* Tooltip label — shown on hover */}
+        {isHovered && (hotspot.title || hotspot.tooltip || config.label) && (
           <div
             style={{
               position: 'absolute',
@@ -173,7 +220,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
 
         {/* Marker button */}
         <button
-          onClick={() => setIsPopupOpen((prev) => !prev)}
+          onClick={() => setActiveHotspot(hotspot._id)}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           aria-label={hotspot.tooltip ?? hotspot.title ?? config.label}
@@ -182,7 +229,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
             width: 36,
             height: 36,
             borderRadius: '50%',
-            backgroundColor: config.color,
+            backgroundColor: markerColor,
             color: '#0A0908',
             border: 'none',
             cursor: 'pointer',
@@ -204,146 +251,12 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
               position: 'absolute',
               inset: 0,
               borderRadius: '50%',
-              backgroundColor: `${config.color}40`,
+              backgroundColor: `${markerColor}40`,
               animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
             }}
           />
           <IconComponent size={16} strokeWidth={1.5} style={{ position: 'relative', zIndex: 10 }} />
         </button>
-
-        {/* Popup card */}
-        {isPopupOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 52,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 240,
-              backgroundColor: '#12100E',
-              border: '1px solid rgba(212,160,23,0.2)',
-              borderRadius: 8,
-              padding: '12px 14px',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
-              fontFamily: 'var(--font-dmsans)',
-              zIndex: 20,
-            }}
-          >
-            {/* Close button */}
-            <button
-              onClick={(e) => { e.stopPropagation(); setIsPopupOpen(false) }}
-              aria-label="Close"
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                color: '#6B6560',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 2,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <X size={14} />
-            </button>
-
-            {/* Title */}
-            {(hotspot.title || hotspot.tooltip) && (
-              <p style={{ color: '#F5F3EF', fontSize: 13, fontWeight: 600, margin: '0 0 6px', paddingRight: 20 }}>
-                {hotspot.title || hotspot.tooltip}
-              </p>
-            )}
-
-            {/* Description text */}
-            {hotspot.description && (
-              <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
-                {hotspot.description}
-              </p>
-            )}
-
-            {/* Content: video player for media type, plain text for info type */}
-            {!hotspot.description && hotspot.content && hotspot.type !== 'link' && (() => {
-              if (hotspot.type === 'media' && hotspot.content) {
-                const isYoutube = /youtube\.com|youtu\.be/.test(hotspot.content)
-                const isVimeo = /vimeo\.com/.test(hotspot.content)
-                if (isYoutube || isVimeo) {
-                  // Build embed URL
-                  let embedSrc = hotspot.content
-                  if (isYoutube) {
-                    const vidId = hotspot.content.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
-                    if (vidId) embedSrc = `https://www.youtube.com/embed/${vidId}`
-                  } else if (isVimeo) {
-                    const vidId = hotspot.content.match(/vimeo\.com\/(\d+)/)?.[1]
-                    if (vidId) embedSrc = `https://player.vimeo.com/video/${vidId}`
-                  }
-                  return (
-                    <iframe
-                      src={embedSrc}
-                      style={{ width: '100%', height: 135, borderRadius: 6, marginBottom: 8, border: 'none' }}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      title={hotspot.title || 'Video'}
-                    />
-                  )
-                }
-                // Direct video file URL (.mp4, .webm, .ogg)
-                if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(hotspot.content)) {
-                  return (
-                    <video
-                      src={hotspot.content}
-                      controls
-                      style={{ width: '100%', borderRadius: 6, marginBottom: 8, maxHeight: 160 }}
-                    />
-                  )
-                }
-                // Fallback: render as text if URL pattern not matched
-                return (
-                  <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
-                    {hotspot.content}
-                  </p>
-                )
-              }
-              // info type — plain text
-              return (
-                <p style={{ color: '#A8A29E', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
-                  {hotspot.content}
-                </p>
-              )
-            })()}
-
-            {/* Image if provided */}
-            {hotspot.imageUrl && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={hotspot.imageUrl}
-                alt={hotspot.title || ''}
-                style={{ width: '100%', borderRadius: 6, marginBottom: 8, objectFit: 'cover', maxHeight: 120 }}
-              />
-            )}
-
-            {/* External link if provided */}
-            {hotspot.type === 'link' && hotspot.content && hotspot.content.startsWith('http') && (
-              <a
-                href={hotspot.content}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  color: '#D4A017',
-                  fontSize: 12,
-                  textDecoration: 'none',
-                }}
-              >
-                Open link <ExternalLink size={11} />
-              </a>
-            )}
-          </div>
-        )}
       </div>
     </Html>
   )
