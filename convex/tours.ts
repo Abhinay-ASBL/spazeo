@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { query, mutation } from './_generated/server'
+import { query, mutation, action, internalQuery, internalMutation } from './_generated/server'
 import { internal } from './_generated/api'
 
 const TOUR_LIMITS: Record<string, number> = {
@@ -169,6 +169,9 @@ export const getBySlug = query({
   },
 })
 
+// NOTE: Password verification is now handled by passwordUtils.verifyTourPassword (bcrypt action).
+// This query is kept for backward compatibility but returns only a boolean — it does NOT
+// compare passwords or return scenes. The public viewer (Plan 02) will call the action instead.
 export const verifyTourPassword = query({
   args: {
     slug: v.string(),
@@ -179,32 +182,11 @@ export const verifyTourPassword = query({
       .query('tours')
       .withIndex('by_slug', (q) => q.eq('slug', args.slug))
       .unique()
-    if (!tour) return null
-
-    if (tour.password !== args.password) return null
-
-    const scenes = await ctx.db
-      .query('scenes')
-      .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-      .collect()
-
-    const scenesWithHotspots = await Promise.all(
-      scenes.map(async (scene) => {
-        const hotspots = await ctx.db
-          .query('hotspots')
-          .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
-          .collect()
-        const imageUrl = scene.imageStorageId
-          ? await ctx.storage.getUrl(scene.imageStorageId)
-          : null
-        return { ...scene, hotspots, imageUrl }
-      })
-    )
-
-    return {
-      ...tour,
-      scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
-    }
+    if (!tour) return false
+    // Plaintext comparison is intentionally removed. Callers should use
+    // api.passwordUtils.verifyTourPassword (internalAction) for real verification.
+    // Return false to avoid accidentally revealing hashed passwords.
+    return false
   },
 })
 
@@ -338,7 +320,9 @@ export const update = mutation({
     const tour = await ctx.db.get(args.tourId)
     if (!tour) throw new Error('Tour not found')
 
-    const { tourId, ...updates } = args
+    const { tourId, password: _ignoredPassword, ...updates } = args
+    // NOTE: `password` is accepted in args for backward compat but is intentionally
+    // excluded from DB writes. Use api.tours.setTourPassword to hash and store a password.
     const cleanUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, val]) => val !== undefined)
     )
@@ -746,4 +730,74 @@ export const generateUploadUrl = mutation(async (ctx) => {
   const identity = await ctx.auth.getUserIdentity()
   if (!identity) throw new Error('Not authenticated')
   return await ctx.storage.generateUploadUrl()
+})
+
+// --- Password hashing support ---
+
+// Returns only the passwordHash field — never exposed to the client.
+export const getPasswordHash = internalQuery({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const tour = await ctx.db
+      .query('tours')
+      .withIndex('by_slug', (q) => q.eq('slug', args.slug))
+      .unique()
+    if (!tour) return null
+    return { passwordHash: tour.passwordHash }
+  },
+})
+
+// Verifies the tour belongs to the given user — used by setTourPassword action.
+export const getTourForOwner = internalQuery({
+  args: { tourId: v.id('tours'), userId: v.id('users') },
+  handler: async (ctx, args) => {
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== args.userId) return null
+    return tour
+  },
+})
+
+// Writes the hashed password (or clears it) — called only from setTourPassword action.
+export const patchTourPassword = internalMutation({
+  args: { tourId: v.id('tours'), passwordHash: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.tourId, { passwordHash: args.passwordHash })
+  },
+})
+
+// Public action: hashes the password server-side before storing it.
+// This is the canonical write path for tour password protection.
+export const setTourPassword = action({
+  args: {
+    tourId: v.id('tours'),
+    password: v.optional(v.string()),
+  },
+  handler: async (ctx, { tourId, password }) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error('Not authenticated')
+
+    const user = await ctx.runQuery(internal.users.getByClerkIdInternal, {
+      clerkId: identity.subject,
+    })
+    if (!user) throw new Error('User not found')
+
+    const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+      tourId, userId: user._id,
+    })
+    if (!tour) throw new Error('Tour not found or not authorized')
+
+    if (password && password.trim().length > 0) {
+      const hash = await ctx.runAction(internal.passwordUtils.hashTourPassword, {
+        password: password.trim(),
+      })
+      await ctx.runMutation(internal.tours.patchTourPassword, {
+        tourId, passwordHash: hash,
+      })
+    } else {
+      // Clear password protection
+      await ctx.runMutation(internal.tours.patchTourPassword, {
+        tourId, passwordHash: undefined,
+      })
+    }
+  },
 })
