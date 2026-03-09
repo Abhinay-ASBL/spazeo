@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-03-09T09:01:43.943Z"
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-03-09T09:06:37.540Z"
 last_activity: 2026-03-09 — Roadmap created; 41 requirements mapped across 5 phases
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P01 | 8m | 2 tasks | 2 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P02 | 5m | 2 tasks | 2 files |
 | Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P03 | 2m | 1 tasks | 1 files |
+| Phase 06-hotspot-customization-options-icons-info-panels-video-support-and-adaptive-screen-layout P04 | 3m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase Phase 06-03]: HotspotMarker delegates panel-open to Zustand setActiveHotspot — eliminates Canvas z-index boundary constraints on popup size
 - [Phase Phase 06-03]: ICON_REGISTRY uses string key lookup for iconName — allows custom Lucide icon selection without component changes for new icons
 - [Phase Phase 06-03]: accentColor applied via markerColor computed variable (hotspot.accentColor ?? config.color) — affects button background and ping ring
+- [Phase 06-04]: HotspotInfoPanel and HotspotVideoModal rendered as DOM siblings outside R3F Canvas to avoid z-index stacking context conflicts
+- [Phase 06-04]: No autoPlay on video element — mobile browsers block it; user clicks play manually
+- [Phase 06-04]: z-50 for HotspotInfoPanel, zIndex 60 for HotspotVideoModal — video always renders above info panel
 
 ### Roadmap Evolution
 
@@ -112,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T09:01:43.924Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-03-09T09:06:37.536Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
