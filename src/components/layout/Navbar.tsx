@@ -184,8 +184,31 @@ export function Navbar() {
                   </Link>
                   <UserButton
                     appearance={{
+                      variables: {
+                        colorBackground: '#12100E',
+                        colorText: '#F5F3EF',
+                        colorTextSecondary: '#A8A29E',
+                        colorPrimary: '#D4A017',
+                        colorDanger: '#F87171',
+                        colorNeutral: '#2E2A24',
+                        borderRadius: '8px',
+                        fontFamily: 'var(--font-dmsans)',
+                        fontSize: '14px',
+                      },
                       elements: {
                         avatarBox: 'w-8 h-8',
+                        userButtonPopoverCard:
+                          '!bg-[#12100E] !border !border-[rgba(212,160,23,0.12)] !shadow-[0_8px_32px_rgba(0,0,0,0.5)] !rounded-[12px]',
+                        userButtonPopoverMain: '!bg-[#12100E]',
+                        userButtonPopoverFooter:
+                          '!bg-[#0A0908] !border-t !border-[rgba(212,160,23,0.08)] !rounded-b-[12px]',
+                        userPreview: '!border-b !border-[rgba(212,160,23,0.08)] !pb-3',
+                        userPreviewMainIdentifier: '!text-[#F5F3EF] !font-semibold',
+                        userPreviewSecondaryIdentifier: '!text-[#A8A29E] !text-xs',
+                        userButtonPopoverActionButton:
+                          '!text-[#A8A29E] hover:!bg-[rgba(212,160,23,0.07)] hover:!text-[#F5F3EF] !rounded-[8px] transition-colors',
+                        userButtonPopoverActionButtonIcon: '!text-[#6B6560]',
+                        userButtonPopoverActionButtonText: 'font-medium',
                       },
                     }}
                   />

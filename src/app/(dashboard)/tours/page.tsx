@@ -327,7 +327,7 @@ function TourCard({
 
   return (
     <div
-      className="group relative overflow-hidden transition-all duration-200"
+      className="group relative transition-all duration-200"
       style={{
         backgroundColor: '#12100E',
         border: isSelected ? '1px solid #D4A017' : '1px solid rgba(212,160,23,0.08)',
@@ -339,7 +339,7 @@ function TourCard({
       onMouseLeave={() => setHovered(false)}
     >
       {/* Thumbnail */}
-      <div className="relative" style={{ aspectRatio: '16 / 9' }}>
+      <div className="relative overflow-hidden rounded-t-[11px]" style={{ aspectRatio: '16 / 9' }}>
         <div
           className="absolute inset-0"
           style={{ background: getGradient(tour._id), opacity: 0.6 }}

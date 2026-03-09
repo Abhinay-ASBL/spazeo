@@ -23,12 +23,13 @@ import toast from 'react-hot-toast'
 
 // ─── Types ─────────────────────────────────────────────────────
 
-type Period = '7d' | '30d' | '90d'
+type Period = '7d' | '30d' | '90d' | 'all'
 
 const PERIOD_OPTIONS: { label: string; value: Period }[] = [
   { label: '7D', value: '7d' },
   { label: '30D', value: '30d' },
   { label: '90D', value: '90d' },
+  { label: 'All', value: 'all' },
 ]
 
 // ─── Helpers ───────────────────────────────────────────────────
@@ -78,7 +79,9 @@ export default function AnalyticsPage() {
   const [exporting, setExporting] = useState(false)
   const exportCsv = useAction(api.analytics.exportCsv)
 
-  const overview = useQuery(api.analytics.getDashboardOverview, { period })
+  // getDashboardOverview only accepts 7d/30d/90d — pass undefined for 'all' (defaults to 30d overview)
+  const overviewPeriod = period === 'all' ? undefined : period
+  const overview = useQuery(api.analytics.getDashboardOverview, { period: overviewPeriod })
   const tourPerformance = useQuery(api.analytics.getTourPerformance, { period })
 
   const isLoading = overview === undefined || tourPerformance === undefined
@@ -229,8 +232,8 @@ export default function AnalyticsPage() {
             onClick={async () => {
               setExporting(true)
               try {
-                const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : 90
-                const startDate = Date.now() - periodDays * 24 * 60 * 60 * 1000
+                const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
+                const startDate = periodDays > 0 ? Date.now() - periodDays * 24 * 60 * 60 * 1000 : 0
                 const csv = await exportCsv({ startDate })
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
                 const url = URL.createObjectURL(blob)

@@ -28,6 +28,7 @@ import {
   Settings,
   Layers,
   ChevronDown,
+  Copy,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -101,6 +102,7 @@ export default function TourEditorPage() {
   const [hotspotImageFile, setHotspotImageFile] = useState<File | null>(null)
   const [hotspotImagePreview, setHotspotImagePreview] = useState<string | null>(null)
   const hotspotImageInputRef = useRef<HTMLInputElement>(null)
+  const [hotspotVisible, setHotspotVisible] = useState(true)
 
   // Active info/media/link hotspot popup
   const [activePopupHotspot, setActivePopupHotspot] = useState<{
@@ -438,6 +440,7 @@ export default function TourEditorPage() {
         description: hotspotDescription || undefined,
         content: hotspotContent || undefined,
         imageStorageId,
+        visible: hotspotVisible,
       })
       toast.success('Hotspot added')
       setPendingPosition(null)
@@ -448,6 +451,7 @@ export default function TourEditorPage() {
       setHotspotTargetSceneId('')
       setHotspotImageFile(null)
       setHotspotImagePreview(null)
+      setHotspotVisible(true)
       setIsPlacingHotspot(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
@@ -455,12 +459,17 @@ export default function TourEditorPage() {
     }
   }, [
     createHotspot,
+    generateUploadUrl,
     activeScene,
     pendingPosition,
     hotspotType,
     hotspotTooltip,
+    hotspotTitle,
+    hotspotDescription,
     hotspotTargetSceneId,
     hotspotContent,
+    hotspotImageFile,
+    hotspotVisible,
   ])
 
   /* ── Update hotspot tooltip ── */
@@ -1082,6 +1091,21 @@ export default function TourEditorPage() {
                   </div>
                 </div>
 
+                {/* Title */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Title</label>
+                  <input
+                    type="text"
+                    value={hotspotTitle}
+                    onChange={(e) => setHotspotTitle(e.target.value)}
+                    placeholder="Hotspot title"
+                    className="w-full h-9 px-3 rounded-lg text-[12px] outline-none"
+                    style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#D4A017' }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212,160,23,0.15)' }}
+                  />
+                </div>
+
                 {/* Label / Name */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Label</label>
@@ -1095,6 +1119,41 @@ export default function TourEditorPage() {
                     onFocus={(e) => { e.currentTarget.style.borderColor = '#D4A017' }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212,160,23,0.15)' }}
                   />
+                </div>
+
+                {/* Visibility toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Visible</label>
+                  <button
+                    type="button"
+                    onClick={() => setHotspotVisible((prev) => !prev)}
+                    role="switch"
+                    aria-checked={hotspotVisible}
+                    aria-label="Toggle hotspot visibility"
+                    style={{
+                      width: 40,
+                      height: 22,
+                      borderRadius: 11,
+                      border: 'none',
+                      cursor: 'pointer',
+                      backgroundColor: hotspotVisible ? '#D4A017' : '#2E2A24',
+                      position: 'relative',
+                      transition: 'background-color 0.15s',
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 3,
+                        borderRadius: '50%',
+                        width: 16,
+                        height: 16,
+                        backgroundColor: '#F5F3EF',
+                        transition: 'left 0.15s',
+                        left: hotspotVisible ? 21 : 3,
+                      }}
+                    />
+                  </button>
                 </div>
 
                 {/* Navigation: target scene */}
@@ -1470,6 +1529,46 @@ export default function TourEditorPage() {
                           {hotspot.type}
                         </p>
                       </div>
+                      {/* Visibility toggle for existing hotspot */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newVisible = !(hotspot.visible ?? true)
+                          try {
+                            await updateHotspot({ hotspotId: hotspot._id as Id<'hotspots'>, visible: newVisible })
+                          } catch {
+                            toast.error('Failed to update visibility')
+                          }
+                        }}
+                        role="switch"
+                        aria-checked={hotspot.visible ?? true}
+                        aria-label="Toggle hotspot visibility"
+                        title={`${(hotspot.visible ?? true) ? 'Hide' : 'Show'} hotspot`}
+                        style={{
+                          width: 28,
+                          height: 16,
+                          borderRadius: 8,
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor: (hotspot.visible ?? true) ? '#D4A017' : '#2E2A24',
+                          position: 'relative',
+                          transition: 'background-color 0.15s',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 2,
+                            borderRadius: '50%',
+                            width: 12,
+                            height: 12,
+                            backgroundColor: '#F5F3EF',
+                            transition: 'left 0.15s',
+                            left: (hotspot.visible ?? true) ? 14 : 2,
+                          }}
+                        />
+                      </button>
                       <button
                         onClick={() => handleDeleteHotspot(hotspot._id as Id<'hotspots'>)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded"
@@ -1798,6 +1897,64 @@ export default function TourEditorPage() {
                     onBlurCapture={(e) => { e.currentTarget.style.borderColor = 'rgba(212,160,23,0.12)' }}
                   />
                 </div>
+              )}
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid rgba(212,160,23,0.12)', margin: '8px 0' }} />
+
+              {/* Embed Code */}
+              {tour?.status === 'published' && tour?.embedCode ? (
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="text-xs font-medium"
+                    style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
+                  >
+                    Embed Code
+                  </label>
+                  <p style={{ color: '#6B6560', fontSize: 11, lineHeight: 1.4, margin: 0, fontFamily: 'var(--font-dmsans)' }}>
+                    Copy this snippet to embed the tour on any website.
+                  </p>
+                  <textarea
+                    readOnly
+                    value={tour.embedCode}
+                    rows={4}
+                    onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                    className="w-full rounded-lg text-[11px] outline-none resize-none"
+                    style={{
+                      backgroundColor: '#0A0908',
+                      border: '1px solid rgba(212,160,23,0.12)',
+                      borderRadius: 4,
+                      color: '#A8A29E',
+                      fontFamily: 'monospace',
+                      padding: '8px 10px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(tour.embedCode ?? '')
+                      toast.success('Embed code copied!')
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg text-xs font-medium transition-colors"
+                    style={{
+                      alignSelf: 'flex-start',
+                      backgroundColor: 'rgba(212,160,23,0.12)',
+                      border: '1px solid rgba(212,160,23,0.2)',
+                      borderRadius: 4,
+                      color: '#D4A017',
+                      padding: '6px 12px',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-dmsans)',
+                    }}
+                  >
+                    <Copy size={12} />
+                    Copy
+                  </button>
+                </div>
+              ) : (
+                <p style={{ color: '#6B6560', fontSize: 11, fontFamily: 'var(--font-dmsans)' }}>
+                  Publish your tour to generate the embed code.
+                </p>
               )}
             </div>
             )}
@@ -2150,6 +2307,63 @@ export default function TourEditorPage() {
                           }}
                         />
                       </button>
+                    </div>
+
+                    {/* Embed Code */}
+                    <div style={{ borderTop: '1px solid rgba(212,160,23,0.12)', paddingTop: 16 }}>
+                      {tour?.status === 'published' && tour?.embedCode ? (
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="text-xs font-medium"
+                            style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
+                          >
+                            Embed Code
+                          </label>
+                          <p style={{ color: '#6B6560', fontSize: 11, lineHeight: 1.4, margin: 0, fontFamily: 'var(--font-dmsans)' }}>
+                            Copy this snippet to embed the tour on any website.
+                          </p>
+                          <textarea
+                            readOnly
+                            value={tour.embedCode}
+                            rows={3}
+                            onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                            className="w-full rounded-lg text-[11px] outline-none resize-none"
+                            style={{
+                              backgroundColor: '#0A0908',
+                              border: '1px solid rgba(212,160,23,0.12)',
+                              borderRadius: 4,
+                              color: '#A8A29E',
+                              fontFamily: 'monospace',
+                              padding: '8px 10px',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(tour.embedCode ?? '')
+                              toast.success('Embed code copied!')
+                            }}
+                            className="flex items-center gap-1.5 text-xs font-medium transition-colors"
+                            style={{
+                              alignSelf: 'flex-start',
+                              backgroundColor: 'rgba(212,160,23,0.12)',
+                              border: '1px solid rgba(212,160,23,0.2)',
+                              borderRadius: 4,
+                              color: '#D4A017',
+                              padding: '6px 12px',
+                              cursor: 'pointer',
+                              fontFamily: 'var(--font-dmsans)',
+                            }}
+                          >
+                            <Copy size={12} />
+                            Copy
+                          </button>
+                        </div>
+                      ) : (
+                        <p style={{ color: '#6B6560', fontSize: 11, fontFamily: 'var(--font-dmsans)' }}>
+                          Publish your tour to generate the embed code.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

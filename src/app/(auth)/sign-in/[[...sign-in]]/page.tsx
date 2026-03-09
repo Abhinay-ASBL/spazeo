@@ -13,20 +13,23 @@ import toast from 'react-hot-toast'
 
 function SpazeoLogo() {
   return (
-    <Link href="/" className="inline-flex items-center gap-0.5">
+    <Link href="/" className="inline-flex items-center gap-0" aria-label="Spazeo home">
       <span
         className="text-2xl font-black tracking-[2px]"
-        style={{
-          fontFamily: 'var(--font-display)',
-          color: '#F5F3EF',
-        }}
+        style={{ fontFamily: 'var(--font-display)', color: '#F5F3EF' }}
       >
-        SPAZEO
+        SPAZE
       </span>
       <span
-        className="inline-block rounded-full mb-1"
-        style={{ width: 7, height: 7, backgroundColor: '#D4A017' }}
+        className="inline-block rounded-full mx-[3px]"
+        style={{ width: 7, height: 7, backgroundColor: '#D4A017', flexShrink: 0 }}
       />
+      <span
+        className="text-2xl font-black tracking-[2px]"
+        style={{ fontFamily: 'var(--font-display)', color: '#F5F3EF' }}
+      >
+        O
+      </span>
     </Link>
   )
 }
@@ -398,19 +401,27 @@ export default function SignInPage() {
         <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8">
           {isProvidersConfigured ? (
             <div className="w-full flex flex-col items-center gap-7" style={{ maxWidth: 400 }}>
-              <div className="flex flex-col items-center gap-1">
+              {/* Logo — SPAZE●O inline */}
+              <Link href="/" className="inline-flex items-center gap-0" aria-label="Spazeo home">
                 <span
-                  className="text-3xl font-black tracking-[3px]"
-                  style={{ fontFamily: 'var(--font-display)', color: '#D4A017' }}
+                  className="text-2xl font-black tracking-[3px]"
+                  style={{ fontFamily: 'var(--font-display)', color: '#F5F3EF' }}
                 >
-                  SPAZEO
+                  SPAZE
                 </span>
                 <span
-                  className="inline-block rounded-full"
-                  style={{ width: 8, height: 8, backgroundColor: '#D4A017' }}
+                  className="inline-block rounded-full mx-[3px]"
+                  style={{ width: 8, height: 8, backgroundColor: '#D4A017', flexShrink: 0 }}
                 />
-              </div>
-              <div className="w-full">
+                <span
+                  className="text-2xl font-black tracking-[3px]"
+                  style={{ fontFamily: 'var(--font-display)', color: '#F5F3EF' }}
+                >
+                  O
+                </span>
+              </Link>
+
+              <div className="w-full text-center">
                 <h1
                   className="text-[32px] font-bold leading-tight"
                   style={{ fontFamily: 'var(--font-display)', color: '#F5F3EF' }}
@@ -427,32 +438,46 @@ export default function SignInPage() {
               <SignIn
                 forceRedirectUrl="/dashboard"
                 appearance={{
+                  variables: {
+                    colorBackground: '#12100E',
+                    colorInputBackground: '#1B1916',
+                    colorInputText: '#F5F3EF',
+                    colorText: '#F5F3EF',
+                    colorTextSecondary: '#A8A29E',
+                    colorPrimary: '#D4A017',
+                    colorDanger: '#F87171',
+                    colorSuccess: '#34D399',
+                    colorNeutral: '#2E2A24',
+                    borderRadius: '8px',
+                    fontFamily: 'var(--font-dmsans)',
+                    fontSize: '14px',
+                  },
                   elements: {
                     rootBox: 'w-full',
-                    card: 'shadow-none bg-transparent p-0 w-full',
+                    card: 'shadow-none !bg-transparent p-0 w-full border-0',
                     cardBox: 'shadow-none w-full',
                     headerTitle: 'hidden',
                     headerSubtitle: 'hidden',
                     socialButtonsBlockButton:
-                      'bg-[#12100E] border-[rgba(212,160,23,0.12)] text-[#F5F3EF] hover:bg-[#1B1916] h-12 rounded-[10px] font-medium cursor-pointer transition-colors',
-                    socialButtonsBlockButtonText: 'text-[#F5F3EF] text-sm font-medium',
+                      '!bg-[#1B1916] !border !border-[rgba(212,160,23,0.15)] !text-[#F5F3EF] hover:!bg-[#2E2A24] h-12 !rounded-[8px] font-medium cursor-pointer transition-colors',
+                    socialButtonsBlockButtonText: '!text-[#F5F3EF] text-sm font-medium',
+                    socialButtonsBlockButtonArrow: '!text-[#6B6560]',
                     formButtonPrimary:
-                      'bg-[#D4A017] hover:bg-[#E5B120] text-[#0A0908] h-[50px] rounded-[10px] font-bold text-[15px] shadow-[0_0_30px_rgba(212,160,23,0.2)] cursor-pointer transition-colors',
-                    formButtonPrimaryHover: 'bg-[#E5B120]',
-                    formFieldLabel: 'text-[#A8A29E] text-[13px] font-medium',
+                      '!bg-[#D4A017] hover:!bg-[#E5B120] !text-[#0A0908] h-[50px] !rounded-[8px] font-bold text-[15px] shadow-[0_0_30px_rgba(212,160,23,0.2)] cursor-pointer transition-all',
+                    formFieldLabel: '!text-[#A8A29E] text-[13px] font-medium',
                     formFieldInput:
-                      'bg-[#12100E] border-[rgba(212,160,23,0.10)] text-[#F5F3EF] h-12 rounded-lg text-sm focus:border-[#D4A017] focus:ring-0 focus:shadow-[0_0_0_3px_rgba(212,160,23,0.1)]',
-                    footerActionLink: 'text-[#D4A017] hover:text-[#E5B120] font-semibold cursor-pointer transition-colors',
-                    footerActionText: 'text-[#6B6560] text-sm',
-                    identityPreviewEditButton: 'text-[#D4A017] hover:text-[#E5B120] cursor-pointer transition-colors',
-                    formFieldAction: 'text-[#D4A017] text-[12px] font-medium cursor-pointer hover:text-[#E5B120] transition-colors',
-                    dividerLine: 'bg-[rgba(212,160,23,0.10)]',
-                    dividerText: 'text-[#6B6560] text-xs uppercase tracking-wider',
-                    formFieldInputShowPasswordButton: 'text-[#6B6560] hover:text-[#A8A29E] cursor-pointer transition-colors',
-                    formFieldInputPlaceholder: 'text-[#4A4540]',
-                    footer: 'bg-transparent',
-                    main: 'gap-6',
-                    otpCodeFieldInput: 'bg-[#12100E] border-[rgba(212,160,23,0.10)] text-[#F5F3EF] focus:border-[#D4A017] focus:ring-0',
+                      '!bg-[#1B1916] !border !border-[rgba(212,160,23,0.15)] !text-[#F5F3EF] h-12 !rounded-[8px] text-sm focus:!border-[#D4A017] focus:!ring-0 focus:!shadow-[0_0_0_3px_rgba(212,160,23,0.1)] placeholder:!text-[#5A5248]',
+                    footerActionLink: '!text-[#D4A017] hover:!text-[#E5B120] font-semibold cursor-pointer transition-colors',
+                    footerActionText: '!text-[#6B6560] text-sm',
+                    footer: '!bg-transparent',
+                    identityPreviewEditButton: '!text-[#D4A017] hover:!text-[#E5B120] cursor-pointer',
+                    formFieldAction: '!text-[#D4A017] text-[12px] font-medium cursor-pointer hover:!text-[#E5B120]',
+                    dividerLine: '!bg-[rgba(212,160,23,0.12)]',
+                    dividerText: '!text-[#6B6560] text-xs uppercase tracking-wider',
+                    formFieldInputShowPasswordButton: '!text-[#6B6560] hover:!text-[#A8A29E] cursor-pointer',
+                    otpCodeFieldInput: '!bg-[#1B1916] !border-[rgba(212,160,23,0.15)] !text-[#F5F3EF] focus:!border-[#D4A017]',
+                    alternativeMethodsBlockButton: '!bg-[#1B1916] !border !border-[rgba(212,160,23,0.15)] !text-[#F5F3EF] !rounded-[8px]',
+                    badge: '!bg-[rgba(212,160,23,0.12)] !text-[#D4A017] !border-0',
                   },
                 }}
               />

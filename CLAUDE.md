@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Spazeo — Claude Code Instructions
 
 > AI coding assistant context for the Spazeo project.
@@ -22,12 +26,13 @@ Gaussian Splatting, AI staging, depth estimation, and smart search.
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| Frontend Framework | Next.js 15 (App Router) | Server/client components, routing, SSR, ISR, Turbopack |
+| Frontend Framework | Next.js 16 (App Router) | Server/client components, routing, SSR, ISR, Turbopack |
 | Language | TypeScript | Type safety across frontend and Convex backend |
 | Styling | Tailwind CSS v4 + Radix UI | Utility-first CSS, accessible component primitives |
 | Backend Platform | Convex | Reactive database, serverless functions, file storage, cron jobs, vector search |
 | Authentication | Clerk + Convex Auth | User management, JWT tokens, social login, role-based access |
-| 3D Rendering | Three.js via @react-three/fiber + drei | 360° panorama viewer, Gaussian Splatting, interactive hotspots |
+| Panorama Viewer | @photo-sphere-viewer (core, autorotate-plugin, markers-plugin) | 360° equirectangular panorama viewer, hotspot markers |
+| 3D Building Viewer | Three.js via @react-three/fiber + drei | Interactive 3D building models, exterior views, floor/unit navigation |
 | AI — Vision | OpenAI GPT-4o Vision API | Scene analysis, object detection, room classification |
 | AI — Generation | Replicate (Stable Diffusion) | Virtual staging, style transfer, background generation |
 | AI — 3D | Gaussian Splatting pipeline | Point cloud to 3D scene, Luma AI integration |
@@ -50,7 +55,7 @@ Gaussian Splatting, AI staging, depth estimation, and smart search.
 ```
 /Users/padidamabhinay/Desktop/UI/Spazeo/
 ├── src/
-│   ├── app/                              # Next.js 15 App Router
+│   ├── app/                              # Next.js 16 App Router
 │   │   ├── layout.tsx                    # Root layout (ClerkProvider → ConvexProvider)
 │   │   ├── page.tsx                      # Landing page (/)
 │   │   ├── globals.css                   # Tailwind CSS v4 imports + theme
@@ -69,7 +74,14 @@ Gaussian Splatting, AI staging, depth estimation, and smart search.
 │   │   │   └── billing/page.tsx          # Subscription management
 │   │   ├── tour/[slug]/page.tsx          # Public tour viewer
 │   │   ├── api/webhooks/stripe/route.ts  # Stripe webhook handler
-│   │   └── pricing/page.tsx              # Pricing page
+│   │   ├── pricing/page.tsx              # Pricing page
+│   │   ├── onboarding/page.tsx           # Post-signup onboarding wizard
+│   │   ├── demo/page.tsx                 # Interactive demo viewer
+│   │   ├── blog/[slug]/page.tsx          # Blog
+│   │   ├── compare/[competitor]/page.tsx # Competitor comparison pages
+│   │   ├── features/                     # Feature detail pages (ai-staging, ai-analysis, ai-descriptions, ...)
+│   │   ├── about/, product/, enterprise/, india/  # Marketing pages
+│   │   └── privacy/, terms/             # Legal pages
 │   ├── components/
 │   │   ├── ui/                           # Base UI (Radix + Tailwind)
 │   │   │   ├── button.tsx
@@ -119,17 +131,13 @@ Gaussian Splatting, AI staging, depth estimation, and smart search.
 │   ├── _generated/                       # Auto-generated (DO NOT EDIT)
 │   ├── schema.ts                         # Database schema definition
 │   ├── auth.config.ts                    # Clerk JWT configuration
-│   ├── users.ts                          # User queries & mutations
-│   ├── tours.ts                          # Tour CRUD operations
-│   ├── scenes.ts                         # Scene management + file upload
-│   ├── hotspots.ts                       # Hotspot CRUD
-│   ├── leads.ts                          # Lead capture & management
-│   ├── analytics.ts                      # Analytics tracking & aggregation
-│   ├── subscriptions.ts                  # Billing & subscription logic
-│   ├── ai.ts                             # AI pipeline actions
-│   ├── search.ts                         # Vector search functions
-│   ├── crons.ts                          # Scheduled jobs
-│   └── http.ts                           # HTTP endpoints (webhooks, public API)
+│   ├── users.ts, tours.ts, scenes.ts, hotspots.ts, leads.ts
+│   ├── analytics.ts, subscriptions.ts, search.ts, crons.ts, http.ts
+│   ├── ai.ts, aiActions.ts, aiHelpers.ts # AI pipeline
+│   ├── buildings.ts, buildingBlocks.ts, buildingUnits.ts
+│   ├── viewPositions.ts, exteriorPanoramas.ts, buildingAnalytics.ts, conversionJobs.ts
+│   ├── activity.ts, notifications.ts, consents.ts
+│   ├── blog.ts, demoTours.ts, pricing.ts, newsletter.ts, contact.ts, emails.ts
 ├── public/
 ├── middleware.ts                          # Clerk route protection
 ├── next.config.ts
@@ -200,17 +208,19 @@ Frontend auto-updates (reactive query, no polling)
 ### Provider Chain (src/app/layout.tsx)
 
 ```
-ClerkProvider → ConvexProviderWithClerk → App
+ConvexClientProvider → PostHogProvider → App
+  └─ (inside ConvexClientProvider when env vars present)
+     ClerkProvider → ConvexProviderWithClerk
 ```
 
-- **ClerkProvider** (`@clerk/nextjs`): manages auth session
-- **ConvexProviderWithClerk** (`convex/react-clerk`): passes Clerk JWTs to Convex
-- Configured in `src/components/providers/ConvexClientProvider.tsx`
+- **ConvexClientProvider** (`src/components/providers/ConvexClientProvider.tsx`): wraps `ClerkProvider → ConvexProviderWithClerk`. **Renders children directly (passthrough) when `NEXT_PUBLIC_CONVEX_URL` or `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` are missing/invalid** — this allows the app to render without auth in development.
+- **PostHogProvider** (`src/components/providers/PostHogProvider.tsx`): wraps children inside the root layout for analytics.
 
 ### Route Protection
 
 - `middleware.ts` uses Clerk's `clerkMiddleware` + `createRouteMatcher`
-- Protects `/dashboard/*`, `/tours/*` — redirects unauthenticated users to `/sign-in`
+- Protects `/dashboard/*`, `/tours/*`, `/analytics/*`, `/leads/*`, `/settings/*`, `/billing/*`, `/onboarding/*`
+- **Falls back to passthrough (no protection)** when Clerk env vars are missing — same pattern as ConvexClientProvider
 
 ### Role-Based Access
 
@@ -227,42 +237,56 @@ Roles: `owner`, `admin`, `editor`, `viewer` — stored in Convex `users` and `te
 
 | Table | Key Fields | Indexes |
 |---|---|---|
-| users | clerkId, email, name, plan, role | by_clerkId, by_email |
-| tours | userId, title, slug, status, settings, publishedAt | by_userId, by_slug, by_status |
-| scenes | tourId, title, imageStorageId, order, panoramaType | by_tourId |
+| users | clerkId, email, name, plan, role, onboardingComplete | by_clerkId, by_email |
+| tours | userId, title, slug, status, settings, leadCaptureConfig, brandingConfig, seoConfig | by_userId, by_slug, by_status; searchIndex on title |
+| scenes | tourId, title, imageStorageId, order, panoramaType, aiAnalysis | by_tourId |
 | hotspots | sceneId, targetSceneId, type, position, tooltip | by_sceneId |
 | floorPlans | tourId, imageStorageId, rooms, scale | by_tourId |
-| leads | tourId, name, email, phone, message, source | by_tourId, by_email |
-| analytics | tourId, event, sessionId, sceneId, timestamp | by_tourId, by_event, by_timestamp |
-| subscriptions | userId, stripeId, plan, status, currentPeriodEnd | by_userId, by_stripeId |
+| leads | tourId, name, email, status, notes, deviceInfo, locationInfo | by_tourId, by_email |
+| analytics | tourId, event, sessionId, sceneId, timestamp, deviceType | by_tourId, by_event, by_timestamp |
+| dailyAnalytics | tourId, date, views, uniqueVisitors, avgDuration, leadsCount | by_tourId_date |
+| activityLog | userId, type, tourId, message, timestamp | by_userId |
+| subscriptions | userId, stripeCustomerId, plan, status, currentPeriodEnd | by_userId, by_stripeCustomerId |
 | teamMembers | teamId, userId, role, invitedBy | by_teamId, by_userId |
-| aiJobs | tourId, type, status, input, output, provider | by_tourId, by_status |
+| aiJobs | tourId, sceneId, type, status, input, output, provider, userId | by_tourId, by_status, by_userId |
+| buildings | userId, name, slug, location, totalFloors, totalBlocks, status | by_userId, by_slug, by_status |
+| buildingBlocks | buildingId, blockNumber, name, apartmentsPerFloor | by_buildingId |
+| viewPositions | buildingId, blockId, floor, positionIndex, direction, coordinates | by_buildingId, by_blockId_floor |
+| exteriorPanoramas | viewPositionId, buildingId, imageStorageId, timeOfDay | by_viewPositionId, by_buildingId |
+| buildingUnits | buildingId, blockId, floor, unitNumber, type, tourId, status | by_buildingId, by_floor, by_tourId |
+| conversionJobs | buildingId, inputStorageId, status, progress | by_buildingId, by_status |
+| buildingAnalytics | buildingId, event, sessionId, floor, unitNumber | by_buildingId, by_event |
+| blogPosts | title, slug, content, category, status | by_slug, by_category, by_status |
+| consents | userId, consentType, version, granted | by_userId, by_userId_consentType |
+| demoTours | title, slug, propertyType, tourId | by_slug, by_propertyType |
+| pricingPlans | name, slug, priceUsd, priceInr, limits, stripePriceId | by_slug |
+| newsletterSubscriptions | email, subscribedAt, confirmed | by_email |
+| notifications | userId, type, title, message, read | by_userId, by_read |
+| contactSubmissions | name, email, message, page | by_email |
 
 ---
 
 ## 360° Viewer Architecture
 
-### Rendering Pipeline (PanoramaViewer.tsx)
+### Rendering Pipeline
 
-1. `SphereGeometry` with panorama mapped as internal texture (normals flipped inward)
-2. `PerspectiveCamera` at center `[0,0,0]`, FOV ~75°
-3. `OrbitControls` (drei) for click-drag, scroll zoom, touch gestures
-4. Hotspots as 3D sprites / HTML overlays at sphere surface coordinates
+The panorama viewer uses `@photo-sphere-viewer/core` (NOT Three.js/R3F directly):
 
-### Scene Transitions
+- `PhotoSphereViewer` renders equirectangular panoramas
+- `MarkersPlugin` (`@photo-sphere-viewer/markers-plugin`) — hotspot overlays
+- `AutorotatePlugin` (`@photo-sphere-viewer/autorotate-plugin`) — auto-spin on idle
+- Image loaded from Convex storage URLs
 
-Fade out → load new image from Convex storage → map to sphere → fade in (via `useFrame`)
+### 3D Building Viewer Architecture
 
-### Performance
+The Building Viewer domain uses Three.js via `@react-three/fiber` + `drei`:
 
-- Progressive loading (low-res thumbnail first, then full resolution)
-- Texture compression, LOD based on zoom
-- Lazy loading of unvisited scenes
-- `PerformanceMonitor` for dynamic pixel ratio adjustment
-
-### Gaussian Splatting (Future)
-
-Detect scene type → switch between `EquirectangularViewer` and `GaussianSplatViewer`. Uses `@mkkellogg/gaussian-splats-3d`.
+- Renders interactive 3D building models (`.glb`/`.gltf`)
+- Users select floor + block + unit position → view exterior panoramas from that vantage point
+- `buildingUnits` link back to `tours` (interior panorama tours for each apartment)
+- `viewPositions` store camera coordinates/heading per floor/block/positionIndex
+- `exteriorPanoramas` store rendered panorama images per viewPosition + timeOfDay
+- `conversionJobs` track 3D model optimization status
 
 ---
 
@@ -433,18 +457,21 @@ xl: 0 20px 25px rgba(0,0,0,0.15) → tour viewer overlay
 ## Development Commands
 
 ```bash
-# Start both servers simultaneously
+# Start both servers simultaneously (run in separate terminals)
 npx convex dev          # Convex dev server (watches convex/, syncs schema, deploys functions)
 npm run dev             # Next.js dev server with Turbopack on localhost:3000
+
+# Linting
+npm run lint            # ESLint (eslint-config-next)
 
 # Production deploy
 npx convex deploy       # Deploy Convex backend
 # Vercel auto-deploys on git push to main
-
-# Testing
-npx vitest              # Unit tests
-npx playwright test     # E2E tests
 ```
+
+> **Note:** `next.config.ts` sets `typescript.ignoreBuildErrors: true` because Convex-generated `api.d.ts` creates circular type references that break the Next.js build checker. The Convex CLI handles type-checking for `convex/` files separately via `npx convex dev`.
+
+> **Note:** No test runner (vitest/playwright) is configured yet in `package.json`.
 
 ---
 
