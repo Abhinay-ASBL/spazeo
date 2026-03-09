@@ -148,10 +148,16 @@ export const getBySlug = query({
 
     const scenesWithHotspots = await Promise.all(
       scenes.map(async (scene) => {
-        const hotspots = await ctx.db
+        const rawHotspots = await ctx.db
           .query('hotspots')
           .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
           .collect()
+        const hotspots = await Promise.all(
+          rawHotspots.map(async (h) => ({
+            ...h,
+            imageUrl: h.imageStorageId ? await ctx.storage.getUrl(h.imageStorageId) : undefined,
+          }))
+        )
 
         const imageUrl = scene.imageStorageId
           ? await ctx.storage.getUrl(scene.imageStorageId)
@@ -188,10 +194,16 @@ export const getBySlugWithScenes = query({
 
     const scenesWithHotspots = await Promise.all(
       scenes.map(async (scene) => {
-        const hotspots = await ctx.db
+        const rawHotspots = await ctx.db
           .query('hotspots')
           .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
           .collect()
+        const hotspots = await Promise.all(
+          rawHotspots.map(async (h) => ({
+            ...h,
+            imageUrl: h.imageStorageId ? await ctx.storage.getUrl(h.imageStorageId) : undefined,
+          }))
+        )
         const imageUrl = scene.imageStorageId
           ? await ctx.storage.getUrl(scene.imageStorageId)
           : null
@@ -768,6 +780,34 @@ export const generateUploadUrl = mutation(async (ctx) => {
   const identity = await ctx.auth.getUserIdentity()
   if (!identity) throw new Error('Not authenticated')
   return await ctx.storage.generateUploadUrl()
+})
+
+// --- 3D Reconstruction: link splat to tour ---
+
+/**
+ * Link a completed Gaussian Splat (.spz) to a tour.
+ * Internal mutation called by reconstructionJobs.acceptResult.
+ */
+export const linkSplat = internalMutation({
+  args: {
+    tourId: v.id('tours'),
+    splatStorageId: v.id('_storage'),
+    splatMetadata: v.object({
+      fileSizeBytes: v.number(),
+      gaussianCount: v.number(),
+      processingTimeMs: v.number(),
+      inputType: v.union(v.literal('video'), v.literal('photos')),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) throw new Error('Tour not found')
+
+    await ctx.db.patch(args.tourId, {
+      splatStorageId: args.splatStorageId,
+      splatMetadata: args.splatMetadata,
+    })
+  },
 })
 
 // --- Password hashing support ---
