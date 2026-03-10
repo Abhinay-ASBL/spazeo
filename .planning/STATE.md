@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-10T09:18:34.556Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-10T10:04:01.533Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 31
-  completed_plans: 30
+  total_plans: 35
+  completed_plans: 32
   percent: 33
 ---
 
@@ -81,6 +81,8 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 04 P04 | 5m | 2 tasks | 9 files |
 | Phase 04 P02 | 6m | 2 tasks | 7 files |
 | Phase 04 P03 | 3m | 2 tasks | 4 files |
+| Phase 05-floor-plan-to-3d-and-full-section-3-delivery P02 | 7m | 2 tasks | 2 files |
+| Phase 05-floor-plan-to-3d-and-full-section-3-delivery P01 | 7m | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -167,6 +169,12 @@ Recent decisions affecting current work:
 - [Phase 04]: Canvas rotation applied before upload rather than storing rotation metadata for simpler downstream processing
 - [Phase 04]: react-konva dynamically imported via lazy() to prevent SSR canvas API errors
 - [Phase 04]: Floor plan coordinates stored in meters (canonical); PPM=50 conversion at Konva render boundary only
+- [Phase 05-02]: FloorPlanMesh accepts overrides as Partial<FloorPlan3DOverrides> with defaults merged at component boundary
+- [Phase 05-02]: geometryKey JSON.stringify used as useMemo dependency to prevent per-frame geometry rebuilds
+- [Phase 05-02]: NavigationModes has no sceneBounds prop — Canvas camera prop handles initial dollhouse position directly
+- [Phase 05-01]: createFromFloorPlan mutation creates Tour + Scene + hotspots atomically in one Convex mutation
+- [Phase 05-01]: scenes.imageStorageId made optional — floor_plan scenes have no panorama image, null guards added to all storage.getUrl callers
+- [Phase 05-01]: Generate 3D Space button uses extractionStatus==='completed' guard — prop passed from FloorPlanEditorShell
 
 ### Roadmap Evolution
 
@@ -184,6 +192,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T09:18:29.161Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-03-10T10:04:01.489Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

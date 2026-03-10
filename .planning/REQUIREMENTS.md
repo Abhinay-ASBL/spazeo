@@ -72,11 +72,11 @@
 
 ### Floor Plan to 3D (Section 3)
 
-- [ ] **FP3D-01**: AI generates a 3D model from the corrected 2D floor plan data by extruding walls to standard ceiling height in Three.js
+- [x] **FP3D-01**: AI generates a 3D model from the corrected 2D floor plan data by extruding walls to standard ceiling height in Three.js
 - [ ] **FP3D-02**: User reviews the generated 3D space and can make adjustments (correct wall heights, open/close doorways) before finalizing
-- [ ] **FP3D-03**: Finalized 3D model is navigable using the same three modes as Section 2 (dollhouse, free-roam, hotspot)
-- [ ] **FP3D-04**: Furniture placement and cost tracking from Section 2 work unchanged inside floor-plan-generated 3D rooms
-- [ ] **FP3D-05**: User can publish the floor-plan-generated tour as a public share link
+- [x] **FP3D-03**: Finalized 3D model is navigable using the same three modes as Section 2 (dollhouse, free-roam, hotspot)
+- [x] **FP3D-04**: Furniture placement and cost tracking from Section 2 work unchanged inside floor-plan-generated 3D rooms
+- [x] **FP3D-05**: User can publish the floor-plan-generated tour as a public share link
 
 ---
 
@@ -158,11 +158,11 @@
 | FP-02 | Phase 4 | Complete |
 | FP-03 | Phase 4 | Complete |
 | FP-04 | Phase 4 | Complete |
-| FP3D-01 | Phase 5 | Pending |
+| FP3D-01 | Phase 5 | Complete |
 | FP3D-02 | Phase 5 | Pending |
-| FP3D-03 | Phase 5 | Pending |
-| FP3D-04 | Phase 5 | Pending |
-| FP3D-05 | Phase 5 | Pending |
+| FP3D-03 | Phase 5 | Complete |
+| FP3D-04 | Phase 5 | Complete |
+| FP3D-05 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 41 total
