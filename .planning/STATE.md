@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-09T20:33:52.347Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-10T01:44:09.660Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 20
-  completed_plans: 20
+  total_plans: 26
+  completed_plans: 21
   percent: 33
 ---
 
@@ -71,6 +71,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 02 P05 | 4m | 2 tasks | 4 files |
 | Phase 02 P06 | 8m | 3 tasks | 11 files |
 | Phase 02 P07 | 4m | 1 tasks | 1 files |
+| Phase 03 P01 | 2m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,10 @@ Recent decisions affecting current work:
 - [Phase 02-06]: Three navigation modes use lerp/slerp transitions instead of gsap — pure Three.js/R3F
 - [Phase 02-06]: Public tour page conditionally renders GaussianSplatViewer vs PanoramaViewer based on splatStorageId
 - [Phase 02-07]: Dual dropzone instances for video/photos switched via selectedType; video thumbnail at 1s via canvas.toDataURL; photo count double-enforced in dropzone and on submit
+- [Phase 03]: Catalog queries (list, search, getById) are public — no auth required for browsing
+- [Phase 03]: savePlacements uses delete-all-then-insert for idempotent room saves
+- [Phase 03]: Undo stack capped at 50 with shift-oldest eviction strategy
+- [Phase 03]: setGhostItem auto-switches mode to furnish for seamless catalog-to-placement flow
 
 ### Roadmap Evolution
 
@@ -147,6 +152,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T20:33:52.344Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-furniture-catalog-placement-and-room-sharing/03-CONTEXT.md
+Last session: 2026-03-10T01:44:09.656Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
