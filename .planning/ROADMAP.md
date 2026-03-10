@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Tour Platform — Stabilize and Polish** - Fix live security bugs, wire lead capture, complete tour creation flow, and polish the 360° viewer for production (completed 2026-03-09)
 - [x] **Phase 2: 3D Capture Pipeline and Splat Viewer** - Build GPU reconstruction job queue, in-browser Gaussian Splat rendering, and all three 3D navigation modes (completed 2026-03-09)
-- [ ] **Phase 3: Furniture Catalog, Placement, and Room Sharing** - Seed the internal furniture catalog, build drag-and-drop 3D placement with cost tracking, and publish furnished rooms as shareable links
+- [x] **Phase 3: Furniture Catalog, Placement, and Room Sharing** - Seed the internal furniture catalog, build drag-and-drop 3D placement with cost tracking, and publish furnished rooms as shareable links (completed 2026-03-10)
 - [ ] **Phase 4: Floor Plan Extraction** - Accept any floor plan file format, extract structured room geometry via GPT-4o, and provide an editable 2D correction step before proceeding
 - [ ] **Phase 5: Floor Plan to 3D and Full Section 3 Delivery** - Generate navigable 3D spaces from corrected room geometry, connect the furniture and cost tracking system, and publish as shareable tours
 
@@ -111,7 +111,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 |-------|----------------|--------|-----------|
 | 1. Tour Platform — Stabilize and Polish | 7/7 | Complete   | 2026-03-09 |
 | 2. 3D Capture Pipeline and Splat Viewer | 7/7 | Complete   | 2026-03-09 |
-| 3. Furniture Catalog, Placement, and Room Sharing | 0/6 | Planning complete | - |
+| 3. Furniture Catalog, Placement, and Room Sharing | 6/6 | Complete   | 2026-03-10 |
 | 4. Floor Plan Extraction | 0/TBD | Not started | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
 
@@ -120,7 +120,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 **Goal:** Hotspot interactions deliver a rich, responsive experience — custom Lucide icons per hotspot, a full-height info panel (right drawer on desktop, bottom sheet on mobile) with image and CTA support, full-screen video modal, and a viewer layout that meets 44px touch targets and safe-area requirements on all mobile devices
 **Requirements**: HS6-01, HS6-02, HS6-03, HS6-04, HS6-05, HS6-06
 **Depends on:** Phase 1 (inserted enhancement)
-**Plans:** 7/7 plans complete
+**Plans:** 6/6 plans complete
 
 Plans:
 - [ ] 06-01-PLAN.md — Convex schema + mutations: add 6 new optional hotspot customization fields
