@@ -88,7 +88,14 @@ Plans:
   2. The AI returns an extracted floor plan with room names, wall boundaries, and approximate dimensions — the output is a validated structured JSON payload, not a narrative description
   3. The user sees the extracted 2D floor plan rendered as an editable diagram and can correct room names, adjust wall positions, and fix dimensions before proceeding to 3D generation
   4. The corrected room geometry is saved to Convex as structured wall coordinates and room metadata, ready for 3D generation
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Convex schema expansion (floorPlanProjects, floorPlanDetails, floorPlanVersions, floorPlanJobs), backend CRUD, AI extraction action
+- [ ] 04-02-PLAN.md — Install deps (react-konva, react-pdf), upload page at /floor-plans/new, PDF rasterization, preview with rotate, sidebar nav
+- [ ] 04-03-PLAN.md — Extraction progress UI, animated build-up (walls -> rooms -> dimensions), editor page shell
+- [ ] 04-04-PLAN.md — Interactive 2D editor: react-konva split view, drawing tools, properties panel, zoom/pan, minimap
+- [ ] 04-05-PLAN.md — Save/version flow, version history UI, end-to-end wiring, human verification
 
 ### Phase 5: Floor Plan to 3D and Full Section 3 Delivery
 **Goal**: The corrected 2D floor plan data generates a navigable 3D space using the same viewer modes as Section 2; the Section 2 furniture placement and cost tracking system works unchanged inside the floor-plan-derived rooms; the finished tour publishes as a shareable public link
@@ -112,7 +119,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 | 1. Tour Platform — Stabilize and Polish | 7/7 | Complete   | 2026-03-09 |
 | 2. 3D Capture Pipeline and Splat Viewer | 7/7 | Complete   | 2026-03-09 |
 | 3. Furniture Catalog, Placement, and Room Sharing | 6/6 | Complete   | 2026-03-10 |
-| 4. Floor Plan Extraction | 0/TBD | Not started | - |
+| 4. Floor Plan Extraction | 0/5 | Planning complete | - |
 | 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
 
 ### Phase 6: Hotspot customization options, icons, info panels, video support, and adaptive screen layout
