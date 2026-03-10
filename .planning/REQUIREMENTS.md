@@ -59,9 +59,9 @@
 
 ### 3D Room Sharing (Section 2)
 
-- [ ] **SHARE-01**: User can save the furnished room state (furniture positions, IDs, rotations) and generate a public share link
-- [ ] **SHARE-02**: Anyone with the share link can view the furnished room in read-only mode without logging in
-- [ ] **SHARE-03**: Share page shows an itemized cost summary panel with product links for each placed item
+- [x] **SHARE-01**: User can save the furnished room state (furniture positions, IDs, rotations) and generate a public share link
+- [x] **SHARE-02**: Anyone with the share link can view the furnished room in read-only mode without logging in
+- [x] **SHARE-03**: Share page shows an itemized cost summary panel with product links for each placed item
 
 ### Floor Plan Extraction (Section 3)
 
@@ -151,9 +151,9 @@
 | FURN-06 | Phase 3 | Complete |
 | FURN-07 | Phase 3 | Complete |
 | FURN-08 | Phase 3 | Complete |
-| SHARE-01 | Phase 3 | Pending |
-| SHARE-02 | Phase 3 | Pending |
-| SHARE-03 | Phase 3 | Pending |
+| SHARE-01 | Phase 3 | Complete |
+| SHARE-02 | Phase 3 | Complete |
+| SHARE-03 | Phase 3 | Complete |
 | FP-01 | Phase 4 | Pending |
 | FP-02 | Phase 4 | Pending |
 | FP-03 | Phase 4 | Pending |
