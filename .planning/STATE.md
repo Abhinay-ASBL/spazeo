@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-10T01:44:09.660Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-03-10T01:47:48.781Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 26
-  completed_plans: 21
+  completed_plans: 22
   percent: 33
 ---
 
@@ -72,6 +72,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 02 P06 | 8m | 3 tasks | 11 files |
 | Phase 02 P07 | 4m | 1 tasks | 1 files |
 | Phase 03 P01 | 2m | 2 tasks | 4 files |
+| Phase 03 P03 | 2m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,8 @@ Recent decisions affecting current work:
 - [Phase 03]: savePlacements uses delete-all-then-insert for idempotent room saves
 - [Phase 03]: Undo stack capped at 50 with shift-oldest eviction strategy
 - [Phase 03]: setGhostItem auto-switches mode to furnish for seamless catalog-to-placement flow
+- [Phase 03]: TransformControls ref typed as any to avoid drei type incompatibility with THREE.Group
+- [Phase 03]: Ghost material uses MeshBasicMaterial for consistent unlit semi-transparent look
 
 ### Roadmap Evolution
 
@@ -152,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T01:44:09.656Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-10T01:47:48.777Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None

@@ -51,11 +51,11 @@
 - [x] **FURN-01**: Internal furniture catalog contains at least 50 GLB items with dimensional metadata (width, depth, height in meters), price, style tags, and category
 - [x] **FURN-02**: Each catalog item has an Amazon product link (buy link with affiliate tag) where available
 - [x] **FURN-03**: User can search the catalog by name and filter by style (Scandinavian, Modern, Luxury, Industrial) and category (sofa, bed, table, etc.)
-- [ ] **FURN-04**: User can drag a catalog item from the panel and drop it onto the 3D room floor plane to place it
-- [ ] **FURN-05**: User can select a placed furniture item and use transform controls to scale and rotate it
-- [ ] **FURN-06**: User can undo the last furniture placement action (Ctrl/Cmd+Z)
+- [x] **FURN-04**: User can drag a catalog item from the panel and drop it onto the 3D room floor plane to place it
+- [x] **FURN-05**: User can select a placed furniture item and use transform controls to scale and rotate it
+- [x] **FURN-06**: User can undo the last furniture placement action (Ctrl/Cmd+Z)
 - [ ] **FURN-07**: Cost tracker updates in real time as items are added or removed, showing subtotal and itemized list
-- [ ] **FURN-08**: User can remove any placed furniture item by selecting it and pressing Delete
+- [x] **FURN-08**: User can remove any placed furniture item by selecting it and pressing Delete
 
 ### 3D Room Sharing (Section 2)
 
@@ -146,11 +146,11 @@
 | FURN-01 | Phase 3 | Complete |
 | FURN-02 | Phase 3 | Complete |
 | FURN-03 | Phase 3 | Complete |
-| FURN-04 | Phase 3 | Pending |
-| FURN-05 | Phase 3 | Pending |
-| FURN-06 | Phase 3 | Pending |
+| FURN-04 | Phase 3 | Complete |
+| FURN-05 | Phase 3 | Complete |
+| FURN-06 | Phase 3 | Complete |
 | FURN-07 | Phase 3 | Pending |
-| FURN-08 | Phase 3 | Pending |
+| FURN-08 | Phase 3 | Complete |
 | SHARE-01 | Phase 3 | Pending |
 | SHARE-02 | Phase 3 | Pending |
 | SHARE-03 | Phase 3 | Pending |
