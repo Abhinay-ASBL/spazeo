@@ -51,6 +51,15 @@ export const getBySlug = query({
 
     if (!room) return null
 
+    // Get the parent tour for context (title, slug, splatStorageId)
+    const tour = await ctx.db.get(room.tourId)
+    if (!tour) return null
+
+    // Resolve splat URL if available
+    const splatUrl = tour.splatStorageId
+      ? await ctx.storage.getUrl(tour.splatStorageId)
+      : null
+
     // Get all placed furniture for this room
     const placements = await ctx.db
       .query('placedFurniture')
@@ -82,7 +91,19 @@ export const getBySlug = query({
     )
 
     return {
-      ...room,
+      room: {
+        _id: room._id,
+        title: room.title,
+        slug: room.slug,
+        createdAt: room.createdAt,
+        updatedAt: room.updatedAt,
+      },
+      tour: {
+        _id: tour._id,
+        title: tour.title,
+        slug: tour.slug,
+        splatUrl,
+      },
       placements: placementsWithItems.filter(Boolean),
     }
   },
