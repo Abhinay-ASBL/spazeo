@@ -106,7 +106,13 @@ Plans:
   2. The finalized 3D space is navigable in all three modes — dollhouse, free-roam, and hotspot — using the same viewer from Section 2 with no separate implementation
   3. Furniture drag-and-drop, transform controls, undo, cost tracker, and share link all work identically inside a floor-plan-derived 3D room as they do in a reconstructed splat room
   4. A user publishes the floor-plan-derived tour as a public share link that anyone can open without logging in
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Convex schema extensions (sourceType, floorPlanId, floorPlan3DConfig on tours; floor_plan panoramaType on scenes), createFromFloorPlan mutation, Generate 3D Space button in Phase 4 editor
+- [ ] 05-02-PLAN.md — FloorPlanMesh (Three.js wall BoxGeometry + floor ShapeGeometry builder) and FloorPlanViewer (R3F canvas shell mirroring GaussianSplatViewer)
+- [ ] 05-03-PLAN.md — Review page /floor-plans/[id]/3d with live 3D viewer, FloorPlan3DPropertiesPanel, debounced overrides, and Finalize mutation
+- [ ] 05-04-PLAN.md — Public tour page third renderer branch for floor_plan sourceType, getFloorPlanGeometry query, end-to-end human verification
 
 ## Progress
 
@@ -120,7 +126,7 @@ Note: Phase 4 depends only on Phase 1 (not Phase 2 or 3) — floor plan extracti
 | 2. 3D Capture Pipeline and Splat Viewer | 7/7 | Complete   | 2026-03-09 |
 | 3. Furniture Catalog, Placement, and Room Sharing | 6/6 | Complete   | 2026-03-10 |
 | 4. Floor Plan Extraction | 0/5 | Planning complete | - |
-| 5. Floor Plan to 3D and Full Section 3 Delivery | 0/TBD | Not started | - |
+| 5. Floor Plan to 3D and Full Section 3 Delivery | 0/4 | Planning complete | - |
 
 ### Phase 6: Hotspot customization options, icons, info panels, video support, and adaptive screen layout
 
