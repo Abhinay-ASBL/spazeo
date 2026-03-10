@@ -559,6 +559,64 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_status', ['status']),
 
+  // --- Phase 3: Furniture Catalog, Placement, Room Sharing ---
+
+  furnitureItems: defineTable({
+    name: v.string(),
+    category: v.union(
+      v.literal('sofas'),
+      v.literal('beds'),
+      v.literal('tables'),
+      v.literal('chairs'),
+      v.literal('storage'),
+      v.literal('decor')
+    ),
+    style: v.union(
+      v.literal('scandinavian'),
+      v.literal('modern'),
+      v.literal('luxury'),
+      v.literal('industrial')
+    ),
+    glbStorageId: v.id('_storage'),
+    thumbnailStorageId: v.optional(v.id('_storage')),
+    dimensions: v.object({
+      width: v.number(),
+      depth: v.number(),
+      height: v.number(),
+    }),
+    priceUsd: v.number(),
+    amazonUrl: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+  })
+    .index('by_category', ['category'])
+    .index('by_style', ['style'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['category', 'style'],
+    }),
+
+  furnishedRooms: defineTable({
+    tourId: v.id('tours'),
+    userId: v.id('users'),
+    title: v.string(),
+    slug: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_tourId', ['tourId'])
+    .index('by_slug', ['slug'])
+    .index('by_userId', ['userId']),
+
+  placedFurniture: defineTable({
+    furnishedRoomId: v.id('furnishedRooms'),
+    furnitureItemId: v.id('furnitureItems'),
+    instanceId: v.string(),
+    position: v.object({ x: v.number(), y: v.number(), z: v.number() }),
+    rotation: v.object({ x: v.number(), y: v.number(), z: v.number() }),
+    scale: v.object({ x: v.number(), y: v.number(), z: v.number() }),
+  })
+    .index('by_furnishedRoomId', ['furnishedRoomId']),
+
   blogPosts: defineTable({
     title: v.string(),
     slug: v.string(),
