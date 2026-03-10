@@ -9,6 +9,8 @@ import { DrawingToolbar } from './DrawingToolbar'
 import { EditorMiniMap } from './EditorMiniMap'
 import { OriginalOverlay } from './OriginalOverlay'
 import { PropertiesPanel } from './PropertiesPanel'
+import { VersionHistory } from './VersionHistory'
+import toast from 'react-hot-toast'
 
 const DiagramCanvas = lazy(() =>
   import('./DiagramCanvas').then((m) => ({ default: m.DiagramCanvas }))
@@ -37,11 +39,43 @@ export function FloorPlanEditor({ geometry, imageUrl, floorPlanId }: FloorPlanEd
     setGeometry(geometry)
   }, [geometry, setGeometry])
 
-  // Keyboard shortcuts
+  // Unsaved changes warning on page leave
+  useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+
+  const handleSave = useCallback(async () => {
+    setIsSaving(true)
+    try {
+      await updateGeometry({
+        floorPlanId,
+        geometry: currentGeometry,
+      })
+      useFloorPlanEditorStore.setState({ isDirty: false })
+      toast.success('Floor plan saved')
+    } catch (err) {
+      console.error('Failed to save floor plan:', err)
+      toast.error('Failed to save floor plan')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [floorPlanId, currentGeometry, updateGeometry])
+
+  // Keyboard shortcuts (Undo/Redo + Ctrl+S save)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey
-      if (isCtrl && e.key === 'z' && !e.shiftKey) {
+      if (isCtrl && e.key === 's') {
+        e.preventDefault()
+        if (isDirty && !isSaving) {
+          handleSave()
+        }
+      } else if (isCtrl && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         undo()
       } else if (isCtrl && e.key === 'z' && e.shiftKey) {
@@ -54,33 +88,39 @@ export function FloorPlanEditor({ geometry, imageUrl, floorPlanId }: FloorPlanEd
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undo, redo])
-
-  const handleSave = useCallback(async () => {
-    setIsSaving(true)
-    try {
-      await updateGeometry({
-        floorPlanId,
-        geometry: currentGeometry,
-      })
-      useFloorPlanEditorStore.setState({ isDirty: false })
-    } catch (err) {
-      console.error('Failed to save floor plan:', err)
-    } finally {
-      setIsSaving(false)
-    }
-  }, [floorPlanId, currentGeometry, updateGeometry])
+  }, [undo, redo, isDirty, isSaving, handleSave])
 
   const handleReset = useCallback(async () => {
     try {
       const result = await resetToAi({ floorPlanId })
       if (result && typeof result === 'object' && 'geometry' in result) {
         setGeometry(result.geometry as FloorPlanGeometry)
+        toast.success('Restored to AI extraction')
       }
     } catch (err) {
       console.error('Failed to reset to AI version:', err)
+      toast.error('Failed to reset to AI version')
     }
   }, [floorPlanId, resetToAi, setGeometry])
+
+  const handleVersionRestore = useCallback(
+    async (restoredGeometry: FloorPlanGeometry) => {
+      // Save current geometry first (as new version), then restore selected version
+      if (isDirty) {
+        try {
+          await updateGeometry({
+            floorPlanId,
+            geometry: currentGeometry,
+          })
+        } catch {
+          // Non-blocking: current save failed but proceed with restore
+        }
+      }
+      setGeometry(restoredGeometry)
+      toast.success('Version restored')
+    },
+    [isDirty, updateGeometry, floorPlanId, currentGeometry, setGeometry]
+  )
 
   return (
     <div className="flex flex-col h-full bg-[#0A0908]">
@@ -121,10 +161,16 @@ export function FloorPlanEditor({ geometry, imageUrl, floorPlanId }: FloorPlanEd
           </div>
         </div>
 
-        {/* Properties panel */}
+        {/* Properties + Version History panel */}
         {showProperties && (
-          <div className="w-[280px] flex-shrink-0 border-l border-[#2E2A24] overflow-y-auto bg-[#12100E]">
-            <PropertiesPanel />
+          <div className="w-[280px] flex-shrink-0 border-l border-[#2E2A24] overflow-y-auto bg-[#12100E] flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              <PropertiesPanel />
+            </div>
+            <VersionHistory
+              floorPlanId={floorPlanId}
+              onRestore={handleVersionRestore}
+            />
           </div>
         )}
       </div>

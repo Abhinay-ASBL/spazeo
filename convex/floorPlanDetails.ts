@@ -65,6 +65,28 @@ export const listByProject = query({
   },
 })
 
+export const listByProjectWithUrls = query({
+  args: { projectId: v.id('floorPlanProjects') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return []
+
+    const floorPlans = await ctx.db
+      .query('floorPlanDetails')
+      .withIndex('by_projectId', (q) => q.eq('projectId', args.projectId))
+      .collect()
+
+    const withUrls = await Promise.all(
+      floorPlans.map(async (fp) => {
+        const imageUrl = await ctx.storage.getUrl(fp.imageStorageId)
+        return { ...fp, imageUrl: imageUrl ?? '' }
+      })
+    )
+
+    return withUrls.sort((a, b) => a.floorNumber - b.floorNumber)
+  },
+})
+
 export const updateGeometry = mutation({
   args: {
     floorPlanId: v.id('floorPlanDetails'),
@@ -167,6 +189,8 @@ export const resetToAiVersion = mutation({
       source: 'user',
       createdAt: Date.now(),
     })
+
+    return { geometry: aiVersion.geometry }
   },
 })
 
