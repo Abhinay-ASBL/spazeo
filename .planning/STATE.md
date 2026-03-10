@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-10T01:48:40.335Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-03-10T01:54:33.494Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 26
-  completed_plans: 23
+  completed_plans: 24
   percent: 33
 ---
 
@@ -74,6 +74,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 03 P01 | 2m | 2 tasks | 4 files |
 | Phase 03 P03 | 2m | 2 tasks | 3 files |
 | Phase 03 P02 | 3m | 2 tasks | 4 files |
+| Phase 03 P04 | 3m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Ghost material uses MeshBasicMaterial for consistent unlit semi-transparent look
 - [Phase 03]: CatalogSidebar conditionally calls list vs search query based on debounced input
 - [Phase 03]: CostTracker click handler calls both setSelectedId AND setCenterOnItem for combined behavior
+- [Phase 03]: enableFurniture prop defaults to false — public share pages do not load furniture components
+- [Phase 03]: OrbitControls makeDefault enables FurnitureCameraController access via useThree controls
+- [Phase 03]: Click-to-move disabled in furnish mode via useFurnitureStore.getState() guard in NavigationModes
 
 ### Roadmap Evolution
 
@@ -158,6 +162,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T01:48:40.332Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-10T01:54:33.490Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
