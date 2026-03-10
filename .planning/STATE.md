@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-10T09:13:03.280Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-10T09:18:34.556Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
   percent: 33
 ---
 
@@ -80,6 +80,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 04 P01 | 4m | 2 tasks | 7 files |
 | Phase 04 P04 | 5m | 2 tasks | 9 files |
 | Phase 04 P02 | 6m | 2 tasks | 7 files |
+| Phase 04 P03 | 3m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Wall deletion cascades to attached doors/windows in Zustand store
 - [Phase 04]: react-pdf v9 chosen over v10 for pdfjs-dist v4.x compatibility (v10 requires Node 20+)
 - [Phase 04]: Canvas rotation applied before upload rather than storing rotation metadata for simpler downstream processing
+- [Phase 04]: react-konva dynamically imported via lazy() to prevent SSR canvas API errors
+- [Phase 04]: Floor plan coordinates stored in meters (canonical); PPM=50 conversion at Konva render boundary only
 
 ### Roadmap Evolution
 
@@ -181,6 +184,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T09:13:03.269Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-10T09:18:29.161Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
