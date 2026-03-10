@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-10T10:10:37.555Z"
+stopped_at: Completed 04-05-PLAN.md (awaiting Task 3 human-verify checkpoint)
+last_updated: "2026-03-10T18:58:17.366Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 35
-  completed_plans: 33
+  completed_plans: 34
   percent: 33
 ---
 
@@ -84,6 +84,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 05-floor-plan-to-3d-and-full-section-3-delivery P02 | 7m | 2 tasks | 2 files |
 | Phase 05-floor-plan-to-3d-and-full-section-3-delivery P01 | 7m | 2 tasks | 7 files |
 | Phase 05-floor-plan-to-3d-and-full-section-3-delivery P03 | 4m | 2 tasks | 2 files |
+| Phase 04-floor-plan-extraction P05 | 10m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -178,6 +179,9 @@ Recent decisions affecting current work:
 - [Phase 05-01]: Generate 3D Space button uses extractionStatus==='completed' guard — prop passed from FloorPlanEditorShell
 - [Phase Phase 05-03]: FloorPlan3DPropertiesPanel receives non-debounced overrides — panel gets immediate slider feedback while viewer update is debounced 300ms in parent page
 - [Phase Phase 05-03]: RoomCard expanded by default — all rooms visible on first load without user interaction
+- [Phase Phase 04-05]: resetToAiVersion returns geometry payload so Zustand store can update immediately without waiting for reactive refetch
+- [Phase Phase 04-05]: listByProjectWithUrls resolves all storage URLs server-side in single query, avoiding N+1 client-side URL lookups
+- [Phase Phase 04-05]: Version restore uses inline confirmation UI instead of modal to avoid z-index complexity inside Konva editor layout
 
 ### Roadmap Evolution
 
@@ -195,6 +199,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T10:10:37.549Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-03-10T18:58:17.351Z
+Stopped at: Completed 04-05-PLAN.md (awaiting Task 3 human-verify checkpoint)
 Resume file: None
