@@ -9,6 +9,7 @@ import { api } from '../../../convex/_generated/api'
 import {
   LayoutDashboard,
   Compass,
+  Map,
   BarChart3,
   Users,
   Settings,
@@ -31,6 +32,7 @@ interface NavItem {
 const MAIN_NAV: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Tours', href: '/tours', icon: Compass },
+  { label: 'Floor Plans', href: '/floor-plans', icon: Map },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { label: 'Leads', href: '/leads', icon: Users },
 ]

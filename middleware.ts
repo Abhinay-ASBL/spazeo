@@ -8,6 +8,7 @@ const isClerkConfigured = clerkKey && clerkKey.startsWith('pk_')
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/tours(.*)',
+  '/floor-plans(.*)',
   '/analytics(.*)',
   '/leads(.*)',
   '/settings(.*)',
