@@ -59,6 +59,25 @@ const GaussianSplatViewer = dynamic(
   }
 )
 
+/* ── Lazy-load FloorPlanViewer ── */
+const FloorPlanViewer = dynamic(
+  () =>
+    import('@/components/viewer/FloorPlanViewer').then((m) => ({
+      default: m.FloorPlanViewer,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="flex h-full w-full items-center justify-center"
+        style={{ backgroundColor: '#0A0908' }}
+      >
+        <Loader2 size={32} className="animate-spin" style={{ color: '#D4A017' }} />
+      </div>
+    ),
+  }
+)
+
 /* ── Proxy helper for local Convex storage URLs ── */
 function proxyUrl(url: string | null | undefined): string | null {
   if (!url) return null
@@ -172,6 +191,15 @@ export default function PublicTourViewerPage() {
   const splatUrl = useQuery(
     api.tours.getTourSplatUrl,
     hasSplat && tourData && '_id' in tourData ? { tourId: tourData._id as Id<'tours'> } : 'skip'
+  )
+
+  // Detect floor-plan-derived tours (third renderer branch)
+  const hasFloorPlan = !!(tourData && '_id' in tourData && 'sourceType' in tourData && tourData.sourceType === 'floor_plan')
+  const floorPlanGeometryData = useQuery(
+    api.tours.getFloorPlanGeometry,
+    hasFloorPlan && tourData && '_id' in tourData
+      ? { tourId: tourData._id as Id<'tours'> }
+      : 'skip'
   )
 
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
@@ -468,8 +496,18 @@ export default function PublicTourViewerPage() {
       onTouchStart={resetIdle}
       onKeyDown={resetIdle}
     >
-      {/* ── Viewer: 3D Splat or 360 Panorama ── */}
-      {splatUrl ? (
+      {/* ── Viewer: Floor Plan 3D, Gaussian Splat, or 360 Panorama ── */}
+      {hasFloorPlan && floorPlanGeometryData ? (
+        <FloorPlanViewer
+          geometry={floorPlanGeometryData.geometry as import('@/components/viewer/FloorPlanMesh').FloorPlanGeometry}
+          overrides={floorPlanGeometryData.overrides as import('@/components/viewer/FloorPlanMesh').FloorPlan3DOverrides}
+          tourTitle={typeof currentTour === 'object' && currentTour && 'title' in currentTour ? String(currentTour.title) : undefined}
+          tourSlug={typeof currentTour === 'object' && currentTour && 'slug' in currentTour ? String(currentTour.slug) : undefined}
+          tourId={typeof currentTour === 'object' && currentTour && '_id' in currentTour ? String(currentTour._id) : undefined}
+          hotspots={floorPlanGeometryData.doorwayHotspots}
+          enableFurniture={true}
+        />
+      ) : splatUrl ? (
         <div className="w-full h-full">
           <GaussianSplatViewer
             splatUrl={splatUrl}
@@ -492,8 +530,8 @@ export default function PublicTourViewerPage() {
         </div>
       )}
 
-      {/* ── Top Header Bar (only for panorama mode — splat viewer has its own) ── */}
-      {!splatUrl && <div
+      {/* ── Top Header Bar (only for panorama mode — splat and floor plan viewers have their own) ── */}
+      {!splatUrl && !hasFloorPlan && <div
         className="absolute top-0 left-0 w-full h-14 z-10 flex items-center justify-between px-5"
         style={{
           background: 'linear-gradient(to bottom, rgba(10,9,8,0.6), transparent)',
@@ -543,7 +581,7 @@ export default function PublicTourViewerPage() {
       </div>}
 
       {/* ── Viewer Controls (bottom center, above scene nav) — panorama only ── */}
-      {!splatUrl &&
+      {!splatUrl && !hasFloorPlan &&
       <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10 pb-[env(safe-area-inset-bottom,0px)]">
         <div
           className="rounded-full px-4 py-2 flex items-center gap-2"
@@ -594,7 +632,7 @@ export default function PublicTourViewerPage() {
       </div>}
 
       {/* ── Scene Navigator (bottom) — panorama only ── */}
-      {!splatUrl && <SceneNav
+      {!splatUrl && !hasFloorPlan && <SceneNav
         scenes={scenes as any[]}
         activeId={activeSceneId}
         onChange={setActiveSceneId}

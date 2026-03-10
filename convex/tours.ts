@@ -947,6 +947,65 @@ export const createFromFloorPlan = mutation({
   },
 })
 
+/**
+ * Public query: load floor plan geometry and overrides for the public tour viewer.
+ * No auth required — accessible from public /tour/[slug] page.
+ */
+export const getFloorPlanGeometry = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, { tourId }) => {
+    const tour = await ctx.db.get(tourId)
+    if (!tour || tour.sourceType !== 'floor_plan' || !tour.floorPlanId) return null
+
+    // Load floor plan geometry
+    const floorPlan = await ctx.db.get(tour.floorPlanId)
+    if (!floorPlan || !floorPlan.geometry) return null
+
+    // Load the floor_plan scene to get its ID
+    const scenes = await ctx.db
+      .query('scenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
+      .collect()
+    const scene = scenes.find((s) => s.panoramaType === 'floor_plan')
+
+    // Load doorway hotspots from that scene
+    const rawHotspots = scene
+      ? await ctx.db
+          .query('hotspots')
+          .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
+          .collect()
+      : []
+
+    const doorwayHotspots = rawHotspots
+      .filter((h) => h.type === 'navigation')
+      .map((h) => ({
+        id: h._id,
+        position: h.position,
+        tooltip: h.tooltip,
+      }))
+
+    // Reconstruct overrides from tour.floorPlan3DConfig or use defaults
+    const config = tour.floorPlan3DConfig
+    const overrides = {
+      globalCeilingHeight: config?.globalCeilingHeight ?? 2.7,
+      doorWidth: config?.doorWidth ?? 0.9,
+      doorHeight: config?.doorHeight ?? 2.1,
+      roomOverrides: Object.fromEntries(
+        (config?.roomOverrides ?? []).map((r) => [
+          r.roomId,
+          { wallColor: r.wallColor, floorType: r.floorType, ceilingHeight: r.ceilingHeight },
+        ])
+      ),
+    }
+
+    return {
+      geometry: floorPlan.geometry as Record<string, unknown>,
+      overrides,
+      doorwayHotspots,
+    }
+  },
+})
+
 // Public action: hashes the password server-side before storing it.
 // This is the canonical write path for tour password protection.
 export const setTourPassword = action({
