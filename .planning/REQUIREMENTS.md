@@ -54,7 +54,7 @@
 - [x] **FURN-04**: User can drag a catalog item from the panel and drop it onto the 3D room floor plane to place it
 - [x] **FURN-05**: User can select a placed furniture item and use transform controls to scale and rotate it
 - [x] **FURN-06**: User can undo the last furniture placement action (Ctrl/Cmd+Z)
-- [ ] **FURN-07**: Cost tracker updates in real time as items are added or removed, showing subtotal and itemized list
+- [x] **FURN-07**: Cost tracker updates in real time as items are added or removed, showing subtotal and itemized list
 - [x] **FURN-08**: User can remove any placed furniture item by selecting it and pressing Delete
 
 ### 3D Room Sharing (Section 2)
@@ -149,7 +149,7 @@
 | FURN-04 | Phase 3 | Complete |
 | FURN-05 | Phase 3 | Complete |
 | FURN-06 | Phase 3 | Complete |
-| FURN-07 | Phase 3 | Pending |
+| FURN-07 | Phase 3 | Complete |
 | FURN-08 | Phase 3 | Complete |
 | SHARE-01 | Phase 3 | Pending |
 | SHARE-02 | Phase 3 | Pending |
