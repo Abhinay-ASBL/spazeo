@@ -10,6 +10,8 @@ import { EditorMiniMap } from './EditorMiniMap'
 import { OriginalOverlay } from './OriginalOverlay'
 import { PropertiesPanel } from './PropertiesPanel'
 import { VersionHistory } from './VersionHistory'
+import { Box } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 const DiagramCanvas = lazy(() =>
@@ -20,16 +22,21 @@ interface FloorPlanEditorProps {
   geometry: FloorPlanGeometry
   imageUrl: string
   floorPlanId: Id<'floorPlanDetails'>
+  extractionStatus?: 'pending' | 'processing' | 'completed' | 'failed'
 }
 
-export function FloorPlanEditor({ geometry, imageUrl, floorPlanId }: FloorPlanEditorProps) {
+export function FloorPlanEditor({ geometry, imageUrl, floorPlanId, extractionStatus }: FloorPlanEditorProps) {
+  const router = useRouter()
   const setGeometry = useFloorPlanEditorStore((s) => s.setGeometry)
   const currentGeometry = useFloorPlanEditorStore((s) => s.geometry)
   const isDirty = useFloorPlanEditorStore((s) => s.isDirty)
   const undo = useFloorPlanEditorStore((s) => s.undo)
   const redo = useFloorPlanEditorStore((s) => s.redo)
   const [isSaving, setIsSaving] = useState(false)
+  const [isNavigatingTo3D, setIsNavigatingTo3D] = useState(false)
   const [showProperties, setShowProperties] = useState(true)
+
+  const showGenerate3DButton = extractionStatus === 'completed'
 
   const updateGeometry = useMutation(api.floorPlanDetails.updateGeometry)
   const resetToAi = useMutation(api.floorPlanDetails.resetToAiVersion)
@@ -122,10 +129,50 @@ export function FloorPlanEditor({ geometry, imageUrl, floorPlanId }: FloorPlanEd
     [isDirty, updateGeometry, floorPlanId, currentGeometry, setGeometry]
   )
 
+  const handleGenerate3D = useCallback(async () => {
+    setIsNavigatingTo3D(true)
+    try {
+      if (isDirty) {
+        await handleSave()
+      }
+      router.push(`/floor-plans/${floorPlanId}/3d`)
+    } catch (err) {
+      console.error('Failed to navigate to 3D view:', err)
+      toast.error('Failed to save before generating 3D view')
+      setIsNavigatingTo3D(false)
+    }
+  }, [isDirty, handleSave, router, floorPlanId])
+
   return (
     <div className="flex flex-col h-full bg-[#0A0908]">
       {/* Toolbar */}
-      <DrawingToolbar onSave={handleSave} onReset={handleReset} isSaving={isSaving} />
+      <div className="flex items-center">
+        <div className="flex-1">
+          <DrawingToolbar onSave={handleSave} onReset={handleReset} isSaving={isSaving} />
+        </div>
+        {showGenerate3DButton && (
+          <>
+            <div className="w-px h-6 mx-2" style={{ backgroundColor: '#2E2A24' }} />
+            <button
+              onClick={handleGenerate3D}
+              disabled={isNavigatingTo3D}
+              className="mr-3 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: '#2DD4BF',
+                color: '#0A0908',
+                borderRadius: 8,
+                padding: '8px 16px',
+                fontWeight: 600,
+                fontSize: 14,
+              }}
+              aria-label="Generate 3D Space from this floor plan"
+            >
+              <Box size={16} strokeWidth={1.5} />
+              {isNavigatingTo3D ? 'Saving...' : 'Generate 3D Space'}
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Main content area */}
       <div className="flex flex-1 min-h-0">

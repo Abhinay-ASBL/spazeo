@@ -857,6 +857,96 @@ export const patchTourPassword = internalMutation({
   },
 })
 
+// --- Phase 5: Floor Plan Derived Tour ---
+
+/**
+ * Create a Tour + one Scene + doorway hotspots from an extracted floor plan.
+ * All three writes happen in one mutation transaction.
+ */
+export const createFromFloorPlan = mutation({
+  args: {
+    floorPlanId: v.id('floorPlanDetails'),
+    title: v.string(),
+    floorPlan3DConfig: v.optional(
+      v.object({
+        globalCeilingHeight: v.number(),
+        doorWidth: v.optional(v.number()),
+        doorHeight: v.optional(v.number()),
+        roomOverrides: v.optional(
+          v.array(
+            v.object({
+              roomId: v.string(),
+              ceilingHeight: v.optional(v.number()),
+              wallColor: v.optional(v.string()),
+              floorType: v.optional(v.string()),
+            })
+          )
+        ),
+      })
+    ),
+    doorPositions: v.array(
+      v.object({
+        position: v.object({ x: v.number(), y: v.number() }),
+        width: v.number(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error('Not authenticated')
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) throw new Error('User not found')
+
+    // Generate unique slug
+    const base = args.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const suffix = Math.random().toString(36).slice(2, 7)
+    const slug = `${base}-${suffix}`
+
+    // 1. Create the tour
+    const tourId = await ctx.db.insert('tours', {
+      userId: user._id,
+      title: args.title,
+      slug,
+      status: 'draft',
+      viewCount: 0,
+      sourceType: 'floor_plan',
+      floorPlanId: args.floorPlanId,
+      floorPlan3DConfig: args.floorPlan3DConfig,
+    })
+
+    // 2. Create one scene representing the floor plan 3D space
+    const sceneId = await ctx.db.insert('scenes', {
+      tourId,
+      title: args.title,
+      order: 0,
+      panoramaType: 'floor_plan',
+    })
+
+    // 3. Bulk-insert doorway hotspots at each door position
+    for (const door of args.doorPositions) {
+      await ctx.db.insert('hotspots', {
+        sceneId,
+        type: 'navigation',
+        position: { x: door.position.x, y: 0, z: door.position.y },
+        tooltip: 'Room entrance',
+        visible: true,
+      })
+    }
+
+    // 4. Link floor plan back to this tour
+    await ctx.db.patch(args.floorPlanId, { tourId })
+
+    return { tourId, slug }
+  },
+})
+
 // Public action: hashes the password server-side before storing it.
 // This is the canonical write path for tour password protection.
 export const setTourPassword = action({

@@ -55,7 +55,7 @@ export const getBySlug = query({
       scenes = await Promise.all(
         tourScenes.map(async (scene) => ({
           ...scene,
-          imageUrl: await ctx.storage.getUrl(scene.imageStorageId),
+          imageUrl: scene.imageStorageId ? await ctx.storage.getUrl(scene.imageStorageId) : null,
           thumbnailUrl: scene.thumbnailStorageId
             ? await ctx.storage.getUrl(scene.thumbnailStorageId)
             : null,

@@ -61,6 +61,7 @@ export const create = mutation({
     ctaLabel: v.optional(v.string()),
     ctaUrl: v.optional(v.string()),
     accentColor: v.optional(v.string()),
+    markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()
@@ -88,6 +89,7 @@ export const update = mutation({
     ctaLabel: v.optional(v.string()),
     ctaUrl: v.optional(v.string()),
     accentColor: v.optional(v.string()),
+    markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()
@@ -107,5 +109,33 @@ export const remove = mutation({
     const identity = await ctx.auth.getUserIdentity()
     if (!identity) throw new Error('Not authenticated')
     await ctx.db.delete(args.hotspotId)
+  },
+})
+
+// Phase 5: Bulk-insert doorway hotspots for a floor-plan-derived scene.
+// Used standalone from public pages after a tour has already been created.
+export const insertDoorwayHotspots = mutation({
+  args: {
+    sceneId: v.id('scenes'),
+    doors: v.array(
+      v.object({
+        position: v.object({ x: v.number(), y: v.number() }),
+        width: v.number(),
+      })
+    ),
+  },
+  handler: async (ctx, { sceneId, doors }) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error('Not authenticated')
+
+    for (const door of doors) {
+      await ctx.db.insert('hotspots', {
+        sceneId,
+        type: 'navigation',
+        position: { x: door.position.x, y: 0, z: door.position.y },
+        tooltip: 'Room entrance',
+        visible: true,
+      })
+    }
   },
 })

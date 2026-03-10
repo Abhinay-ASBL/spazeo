@@ -286,6 +286,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
               geometry={editingGeometry}
               imageUrl={activeFloorPlan.imageUrl}
               floorPlanId={activeFloorPlan._id}
+              extractionStatus={activeFloorPlan.extractionStatus}
             />
           </Suspense>
         )}
