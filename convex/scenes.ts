@@ -212,12 +212,12 @@ export const replaceImage = mutation({
     if (!scene) throw new Error('Scene not found')
 
     // Delete old image from storage
-    if (scene.imageStorageId) {
+    if (scene.imageStorageId !== undefined) {
       await ctx.storage.delete(scene.imageStorageId)
     }
 
     // Clear staged image if it exists
-    if (scene.stagedImageStorageId) {
+    if (scene.stagedImageStorageId !== undefined) {
       await ctx.storage.delete(scene.stagedImageStorageId)
     }
 
@@ -251,13 +251,13 @@ export const remove = mutation({
 
     const scene = await ctx.db.get(args.sceneId)
     if (scene) {
-      if (scene.imageStorageId) {
+      if (scene.imageStorageId !== undefined) {
         await ctx.storage.delete(scene.imageStorageId)
       }
-      if (scene.thumbnailStorageId) {
+      if (scene.thumbnailStorageId !== undefined) {
         await ctx.storage.delete(scene.thumbnailStorageId)
       }
-      if (scene.stagedImageStorageId) {
+      if (scene.stagedImageStorageId !== undefined) {
         await ctx.storage.delete(scene.stagedImageStorageId)
       }
 
