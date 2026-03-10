@@ -5,9 +5,9 @@ import { api } from '../../../../convex/_generated/api'
 import Link from 'next/link'
 import { Plus, Map, Clock, Layers } from 'lucide-react'
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+const STATUS_COLORS: Record<string, { bg: string; text: string; animate?: boolean }> = {
   uploading: { bg: 'rgba(251,191,36,0.12)', text: '#FBBF24' },
-  extracting: { bg: 'rgba(45,212,191,0.12)', text: '#2DD4BF' },
+  extracting: { bg: 'rgba(45,212,191,0.12)', text: '#2DD4BF', animate: true },
   editing: { bg: 'rgba(212,160,23,0.12)', text: '#D4A017' },
   completed: { bg: 'rgba(52,211,153,0.12)', text: '#34D399' },
 }
@@ -100,7 +100,7 @@ export default function FloorPlansPage() {
             return (
               <Link
                 key={project._id}
-                href={`/floor-plans`}
+                href={`/floor-plans/${project._id}/edit`}
                 className="rounded-xl p-5 transition-all duration-200 hover:border-[rgba(212,160,23,0.2)]"
                 style={{
                   backgroundColor: '#1B1916',
@@ -116,7 +116,7 @@ export default function FloorPlansPage() {
                     {project.name}
                   </h3>
                   <span
-                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-medium capitalize"
+                    className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium capitalize${statusStyle.animate ? ' animate-pulse' : ''}`}
                     style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
                   >
                     {project.status}

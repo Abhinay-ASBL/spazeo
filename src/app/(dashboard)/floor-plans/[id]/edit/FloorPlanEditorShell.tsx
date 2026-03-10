@@ -1,15 +1,23 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import type { FloorPlanGeometry } from '@/stores/floorPlanEditorStore'
+import { useFloorPlanEditorStore } from '@/stores/floorPlanEditorStore'
 import { ExtractionProgress } from '@/components/floor-plan/ExtractionProgress'
 import { AnimatedBuildUp } from '@/components/floor-plan/AnimatedBuildUp'
-import { ChevronRight, Home, Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import toast from 'react-hot-toast'
+
+const FloorPlanEditor = lazy(() =>
+  import('@/components/floor-plan/FloorPlanEditor').then((m) => ({
+    default: m.FloorPlanEditor,
+  }))
+)
 
 type PageState = 'loading' | 'extracting' | 'build-up' | 'editing' | 'error'
 
@@ -22,7 +30,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
   const id = projectId as Id<'floorPlanProjects'>
 
   const project = useQuery(api.floorPlanProjects.getById, { projectId: id })
-  const floorPlans = useQuery(api.floorPlanDetails.listByProject, {
+  const floorPlans = useQuery(api.floorPlanDetails.listByProjectWithUrls, {
     projectId: id,
   })
 
@@ -32,6 +40,10 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
     useState<FloorPlanGeometry | null>(null)
   const [editingGeometry, setEditingGeometry] =
     useState<FloorPlanGeometry | null>(null)
+
+  const isDirty = useFloorPlanEditorStore((s) => s.isDirty)
+  const currentGeometry = useFloorPlanEditorStore((s) => s.geometry)
+  const updateGeometry = useMutation(api.floorPlanDetails.updateGeometry)
 
   const activeFloorPlan = useMemo(
     () => (floorPlans && floorPlans.length > 0 ? floorPlans[activeFloorIndex] : null),
@@ -96,13 +108,39 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
   }, [buildUpGeometry])
 
   const handleFloorTab = useCallback(
-    (index: number) => {
+    async (index: number) => {
+      // Save current floor if dirty before switching
+      if (isDirty && activeFloorPlan) {
+        try {
+          await updateGeometry({
+            floorPlanId: activeFloorPlan._id,
+            geometry: currentGeometry,
+          })
+          useFloorPlanEditorStore.setState({ isDirty: false })
+          toast.success('Auto-saved before switching floors')
+        } catch {
+          toast.error('Failed to auto-save. Switch cancelled.')
+          return
+        }
+      }
       setActiveFloorIndex(index)
       setEditingGeometry(null)
       setBuildUpGeometry(null)
     },
-    []
+    [isDirty, activeFloorPlan, updateGeometry, currentGeometry]
   )
+
+  // Status badge styling
+  const statusBadge = useMemo(() => {
+    const map: Record<PageState, { bg: string; color: string; label: string }> = {
+      loading: { bg: 'rgba(168, 162, 158, 0.15)', color: '#A8A29E', label: 'Loading' },
+      extracting: { bg: 'rgba(212, 160, 23, 0.15)', color: '#D4A017', label: 'Extracting' },
+      'build-up': { bg: 'rgba(45, 212, 191, 0.15)', color: '#2DD4BF', label: 'Processing' },
+      editing: { bg: 'rgba(52, 211, 153, 0.15)', color: '#34D399', label: 'Ready' },
+      error: { bg: 'rgba(248, 113, 113, 0.15)', color: '#F87171', label: 'Error' },
+    }
+    return map[pageState]
+  }, [pageState])
 
   // Loading state
   if (pageState === 'loading') {
@@ -122,10 +160,10 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#0A0908' }}>
+    <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#0A0908' }}>
       {/* Header */}
       <div
-        className="border-b px-6 py-3"
+        className="border-b px-6 py-3 shrink-0"
         style={{ borderColor: 'rgba(168, 162, 158, 0.15)' }}
       >
         {/* Breadcrumb */}
@@ -160,33 +198,11 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
             <span
               className="rounded-full px-2.5 py-0.5 text-xs font-medium"
               style={{
-                backgroundColor:
-                  pageState === 'editing'
-                    ? 'rgba(52, 211, 153, 0.15)'
-                    : pageState === 'extracting'
-                      ? 'rgba(212, 160, 23, 0.15)'
-                      : pageState === 'error'
-                        ? 'rgba(248, 113, 113, 0.15)'
-                        : 'rgba(168, 162, 158, 0.15)',
-                color:
-                  pageState === 'editing'
-                    ? '#34D399'
-                    : pageState === 'extracting'
-                      ? '#D4A017'
-                      : pageState === 'error'
-                        ? '#F87171'
-                        : '#A8A29E',
+                backgroundColor: statusBadge.bg,
+                color: statusBadge.color,
               }}
             >
-              {pageState === 'editing'
-                ? 'Ready'
-                : pageState === 'extracting'
-                  ? 'Extracting'
-                  : pageState === 'build-up'
-                    ? 'Processing'
-                    : pageState === 'error'
-                      ? 'Error'
-                      : 'Loading'}
+              {statusBadge.label}
             </span>
           </div>
 
@@ -203,6 +219,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
             {floorPlans.map((fp, index) => {
               const isActive = index === activeFloorIndex
               const label = fp.label || `Floor ${fp.floorNumber}`
+              const tabStatus = fp.extractionStatus
               return (
                 <button
                   key={fp._id}
@@ -219,6 +236,13 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
                   }}
                 >
                   {label}
+                  {tabStatus === 'processing' || tabStatus === 'pending' ? (
+                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#FBBF24' }} />
+                  ) : tabStatus === 'completed' ? (
+                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#34D399' }} />
+                  ) : tabStatus === 'failed' ? (
+                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F87171' }} />
+                  ) : null}
                 </button>
               )
             })}
@@ -227,87 +251,59 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
       </div>
 
       {/* Content area */}
-      <div className="p-6">
+      <div className="flex-1 min-h-0">
         {/* Extracting state */}
         {pageState === 'extracting' && activeFloorPlan && (
-          <ExtractionProgress
-            floorPlanId={activeFloorPlan._id}
-            onComplete={handleExtractionComplete}
-            onError={handleExtractionError}
-          />
+          <div className="p-6">
+            <ExtractionProgress
+              floorPlanId={activeFloorPlan._id}
+              onComplete={handleExtractionComplete}
+              onError={handleExtractionError}
+            />
+          </div>
         )}
 
         {/* Build-up animation */}
         {pageState === 'build-up' && buildUpGeometry && (
-          <AnimatedBuildUp
-            geometry={buildUpGeometry}
-            onAnimationComplete={handleBuildUpComplete}
-          />
+          <div className="p-6">
+            <AnimatedBuildUp
+              geometry={buildUpGeometry}
+              onAnimationComplete={handleBuildUpComplete}
+            />
+          </div>
         )}
 
-        {/* Editing placeholder */}
-        {pageState === 'editing' && editingGeometry && (
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div
-              className="rounded-xl p-8 text-center max-w-lg"
-              style={{ backgroundColor: '#1B1916' }}
-            >
-              <div
-                className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
-                style={{ backgroundColor: 'rgba(52, 211, 153, 0.15)' }}
-              >
-                <Home className="h-6 w-6" style={{ color: '#34D399' }} />
+        {/* Editing state -- full editor */}
+        {pageState === 'editing' && editingGeometry && activeFloorPlan && (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-6 w-6 animate-spin" style={{ color: '#D4A017' }} />
               </div>
-
-              <h3
-                className="text-lg font-semibold mb-2"
-                style={{
-                  color: '#F5F3EF',
-                  fontFamily: 'var(--font-jakarta)',
-                }}
-              >
-                Editor coming soon
-              </h3>
-              <p className="text-sm mb-4" style={{ color: '#A8A29E' }}>
-                Geometry data saved successfully. The full editor will be
-                available in Plan 04.
-              </p>
-
-              {/* Debug geometry preview */}
-              <details className="text-left">
-                <summary
-                  className="text-xs cursor-pointer mb-2"
-                  style={{ color: '#6B6560' }}
-                >
-                  View extracted geometry (debug)
-                </summary>
-                <pre
-                  className="text-xs rounded-lg p-3 overflow-auto max-h-60"
-                  style={{
-                    backgroundColor: '#0A0908',
-                    color: '#A8A29E',
-                    border: '1px solid rgba(168, 162, 158, 0.1)',
-                  }}
-                >
-                  {JSON.stringify(editingGeometry, null, 2)}
-                </pre>
-              </details>
-            </div>
-          </div>
+            }
+          >
+            <FloorPlanEditor
+              geometry={editingGeometry}
+              imageUrl={activeFloorPlan.imageUrl}
+              floorPlanId={activeFloorPlan._id}
+            />
+          </Suspense>
         )}
 
         {/* Error state */}
         {pageState === 'error' && activeFloorPlan && (
-          <ExtractionProgress
-            floorPlanId={activeFloorPlan._id}
-            onComplete={handleExtractionComplete}
-            onError={handleExtractionError}
-          />
+          <div className="p-6">
+            <ExtractionProgress
+              floorPlanId={activeFloorPlan._id}
+              onComplete={handleExtractionComplete}
+              onError={handleExtractionError}
+            />
+          </div>
         )}
 
         {/* Error with no floor plan */}
         {pageState === 'error' && !activeFloorPlan && (
-          <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center justify-center min-h-[400px] p-6">
             <div
               className="rounded-xl p-8 text-center max-w-md"
               style={{ backgroundColor: '#1B1916' }}
