@@ -53,6 +53,8 @@ export default defineSchema({
     city: v.optional(v.string()),
     // Dashboard checklist (SPA-25)
     checklistDismissed: v.optional(v.boolean()),
+    // Phase 4: Floor plan extraction usage tracking
+    floorPlanExtractionsUsed: v.optional(v.number()),
   })
     .index('by_clerkId', ['clerkId'])
     .index('by_email', ['email']),
@@ -616,6 +618,80 @@ export default defineSchema({
     scale: v.object({ x: v.number(), y: v.number(), z: v.number() }),
   })
     .index('by_furnishedRoomId', ['furnishedRoomId']),
+
+  // --- Phase 4: Floor Plan Extraction ---
+
+  floorPlanProjects: defineTable({
+    userId: v.id('users'),
+    name: v.string(),
+    tourId: v.optional(v.id('tours')),
+    floorCount: v.number(),
+    status: v.union(v.literal('uploading'), v.literal('extracting'), v.literal('editing'), v.literal('completed')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_tourId', ['tourId']),
+
+  floorPlanDetails: defineTable({
+    projectId: v.optional(v.id('floorPlanProjects')),
+    tourId: v.optional(v.id('tours')),
+    userId: v.id('users'),
+    floorNumber: v.number(),
+    label: v.optional(v.string()),
+    imageStorageId: v.id('_storage'),
+    originalFileType: v.union(v.literal('pdf'), v.literal('image'), v.literal('sketch')),
+    extractionStatus: v.union(
+      v.literal('pending'),
+      v.literal('processing'),
+      v.literal('completed'),
+      v.literal('failed')
+    ),
+    extractionJobId: v.optional(v.id('floorPlanJobs')),
+    geometry: v.optional(v.object({
+      walls: v.array(v.any()),
+      rooms: v.array(v.any()),
+      doors: v.optional(v.array(v.any())),
+      windows: v.optional(v.array(v.any())),
+      fixtures: v.optional(v.array(v.any())),
+      dimensions: v.optional(v.any()),
+    })),
+    scale: v.optional(v.number()),
+    currentVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_projectId', ['projectId'])
+    .index('by_tourId', ['tourId'])
+    .index('by_userId', ['userId']),
+
+  floorPlanVersions: defineTable({
+    floorPlanId: v.id('floorPlanDetails'),
+    versionNumber: v.number(),
+    geometry: v.any(),
+    source: v.union(v.literal('ai'), v.literal('user')),
+    createdAt: v.number(),
+  })
+    .index('by_floorPlanId', ['floorPlanId']),
+
+  floorPlanJobs: defineTable({
+    floorPlanId: v.id('floorPlanDetails'),
+    userId: v.id('users'),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('processing'),
+      v.literal('completed'),
+      v.literal('failed')
+    ),
+    imageStorageId: v.id('_storage'),
+    output: v.optional(v.any()),
+    error: v.optional(v.string()),
+    duration: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index('by_floorPlanId', ['floorPlanId'])
+    .index('by_userId', ['userId'])
+    .index('by_status', ['status']),
 
   blogPosts: defineTable({
     title: v.string(),
