@@ -577,7 +577,7 @@ export default defineSchema({
       v.literal('luxury'),
       v.literal('industrial')
     ),
-    glbStorageId: v.id('_storage'),
+    glbStorageId: v.optional(v.id('_storage')),
     thumbnailStorageId: v.optional(v.id('_storage')),
     dimensions: v.object({
       width: v.number(),

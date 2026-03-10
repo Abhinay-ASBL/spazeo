@@ -74,7 +74,9 @@ export const getBySlug = query({
         const item = await ctx.db.get(placement.furnitureItemId)
         if (!item) return null
 
-        const glbUrl = await ctx.storage.getUrl(item.glbStorageId)
+        const glbUrl = item.glbStorageId
+          ? await ctx.storage.getUrl(item.glbStorageId)
+          : null
         const thumbnailUrl = item.thumbnailStorageId
           ? await ctx.storage.getUrl(item.thumbnailStorageId)
           : null

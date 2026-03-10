@@ -64,6 +64,22 @@ const PanoramaViewer = dynamic(
   }
 )
 
+/* ── Lazy-load GaussianSplatViewer for splat tours with furniture ── */
+const GaussianSplatViewer = dynamic(
+  () => import('@/components/viewer/GaussianSplatViewer').then((m) => ({ default: m.GaussianSplatViewer })),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="flex h-full w-full items-center justify-center"
+        style={{ backgroundColor: '#0A0908' }}
+      >
+        <Loader2 size={32} className="animate-spin" style={{ color: '#D4A017' }} />
+      </div>
+    ),
+  }
+)
+
 /* ── Hotspot type config ── */
 const HOTSPOT_TYPES = [
   { value: 'navigation' as const, label: 'Navigation', desc: 'Jump to another scene', icon: Navigation, color: '#2DD4BF' },
@@ -102,6 +118,13 @@ export default function TourEditorPage() {
   const tour = useQuery(api.tours.getById, { tourId })
   const scenes = useQuery(api.scenes.listByTour, { tourId })
   const hotspotsByTour = useQuery(api.hotspots.listByTour, { tourId })
+
+  // Resolve splat URL for 3D splat tours (enables furniture placement)
+  const hasSplat = !!(tour && tour.splatStorageId)
+  const splatUrl = useQuery(
+    api.tours.getTourSplatUrl,
+    hasSplat ? { tourId } : 'skip'
+  )
   const generateUploadUrl = useMutation(api.tours.generateUploadUrl)
   const createScene = useMutation(api.scenes.create)
   const updateScene = useMutation(api.scenes.update)
@@ -983,12 +1006,20 @@ export default function TourEditorPage() {
           </div>
         )}
 
-        {/* ── Viewport (Center) — 360° PanoramaViewer ── */}
+        {/* ── Viewport (Center) — 360° PanoramaViewer or GaussianSplatViewer ── */}
         <div
           className="flex-1 relative overflow-hidden flex items-center justify-center"
           style={{ backgroundColor: '#0A0908' }}
         >
-          {activeScene?.imageUrl ? (
+          {splatUrl ? (
+            <GaussianSplatViewer
+              splatUrl={splatUrl}
+              tourTitle={tour?.title}
+              tourSlug={tour?.slug}
+              tourId={tourId}
+              enableFurniture={true}
+            />
+          ) : activeScene?.imageUrl ? (
             <PanoramaViewer
               imageUrl={proxyImageUrl(activeScene.imageUrl) ?? activeScene.imageUrl}
               height="100%"
