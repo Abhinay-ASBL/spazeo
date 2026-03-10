@@ -52,9 +52,10 @@ Convert corrected 2D floor plan geometry (wall coordinates, door positions, room
 - All three navigation modes reuse `NavigationModes.tsx` and `ModeSwitcher.tsx` directly
 
 ### Claude's Discretion
-- Exact Three.js extrusion approach for non-rectangular wall polygons
-- How door openings are cut from wall geometry (CSG vs manual gap)
-- Floor plan 3D mesh caching/storage strategy (persist GLB or regenerate on demand)
+- Three.js wall geometry: use **BoxGeometry per wall segment** (simpler than ExtrudeGeometry for line-segment coordinate data — position+rotate each box to match wall start/end points). Earcut triangulation is built into Three.js for any complex L-shaped or concave room floor polygons
+- Ceiling: optional or omit entirely — overhead dollhouse view is more useful for spatial orientation when the ceiling is absent; can be toggled
+- Door openings: cut gap in wall by shortening the BoxGeometry (two boxes per wall with opening, or manual segment split)
+- Floor plan 3D mesh caching/storage strategy (persist GLB or regenerate on demand from Convex data)
 - Material swatch library (built-in colors or Tailwind palette)
 - Navigation mode auto-placement logic for dollhouse start position given variable room dimensions
 - Window openings treatment (Phase 4 extracts window positions — render as inset holes or ignore for v1)
