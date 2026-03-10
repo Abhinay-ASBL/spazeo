@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-10T08:20:49.710Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-10T09:05:02.747Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 26
-  completed_plans: 26
+  total_plans: 31
+  completed_plans: 27
   percent: 33
 ---
 
@@ -77,6 +77,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 03 P04 | 3m | 2 tasks | 5 files |
 | Phase 03 P05 | 3m | 2 tasks | 5 files |
 | Phase 03 P06 | 2m | 2 tasks | 8 files |
+| Phase 04 P01 | 4m | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -151,6 +152,10 @@ Recent decisions affecting current work:
 - [Phase 03]: ReadOnlyFurniturePiece minimal wrapper instead of reusing FurniturePiece with disabled props
 - [Phase 03]: priceUsd field used (not price) matching furnitureItems schema
 - [Phase 03]: glbStorageId made optional in schema to allow catalog seeding without actual GLB files
+- [Phase 04]: floorPlanJobs separate table from aiJobs because aiJobs requires non-optional tourId
+- [Phase 04]: floorPlanDetails new table to avoid breaking existing floorPlans consumers
+- [Phase 04]: DashScope response_format json_object for reliable structured AI output, no regex cleaning
+- [Phase 04]: floorPlanExtractionsUsed separate counter from aiCreditsUsed for independent plan limits
 
 ### Roadmap Evolution
 
@@ -168,6 +173,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T08:20:49.707Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-floor-plan-extraction/04-CONTEXT.md
+Last session: 2026-03-10T09:05:02.740Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None

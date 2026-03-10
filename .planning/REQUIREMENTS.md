@@ -65,10 +65,10 @@
 
 ### Floor Plan Extraction (Section 3)
 
-- [ ] **FP-01**: User can upload a floor plan in any format — PDF, JPG/PNG, or a photo of a hand-drawn sketch
-- [ ] **FP-02**: AI (GPT-4o Vision with structured JSON output) extracts room layout — room names, wall boundaries, approximate dimensions — from the uploaded file
+- [x] **FP-01**: User can upload a floor plan in any format — PDF, JPG/PNG, or a photo of a hand-drawn sketch
+- [x] **FP-02**: AI (GPT-4o Vision with structured JSON output) extracts room layout — room names, wall boundaries, approximate dimensions — from the uploaded file
 - [ ] **FP-03**: User sees the extracted 2D floor plan rendered as an editable diagram and can correct room names, adjust wall positions, and fix dimensions before proceeding
-- [ ] **FP-04**: Corrected 2D floor plan data is saved to Convex as structured room geometry (wall coordinates, room metadata)
+- [x] **FP-04**: Corrected 2D floor plan data is saved to Convex as structured room geometry (wall coordinates, room metadata)
 
 ### Floor Plan to 3D (Section 3)
 
@@ -154,10 +154,10 @@
 | SHARE-01 | Phase 3 | Complete |
 | SHARE-02 | Phase 3 | Complete |
 | SHARE-03 | Phase 3 | Complete |
-| FP-01 | Phase 4 | Pending |
-| FP-02 | Phase 4 | Pending |
+| FP-01 | Phase 4 | Complete |
+| FP-02 | Phase 4 | Complete |
 | FP-03 | Phase 4 | Pending |
-| FP-04 | Phase 4 | Pending |
+| FP-04 | Phase 4 | Complete |
 | FP3D-01 | Phase 5 | Pending |
 | FP3D-02 | Phase 5 | Pending |
 | FP3D-03 | Phase 5 | Pending |
