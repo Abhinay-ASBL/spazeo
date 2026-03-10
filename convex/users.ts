@@ -804,3 +804,16 @@ export const deleteByClerkId = internalMutation({
     await ctx.db.delete(user._id)
   },
 })
+
+// Phase 4: Increment floor plan extraction usage counter
+export const incrementFloorPlanExtractions = internalMutation({
+  args: { userId: v.id('users') },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId)
+    if (!user) return
+    // Track usage for all plans (including unlimited ones) for analytics
+    await ctx.db.patch(args.userId, {
+      floorPlanExtractionsUsed: (user.floorPlanExtractionsUsed ?? 0) + 1,
+    })
+  },
+})
