@@ -4,6 +4,7 @@ import { useRef, useCallback, useEffect } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSplatViewerStore, type NavMode } from '@/hooks/useSplatViewerStore'
+import { useFurnitureStore } from '@/hooks/useFurnitureStore'
 
 /* ── Target camera configs per mode ── */
 const DOLLHOUSE_POS = new THREE.Vector3(0, 12, 12)
@@ -89,8 +90,11 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
     (event: MouseEvent) => {
       const mode = useSplatViewerStore.getState().navMode
       const trans = useSplatViewerStore.getState().transitioning
+      const furnitureMode = useFurnitureStore.getState().mode
       if (trans) return
       if (mode !== 'freeRoam') return
+      // Disable click-to-move when furniture mode is active
+      if (furnitureMode === 'furnish') return
 
       const rect = gl.domElement.getBoundingClientRect()
       mouse.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1

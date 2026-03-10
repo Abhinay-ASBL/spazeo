@@ -3,12 +3,19 @@
 import { Suspense, useState, useCallback, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import { AnimatePresence, motion } from 'framer-motion'
 import { SplatScene } from './SplatScene'
 import { NavigationModes } from './NavigationModes'
 import { SplatHotspot3D } from './SplatHotspot3D'
 import { ModeSwitcher } from './ModeSwitcher'
 import { VirtualJoystick } from './VirtualJoystick'
+import { FurnitureLayer } from './FurnitureLayer'
+import { FurnitureToolbar } from './FurnitureToolbar'
+import { FurnitureCameraController } from './FurnitureCameraController'
+import { CatalogSidebar } from '@/components/furniture/CatalogSidebar'
+import { CatalogBottomSheet } from '@/components/furniture/CatalogBottomSheet'
 import { useSplatViewerStore } from '@/hooks/useSplatViewerStore'
+import { useFurnitureStore } from '@/hooks/useFurnitureStore'
 import { Maximize2, Minimize2, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -23,15 +30,20 @@ interface GaussianSplatViewerProps {
   splatUrl: string
   tourTitle?: string
   hotspots?: Hotspot3D[]
+  enableFurniture?: boolean
 }
 
 export function GaussianSplatViewer({
   splatUrl,
   tourTitle,
   hotspots = [],
+  enableFurniture = false,
 }: GaussianSplatViewerProps) {
   const navMode = useSplatViewerStore((s) => s.navMode)
   const transitioning = useSplatViewerStore((s) => s.transitioning)
+  const furnitureMode = useFurnitureStore((s) => s.mode)
+  const isFurnishActive = enableFurniture && furnitureMode === 'furnish'
+
   const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -70,8 +82,6 @@ export function GaussianSplatViewer({
 
   const handleHotspotClick = useCallback(
     (_hotspot: Hotspot3D) => {
-      // In hotspot mode, flying to position is handled by NavigationModes
-      // For now, log the click — full fly-to integration uses the store
       if (navMode === 'hotspot') {
         // Camera fly-to would be triggered through the navigation system
       }
@@ -102,6 +112,7 @@ export function GaussianSplatViewer({
   return (
     <div
       ref={containerRef}
+      className="flex"
       style={{
         width: '100%',
         height: '100%',
@@ -109,98 +120,140 @@ export function GaussianSplatViewer({
         backgroundColor: '#0A0908',
       }}
     >
-      {/* R3F Canvas */}
-      <Canvas
-        gl={{ antialias: false }}
-        camera={{ position: [0, 12, 12], fov: 30, near: 0.1, far: 1000 }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        <Suspense fallback={null}>
-          <SplatScene url={splatUrl} />
-        </Suspense>
+      {/* Main viewer area */}
+      <div style={{ flex: 1, position: 'relative', minWidth: 0, height: '100%' }}>
+        {/* R3F Canvas */}
+        <Canvas
+          gl={{ antialias: false }}
+          camera={{ position: [0, 12, 12], fov: 30, near: 0.1, far: 1000 }}
+          style={{ width: '100%', height: '100%' }}
+        >
+          <Suspense fallback={null}>
+            <SplatScene url={splatUrl} />
+          </Suspense>
 
-        <NavigationModes />
+          <NavigationModes />
 
-        {/* 3D Hotspot markers */}
-        {hotspots.map((h) => (
-          <SplatHotspot3D
-            key={h.id}
-            position={h.position}
-            label={h.label}
-            onClick={() => handleHotspotClick(h)}
-          />
-        ))}
-
-        <OrbitControls
-          enableDamping
-          dampingFactor={0.1}
-          rotateSpeed={0.5}
-          zoomSpeed={0.8}
-          enabled={!transitioning}
-          {...orbitConfig}
-        />
-        <ambientLight intensity={0.5} />
-      </Canvas>
-
-      {/* Top header bar with title and controls */}
-      <div
-        className="absolute top-0 left-0 w-full h-14 z-10 flex items-center justify-between px-5"
-        style={{
-          background: 'linear-gradient(to bottom, rgba(10,9,8,0.6), transparent)',
-        }}
-      >
-        {/* Tour title */}
-        <div className="flex items-center gap-3">
-          {tourTitle && (
-            <span
-              className="text-base font-bold"
-              style={{ color: '#F5F3EF', fontFamily: 'var(--font-display)' }}
-            >
-              {tourTitle}
-            </span>
+          {/* Furniture R3F components — always mounted, self-guard on mode */}
+          {enableFurniture && (
+            <>
+              <FurnitureLayer />
+              <FurnitureCameraController />
+            </>
           )}
-          <span
-            className="text-[11px] px-2.5 py-1 rounded-full"
-            style={{
-              color: '#A8A29E',
-              backgroundColor: 'rgba(10,9,8,0.4)',
-              fontFamily: 'var(--font-dmsans)',
-            }}
-          >
-            3D
-          </span>
+
+          {/* 3D Hotspot markers */}
+          {hotspots.map((h) => (
+            <SplatHotspot3D
+              key={h.id}
+              position={h.position}
+              label={h.label}
+              onClick={() => handleHotspotClick(h)}
+            />
+          ))}
+
+          <OrbitControls
+            enableDamping
+            dampingFactor={0.1}
+            rotateSpeed={0.5}
+            zoomSpeed={0.8}
+            enabled={!transitioning}
+            makeDefault
+            {...orbitConfig}
+          />
+          <ambientLight intensity={0.5} />
+        </Canvas>
+
+        {/* Top header bar with title and controls */}
+        <div
+          className="absolute top-0 left-0 w-full h-14 z-10 flex items-center justify-between px-5"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(10,9,8,0.6), transparent)',
+          }}
+        >
+          {/* Tour title */}
+          <div className="flex items-center gap-3">
+            {tourTitle && (
+              <span
+                className="text-base font-bold"
+                style={{ color: '#F5F3EF', fontFamily: 'var(--font-display)' }}
+              >
+                {tourTitle}
+              </span>
+            )}
+            <span
+              className="text-[11px] px-2.5 py-1 rounded-full"
+              style={{
+                color: '#A8A29E',
+                backgroundColor: 'rgba(10,9,8,0.4)',
+                fontFamily: 'var(--font-dmsans)',
+              }}
+            >
+              3D
+            </span>
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleFullscreen}
+              aria-label="Toggle fullscreen"
+              className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
+              style={{ backgroundColor: 'rgba(10,9,8,0.4)' }}
+            >
+              {isFullscreen ? (
+                <Minimize2 size={18} color="#F5F3EF" strokeWidth={1.5} />
+              ) : (
+                <Maximize2 size={18} color="#F5F3EF" strokeWidth={1.5} />
+              )}
+            </button>
+            <button
+              onClick={handleShare}
+              aria-label="Share tour"
+              className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
+              style={{ backgroundColor: 'rgba(10,9,8,0.4)' }}
+            >
+              <Share2 size={18} color="#F5F3EF" strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleFullscreen}
-            aria-label="Toggle fullscreen"
-            className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
-            style={{ backgroundColor: 'rgba(10,9,8,0.4)' }}
-          >
-            {isFullscreen ? (
-              <Minimize2 size={18} color="#F5F3EF" strokeWidth={1.5} />
-            ) : (
-              <Maximize2 size={18} color="#F5F3EF" strokeWidth={1.5} />
-            )}
-          </button>
-          <button
-            onClick={handleShare}
-            aria-label="Share tour"
-            className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
-            style={{ backgroundColor: 'rgba(10,9,8,0.4)' }}
-          >
-            <Share2 size={18} color="#F5F3EF" strokeWidth={1.5} />
-          </button>
-        </div>
+        {/* Mode switcher (bottom center) */}
+        <ModeSwitcher enableFurniture={enableFurniture} />
+
+        {/* Furniture toolbar for selected items */}
+        {enableFurniture && <FurnitureToolbar />}
+
+        {/* Virtual joystick (bottom left, mobile only) */}
+        <VirtualJoystick />
+
+        {/* Mobile bottom sheet for catalog (< md) */}
+        {enableFurniture && (
+          <div className="block md:hidden">
+            <AnimatePresence>
+              {isFurnishActive && <CatalogBottomSheet />}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
-      {/* Mode switcher (bottom center) */}
-      <ModeSwitcher />
-
-      {/* Virtual joystick (bottom left, mobile only) */}
-      <VirtualJoystick />
+      {/* Desktop catalog sidebar (md+) */}
+      {enableFurniture && (
+        <AnimatePresence>
+          {isFurnishActive && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 340, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="hidden md:block overflow-hidden"
+              style={{ height: '100%', flexShrink: 0 }}
+            >
+              <CatalogSidebar />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   )
 }
