@@ -24,7 +24,9 @@ export const listByTour = query({
 
     const scenesWithUrls = await Promise.all(
       scenes.map(async (scene) => {
-        const imageUrl = await ctx.storage.getUrl(scene.imageStorageId)
+        const imageUrl = scene.imageStorageId
+          ? await ctx.storage.getUrl(scene.imageStorageId)
+          : null
         const thumbnailUrl = scene.thumbnailStorageId
           ? await ctx.storage.getUrl(scene.thumbnailStorageId)
           : null
@@ -45,7 +47,9 @@ export const getById = query({
     const scene = await ctx.db.get(args.sceneId)
     if (!scene) return null
 
-    const imageUrl = await ctx.storage.getUrl(scene.imageStorageId)
+    const imageUrl = scene.imageStorageId
+      ? await ctx.storage.getUrl(scene.imageStorageId)
+      : null
     const thumbnailUrl = scene.thumbnailStorageId
       ? await ctx.storage.getUrl(scene.thumbnailStorageId)
       : null
@@ -208,7 +212,9 @@ export const replaceImage = mutation({
     if (!scene) throw new Error('Scene not found')
 
     // Delete old image from storage
-    await ctx.storage.delete(scene.imageStorageId)
+    if (scene.imageStorageId) {
+      await ctx.storage.delete(scene.imageStorageId)
+    }
 
     // Clear staged image if it exists
     if (scene.stagedImageStorageId) {
@@ -245,7 +251,9 @@ export const remove = mutation({
 
     const scene = await ctx.db.get(args.sceneId)
     if (scene) {
-      await ctx.storage.delete(scene.imageStorageId)
+      if (scene.imageStorageId) {
+        await ctx.storage.delete(scene.imageStorageId)
+      }
       if (scene.thumbnailStorageId) {
         await ctx.storage.delete(scene.thumbnailStorageId)
       }

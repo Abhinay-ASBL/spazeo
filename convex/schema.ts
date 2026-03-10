@@ -133,6 +133,32 @@ export default defineSchema({
         inputType: v.union(v.literal('video'), v.literal('photos')),
       })
     ),
+    // Phase 5: Floor plan derived tour fields — optional for backward compatibility
+    sourceType: v.optional(
+      v.union(
+        v.literal('panorama'),
+        v.literal('splat'),
+        v.literal('floor_plan')
+      )
+    ),
+    floorPlanId: v.optional(v.id('floorPlanDetails')),
+    floorPlan3DConfig: v.optional(
+      v.object({
+        globalCeilingHeight: v.number(),
+        doorWidth: v.optional(v.number()),
+        doorHeight: v.optional(v.number()),
+        roomOverrides: v.optional(
+          v.array(
+            v.object({
+              roomId: v.string(),
+              ceilingHeight: v.optional(v.number()),
+              wallColor: v.optional(v.string()),
+              floorType: v.optional(v.string()),
+            })
+          )
+        ),
+      })
+    ),
   })
     .index('by_userId', ['userId'])
     .index('by_slug', ['slug'])
@@ -145,10 +171,10 @@ export default defineSchema({
   scenes: defineTable({
     tourId: v.id('tours'),
     title: v.string(),
-    imageStorageId: v.id('_storage'),
+    imageStorageId: v.optional(v.id('_storage')),
     thumbnailStorageId: v.optional(v.id('_storage')),
     order: v.number(),
-    panoramaType: v.union(v.literal('equirectangular'), v.literal('cubemap'), v.literal('gaussian')),
+    panoramaType: v.union(v.literal('equirectangular'), v.literal('cubemap'), v.literal('gaussian'), v.literal('floor_plan')),
     roomType: v.optional(v.string()),
     aiAnalysis: v.optional(
       v.object({
