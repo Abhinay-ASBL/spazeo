@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-10T09:11:06.539Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-03-10T09:12:59.290Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 29
   percent: 33
 ---
 
@@ -78,6 +78,8 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 03 P05 | 3m | 2 tasks | 5 files |
 | Phase 03 P06 | 2m | 2 tasks | 8 files |
 | Phase 04 P01 | 4m | 2 tasks | 7 files |
+| Phase 04 P04 | 5m | 2 tasks | 9 files |
+| Phase 04 P02 | 6m | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -156,6 +158,12 @@ Recent decisions affecting current work:
 - [Phase 04]: floorPlanDetails new table to avoid breaking existing floorPlans consumers
 - [Phase 04]: DashScope response_format json_object for reliable structured AI output, no regex cleaning
 - [Phase 04]: floorPlanExtractionsUsed separate counter from aiCreditsUsed for independent plan limits
+- [Phase 04]: react-konva dynamically imported via lazy() to prevent SSR canvas API errors
+- [Phase 04]: Floor plan coordinates stored in meters (canonical); PPM=50 conversion at Konva render boundary only
+- [Phase 04]: Multi-layer Konva architecture with listening:false on non-interactive layers for performance
+- [Phase 04]: Wall deletion cascades to attached doors/windows in Zustand store
+- [Phase 04]: react-pdf v9 chosen over v10 for pdfjs-dist v4.x compatibility (v10 requires Node 20+)
+- [Phase 04]: Canvas rotation applied before upload rather than storing rotation metadata for simpler downstream processing
 
 ### Roadmap Evolution
 
@@ -173,6 +181,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T09:11:06.533Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-floor-plan-to-3d-and-full-section-3-delivery/05-CONTEXT.md
+Last session: 2026-03-10T09:12:50.044Z
+Stopped at: Completed 04-04-PLAN.md
+Resume file: None
