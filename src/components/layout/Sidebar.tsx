@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Compass,
   Map,
+  Building2,
   BarChart3,
   Users,
   Settings,
@@ -33,6 +34,7 @@ const MAIN_NAV: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Tours', href: '/tours', icon: Compass },
   { label: 'Floor Plans', href: '/floor-plans', icon: Map },
+  { label: 'Buildings', href: '/buildings', icon: Building2 },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { label: 'Leads', href: '/leads', icon: Users },
 ]
