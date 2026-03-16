@@ -169,6 +169,7 @@ export default function TourEditorPage() {
   const [hotspotCtaLabel, setHotspotCtaLabel] = useState('')
   const [hotspotCtaUrl, setHotspotCtaUrl] = useState('')
   const [hotspotMarkerStyle, setHotspotMarkerStyle] = useState<'ring' | 'arrow' | 'dot' | 'label'>('ring')
+  const [hotspotAccentColor, setHotspotAccentColor] = useState('')
 
   // Hotspot editing state
   const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null)
@@ -527,6 +528,7 @@ export default function TourEditorPage() {
         ctaLabel: hotspotCtaLabel || undefined,
         ctaUrl: hotspotCtaUrl || undefined,
         markerStyle: hotspotType === 'navigation' ? hotspotMarkerStyle : undefined,
+        accentColor: hotspotAccentColor || undefined,
       })
       toast.success('Hotspot added')
       setPendingPosition(null)
@@ -543,6 +545,7 @@ export default function TourEditorPage() {
       setHotspotCtaLabel('')
       setHotspotCtaUrl('')
       setHotspotMarkerStyle('ring')
+      setHotspotAccentColor('')
       setIsPlacingHotspot(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
@@ -566,6 +569,7 @@ export default function TourEditorPage() {
     hotspotCtaLabel,
     hotspotCtaUrl,
     hotspotMarkerStyle,
+    hotspotAccentColor,
   ])
 
   /* ── Update hotspot tooltip ── */
@@ -1501,6 +1505,39 @@ export default function TourEditorPage() {
                         </button>
                       ))}
                     </div>
+                </div>
+
+                {/* Accent color — all types */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                    Accent Color (optional)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={hotspotAccentColor || '#D4A017'}
+                      onChange={(e) => setHotspotAccentColor(e.target.value)}
+                      style={{ width: 28, height: 28, border: 'none', borderRadius: 4, cursor: 'pointer', backgroundColor: 'transparent' }}
+                    />
+                    <input
+                      type="text"
+                      value={hotspotAccentColor}
+                      onChange={(e) => setHotspotAccentColor(e.target.value)}
+                      placeholder="#D4A017"
+                      className="flex-1 h-8 px-2 rounded-md text-[11px] outline-none"
+                      style={{ backgroundColor: '#0A0908', border: '1px solid rgba(212,160,23,0.15)', color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                    />
+                    {hotspotAccentColor && (
+                      <button
+                        type="button"
+                        onClick={() => setHotspotAccentColor('')}
+                        className="text-[10px] px-1.5 py-0.5 rounded"
+                        style={{ color: '#6B6560', border: '1px solid rgba(255,255,255,0.08)' }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Panel layout selector — show for non-navigation types */}

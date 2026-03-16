@@ -681,6 +681,8 @@ export default defineSchema({
       windows: v.optional(v.array(v.any())),
       fixtures: v.optional(v.array(v.any())),
       dimensions: v.optional(v.any()),
+      overallWidth: v.optional(v.number()),
+      overallHeight: v.optional(v.number()),
     })),
     scale: v.optional(v.number()),
     currentVersion: v.optional(v.number()),

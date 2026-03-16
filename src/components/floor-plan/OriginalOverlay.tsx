@@ -7,8 +7,8 @@ interface OriginalOverlayProps {
 }
 
 export function OriginalOverlay({ imageUrl }: OriginalOverlayProps) {
-  const walls = useFloorPlanEditorStore((s) => s.geometry.walls)
-  const rooms = useFloorPlanEditorStore((s) => s.geometry.rooms)
+  const walls = useFloorPlanEditorStore((s) => s.geometry?.walls ?? [])
+  const rooms = useFloorPlanEditorStore((s) => s.geometry?.rooms ?? [])
   const selectedElementId = useFloorPlanEditorStore((s) => s.selectedElementId)
   const viewportScale = useFloorPlanEditorStore((s) => s.viewportScale)
   const viewportPosition = useFloorPlanEditorStore((s) => s.viewportPosition)
@@ -40,7 +40,7 @@ export function OriginalOverlay({ imageUrl }: OriginalOverlayProps) {
           style={{ overflow: 'visible' }}
         >
           {/* Room polygons */}
-          {rooms.map((room) => (
+          {rooms.filter((room) => room.points?.length).map((room) => (
             <polygon
               key={room.id}
               points={room.points.map((p) => `${p.x * PPM},${p.y * PPM}`).join(' ')}
@@ -51,7 +51,7 @@ export function OriginalOverlay({ imageUrl }: OriginalOverlayProps) {
           ))}
 
           {/* Wall lines */}
-          {walls.map((wall) => (
+          {walls.filter((wall) => wall.start && wall.end).map((wall) => (
             <line
               key={wall.id}
               x1={wall.start.x * PPM}

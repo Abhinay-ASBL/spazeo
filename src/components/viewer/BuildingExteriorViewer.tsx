@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useMemo, Suspense, useEffect } from 'react'
+import { useRef, useMemo, Suspense } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useGLTF, OrbitControls, Grid } from '@react-three/drei'
+import { OrbitControls, Grid, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 
 // ─── Types & Constants ────────────────────────────────────────────────────────
@@ -103,29 +103,35 @@ function CameraRig({ target }: { target: { position: THREE.Vector3; lookAt: THRE
 
 // ─── Building GLB Model ──────────────────────────────────────────────────────
 
-const DRACO_CDN = 'https://www.gstatic.com/draco/versioned/decoders/1.5.7/'
-
-function BuildingModel({ url }: { url: string }) {
-  const { scene } = useGLTF(url, DRACO_CDN)
+function BuildingModel({ url, totalFloors }: { url: string; totalFloors: number }) {
+  const { scene } = useGLTF(url)
   const ref = useRef<THREE.Group>(null!)
 
-  useEffect(() => {
-    if (!scene) return
-    // Compute bounding box to auto-center and scale the model
+  // Auto-center and scale the model so it fits our camera rig
+  const transform = useMemo(() => {
     const box = new THREE.Box3().setFromObject(scene)
     const size = new THREE.Vector3()
     const center = new THREE.Vector3()
     box.getSize(size)
     box.getCenter(center)
 
-    // Log model dimensions for debugging
-    console.log('[BuildingModel] bounding box size:', size)
-    console.log('[BuildingModel] bounding box center:', center)
-    console.log('[BuildingModel] bounding box min/max:', box.min, box.max)
-  }, [scene])
+    // Target height based on totalFloors
+    const targetHeight = totalFloors * FLOOR_HEIGHT
+    const scale = size.y > 0 ? targetHeight / size.y : 1
+
+    return {
+      // Shift so model center sits at origin, bottom at y=0
+      position: new THREE.Vector3(
+        -center.x * scale,
+        -box.min.y * scale,
+        -center.z * scale
+      ),
+      scale,
+    }
+  }, [scene, totalFloors])
 
   return (
-    <group ref={ref}>
+    <group ref={ref} position={transform.position} scale={transform.scale}>
       <primitive object={scene} />
     </group>
   )
@@ -239,7 +245,7 @@ export function BuildingExteriorViewer({
 
       {/* Model */}
       <Suspense fallback={<PlaceholderBuilding totalFloors={totalFloors} />}>
-        <BuildingModel url={effectiveModelUrl} />
+        <BuildingModel url={effectiveModelUrl} totalFloors={totalFloors} />
       </Suspense>
 
       {/* KML plot outline */}

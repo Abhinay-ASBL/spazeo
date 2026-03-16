@@ -216,7 +216,7 @@ export const createCheckoutSession = action({
     if (!user) throw new Error('User not found')
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2026-01-28.clover',
+      apiVersion: '2026-02-25.clover',
     })
 
     // Get or create Stripe customer
@@ -279,7 +279,7 @@ export const createCustomerPortalSession = action({
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2026-01-28.clover',
+      apiVersion: '2026-02-25.clover',
     })
 
     const session = await stripe.billingPortal.sessions.create({
@@ -310,7 +310,7 @@ export const cancel = action({
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2026-01-28.clover',
+      apiVersion: '2026-02-25.clover',
     })
 
     // Cancel at period end (user keeps access until end of billing period)
@@ -350,7 +350,7 @@ export const getInvoices = action({
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2026-01-28.clover',
+      apiVersion: '2026-02-25.clover',
     })
 
     const invoices = await stripe.invoices.list({

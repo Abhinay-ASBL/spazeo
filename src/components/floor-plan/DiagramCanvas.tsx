@@ -316,7 +316,7 @@ export function DiagramCanvas() {
 
         {/* Rooms layer */}
         <Layer>
-          {geometry.rooms.map((room: Room) => {
+          {(geometry?.rooms ?? []).filter((room: Room) => room.points?.length).map((room: Room) => {
             const isSelected = room.id === selectedElementId
             const pts = room.points.flatMap((p) => [p.x * PPM, p.y * PPM])
             const center = centroid(room.points)
@@ -376,7 +376,7 @@ export function DiagramCanvas() {
 
         {/* Walls layer */}
         <Layer>
-          {geometry.walls.map((wall: Wall) => {
+          {(geometry?.walls ?? []).filter((wall: Wall) => wall.start && wall.end).map((wall: Wall) => {
             const isSelected = wall.id === selectedElementId
             const isLowConf = wall.confidence === 'low'
             const strokeColor = isSelected ? SELECTION_COLOR : isLowConf ? WALL_LOW_CONF : WALL_COLOR
@@ -544,7 +544,7 @@ export function DiagramCanvas() {
 
         {/* Dimensions layer (non-interactive) */}
         <Layer listening={false}>
-          {geometry.walls.map((wall: Wall) => {
+          {(geometry?.walls ?? []).filter((wall: Wall) => wall.start && wall.end).map((wall: Wall) => {
             const len = wallLength(wall)
             if (len < 0.3) return null
             const mid = wallMidpoint(wall)
