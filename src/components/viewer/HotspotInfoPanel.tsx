@@ -6,7 +6,7 @@ import { X, ExternalLink } from 'lucide-react'
 
 interface HotspotData {
   _id: string
-  type: 'info' | 'media' | 'link'
+  type: 'info' | 'media' | 'link' | 'navigation'
   title?: string
   description?: string
   content?: string
@@ -16,14 +16,23 @@ interface HotspotData {
   ctaLabel?: string
   ctaUrl?: string
   accentColor?: string
+  targetSceneId?: string
 }
 
 interface Props {
   hotspot: HotspotData
   onClose: () => void
+  onNavigate?: (targetSceneId: string) => void
+  targetSceneTitle?: string
 }
 
-export function HotspotInfoPanel({ hotspot, onClose }: Props) {
+export function HotspotInfoPanel({ hotspot, onClose, onNavigate, targetSceneTitle }: Props) {
+  // Navigation hotspots do not support video panel layout — fall back to compact
+  const effectivePanelLayout =
+    hotspot.type === 'navigation' && hotspot.panelLayout === 'video'
+      ? 'compact'
+      : hotspot.panelLayout
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 40 }}
@@ -71,8 +80,24 @@ export function HotspotInfoPanel({ hotspot, onClose }: Props) {
         </button>
       </div>
 
-      {/* Image */}
-      {hotspot.imageUrl && (
+      {/* Image — skip in compact layout for navigation, or show when layout allows */}
+      {hotspot.imageUrl && effectivePanelLayout !== 'compact' && (
+        <img
+          src={hotspot.imageUrl}
+          alt={hotspot.title || 'Hotspot image'}
+          style={{
+            width: '100%',
+            borderRadius: 8,
+            objectFit: 'cover',
+            maxHeight: 180,
+            marginTop: 16,
+            marginBottom: 12,
+          }}
+        />
+      )}
+
+      {/* Image — compact layout still shows image when present */}
+      {hotspot.imageUrl && effectivePanelLayout === 'compact' && (
         <img
           src={hotspot.imageUrl}
           alt={hotspot.title || 'Hotspot image'}
@@ -144,6 +169,32 @@ export function HotspotInfoPanel({ hotspot, onClose }: Props) {
         >
           {hotspot.ctaLabel}
         </a>
+      )}
+
+      {/* Go-to button for navigation hotspots */}
+      {hotspot.type === 'navigation' && onNavigate && hotspot.targetSceneId && (
+        <button
+          onClick={() => onNavigate(hotspot.targetSceneId!)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            marginTop: 12,
+            height: 40,
+            width: '100%',
+            borderRadius: 8,
+            backgroundColor: '#2DD4BF',
+            color: '#0A0908',
+            fontSize: 14,
+            fontWeight: 600,
+            border: 'none',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-dmsans)',
+          }}
+        >
+          Go to {targetSceneTitle ?? 'Next Room'} &rarr;
+        </button>
       )}
     </motion.div>
   )
