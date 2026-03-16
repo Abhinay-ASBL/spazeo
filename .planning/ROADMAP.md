@@ -148,7 +148,7 @@ Plans:
 **Goal:** Resolve the 3 Phase 6 UAT failures for navigation hotspots (icon/accent color support, selectable visual styles, info panel before navigate) and commit all in-progress code fixes (floor plan null guards, building viewer scaling, Stripe API version, CSP headers)
 **Requirements**: NAV-ICON, NAV-COLOR, NAV-STYLE-RING, NAV-STYLE-ARROW, NAV-STYLE-DOT, NAV-PANEL-FIRST, NAV-GOTO, NAV-BACKWARD, NAV-EDITOR, CODE-FIXES, CODE-STRIPE, CODE-CSP
 **Depends on:** Phase 6
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 07-01-PLAN.md — HotspotMarker: icon/accent color/markerStyle (ring/arrow/dot) for navigation type; HotspotInfoPanel: navigation type + Go-to button
