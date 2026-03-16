@@ -142,3 +142,14 @@ Plans:
 - [ ] 06-04-PLAN.md — New viewer components: HotspotInfoPanel (responsive drawer) and HotspotVideoModal (full-screen)
 - [ ] 06-05-PLAN.md — Public viewer wiring: AnimatePresence integration + adaptive mobile layout
 - [ ] 06-06-PLAN.md — Tour editor: icon picker grid, panel layout selector, video URL, and CTA fields
+
+### Phase 7: fix all the issues code and all flow issues and fix all on the total code
+
+**Goal:** Resolve the 3 Phase 6 UAT failures for navigation hotspots (icon/accent color support, selectable visual styles, info panel before navigate) and commit all in-progress code fixes (floor plan null guards, building viewer scaling, Stripe API version, CSP headers)
+**Requirements**: NAV-ICON, NAV-COLOR, NAV-STYLE-RING, NAV-STYLE-ARROW, NAV-STYLE-DOT, NAV-PANEL-FIRST, NAV-GOTO, NAV-BACKWARD, NAV-EDITOR, CODE-FIXES, CODE-STRIPE, CODE-CSP
+**Depends on:** Phase 6
+**Plans:** 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — HotspotMarker: icon/accent color/markerStyle (ring/arrow/dot) for navigation type; HotspotInfoPanel: navigation type + Go-to button
+- [ ] 07-02-PLAN.md — Public tour page panel-first routing; editor accentColor for navigation type; commit all staged code fixes
