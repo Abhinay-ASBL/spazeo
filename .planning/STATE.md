@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: UAT fixing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-16T07:11:39.378Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-16T08:09:29.502Z"
 last_activity: 2026-03-09 — Phase 6 all 6 plans executed, UAT found 3 issues to fix
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 35
-  completed_plans: 34
+  total_plans: 37
+  completed_plans: 35
   percent: 33
 ---
 
@@ -85,6 +85,7 @@ Progress: [███░░░░░░░] 33% (Phases 1+6 done, 2/3/4/5 remaini
 | Phase 05-floor-plan-to-3d-and-full-section-3-delivery P01 | 7m | 2 tasks | 7 files |
 | Phase 05-floor-plan-to-3d-and-full-section-3-delivery P03 | 4m | 2 tasks | 2 files |
 | Phase 04-floor-plan-extraction P05 | 10m | 2 tasks | 5 files |
+| Phase 07 P01 | 3m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -182,6 +183,7 @@ Recent decisions affecting current work:
 - [Phase Phase 04-05]: resetToAiVersion returns geometry payload so Zustand store can update immediately without waiting for reactive refetch
 - [Phase Phase 04-05]: listByProjectWithUrls resolves all storage URLs server-side in single query, avoiding N+1 client-side URL lookups
 - [Phase Phase 04-05]: Version restore uses inline confirmation UI instead of modal to avoid z-index complexity inside Konva editor layout
+- [Phase 07-01]: Navigation hotspot icon falls back to ChevronRight for backward compatibility; effectivePanelLayout guards navigation type from video layout
 
 ### Roadmap Evolution
 
@@ -200,6 +202,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T07:11:39.371Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-fix-all-the-issues-code-and-all-flow-issues-and-fix-all-on-the-total-code/07-CONTEXT.md
+Last session: 2026-03-16T08:09:29.499Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None
