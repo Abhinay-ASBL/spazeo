@@ -300,13 +300,14 @@ export default function PublicTourViewerPage() {
 
   /* ── Hotspot click → navigate scenes, open info panel, or open video modal ── */
   const handleHotspotClick = useCallback(
-    (hotspot: { type: string; targetSceneId?: string; _id?: string; content?: string; videoUrl?: string; title?: string }) => {
-      // Navigation: transition to target scene, then optionally show info panel if hotspot has content
+    (hotspot: { type: string; targetSceneId?: string; _id?: string; content?: string; videoUrl?: string; title?: string; description?: string }) => {
+      // Navigation: panel-first if hotspot has title/description; navigate immediately otherwise
       if (hotspot.type === 'navigation' && hotspot.targetSceneId) {
-        setActiveSceneId(hotspot.targetSceneId)
-        // If navigation hotspot has description/content, show info panel after transition
-        if (hotspot._id && ((hotspot as Record<string, unknown>).description || hotspot.content)) {
-          setTimeout(() => setActiveHotspot(hotspot._id!), 300)
+        const hasInfoContent = !!(hotspot.title || (hotspot as Record<string, unknown>).description)
+        if (hasInfoContent && hotspot._id) {
+          setActiveHotspot(hotspot._id)   // open panel first — scene transition happens via "Go to" button
+        } else {
+          setActiveSceneId(hotspot.targetSceneId)  // no info content — navigate immediately (backward compat)
         }
         return
       }
@@ -640,13 +641,25 @@ export default function PublicTourViewerPage() {
 
       {/* ── Hotspot Info Panel (outside Canvas, driven by Zustand) ── */}
       <AnimatePresence>
-        {activeHotspot && (
-          <HotspotInfoPanel
-            key={activeHotspot._id as string}
-            hotspot={activeHotspot as Parameters<typeof HotspotInfoPanel>[0]['hotspot']}
-            onClose={() => setActiveHotspot(null)}
-          />
-        )}
+        {activeHotspot && (() => {
+          const hotspotWithTarget = activeHotspot as { _id?: string; targetSceneId?: string }
+          const targetSceneTitle = hotspotWithTarget.targetSceneId
+            ? (scenes.find((s: { _id: string; title: string }) => s._id === hotspotWithTarget.targetSceneId)?.title ?? 'Next Room')
+            : undefined
+          return (
+            <HotspotInfoPanel
+              key={activeHotspot._id as string}
+              hotspot={activeHotspot as Parameters<typeof HotspotInfoPanel>[0]['hotspot']}
+              onClose={() => setActiveHotspot(null)}
+              onNavigate={(targetSceneId) => {
+                setActiveSceneId(targetSceneId)
+                // NOTE: do NOT call setActiveHotspot(null) here
+                // The existing useEffect at ~line 297 calls setActiveHotspot(null) on activeSceneId change
+              }}
+              targetSceneTitle={targetSceneTitle}
+            />
+          )
+        })()}
       </AnimatePresence>
 
       {/* ── Full-Screen Video Modal ── */}
