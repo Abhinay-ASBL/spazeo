@@ -44,6 +44,7 @@ interface HotspotData {
   ctaLabel?: string
   ctaUrl?: string
   accentColor?: string
+  markerStyle?: 'ring' | 'arrow' | 'dot' | 'label'
 }
 
 interface Props {
@@ -83,7 +84,11 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
   const [isHovered, setIsHovered] = useState(false)
   const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
   const config = TYPE_CONFIG[hotspot.type] ?? TYPE_CONFIG.navigation
-  const IconComponent = (hotspot.iconName ? ICON_REGISTRY[hotspot.iconName] : undefined) ?? config.icon
+  const IconComponent = hotspot.iconName
+    ? (ICON_REGISTRY[hotspot.iconName] ?? (hotspot.type === 'navigation' ? ChevronRight : config.icon))
+    : hotspot.type === 'navigation'
+      ? ChevronRight
+      : config.icon
   const markerColor = hotspot.accentColor ?? config.color
 
   // Visibility toggle — return null to skip rendering hidden hotspots
@@ -92,7 +97,123 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
   if (hotspot.type === 'navigation') {
     // Derive horizontal yaw angle from position on sphere
     const yawDeg = Math.round((Math.atan2(hotspot.position.x, -hotspot.position.z) * 180) / Math.PI)
+    const navStyle = hotspot.markerStyle ?? 'ring'
 
+    // --- dot style ---
+    if (navStyle === 'dot') {
+      return (
+        <Html
+          position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
+          center
+          zIndexRange={[10, 0]}
+        >
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {isHovered && (hotspot.title || hotspot.tooltip) && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -40,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  whiteSpace: 'nowrap',
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  pointerEvents: 'none',
+                  backgroundColor: 'rgba(10,9,8,0.9)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#F5F3EF',
+                  fontFamily: 'var(--font-dmsans)',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.07)',
+                }}
+              >
+                {hotspot.title || hotspot.tooltip}
+              </div>
+            )}
+            <button
+              onClick={onClick}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              aria-label={hotspot.tooltip ?? hotspot.title ?? 'Navigate'}
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                backgroundColor: markerColor,
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                animation: 'hotspot-pulse-inner 2.4s ease-in-out infinite',
+                boxShadow: `0 0 0 4px ${markerColor}30`,
+                outline: 'none',
+              }}
+            />
+          </div>
+        </Html>
+      )
+    }
+
+    // --- arrow style ---
+    if (navStyle === 'arrow') {
+      return (
+        <Html
+          position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
+          center
+          zIndexRange={[10, 0]}
+        >
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {isHovered && (hotspot.title || hotspot.tooltip) && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -40,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  whiteSpace: 'nowrap',
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  pointerEvents: 'none',
+                  backgroundColor: 'rgba(10,9,8,0.9)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#F5F3EF',
+                  fontFamily: 'var(--font-dmsans)',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.07)',
+                }}
+              >
+                {hotspot.title || hotspot.tooltip}
+              </div>
+            )}
+            <button
+              onClick={onClick}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              aria-label={hotspot.tooltip ?? hotspot.title ?? 'Navigate'}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: markerColor,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))',
+                outline: 'none',
+              }}
+            >
+              <IconComponent size={28} strokeWidth={2} style={{ transform: `rotate(${yawDeg}deg)` }} />
+            </button>
+          </div>
+        </Html>
+      )
+    }
+
+    // --- ring style (default) ---
     return (
       <Html
         position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
@@ -134,7 +255,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
                 position: 'absolute',
                 inset: 0,
                 borderRadius: '50%',
-                border: '2px solid #D4A017',
+                border: `2px solid ${markerColor}`,
                 animation: 'hotspot-pulse 1.8s ease-out infinite',
               }}
             />
@@ -145,7 +266,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
                 position: 'absolute',
                 inset: 0,
                 borderRadius: '50%',
-                border: '2px solid #D4A017',
+                border: `2px solid ${markerColor}`,
                 animation: 'hotspot-pulse 1.8s ease-out infinite',
                 animationDelay: '0.6s',
               }}
@@ -161,7 +282,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
                 width: 36,
                 height: 36,
                 borderRadius: '50%',
-                backgroundColor: '#D4A017',
+                backgroundColor: markerColor,
                 color: '#0A0908',
                 border: 'none',
                 cursor: 'pointer',
@@ -177,7 +298,7 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
                 outline: 'none',
               }}
             >
-              <ChevronRight size={14} strokeWidth={2} style={{ transform: `rotate(${yawDeg}deg)` }} />
+              <IconComponent size={14} strokeWidth={2} style={{ transform: `rotate(${yawDeg}deg)` }} />
             </button>
           </div>
         </div>
