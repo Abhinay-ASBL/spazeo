@@ -25,7 +25,7 @@ interface PageSelection {
 export async function rasterizePdfPages(
   file: File,
   selectedPages: number[],
-  scale = 2
+  scale = 3
 ): Promise<Blob[]> {
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise
@@ -42,13 +42,30 @@ export async function rasterizePdfPages(
 
     await page.render({ canvasContext: context, viewport }).promise
 
+    // Downscale if too large (max 2000px on longest side) for faster upload
+    let finalCanvas = canvas
+    const maxDim = 2000
+    if (canvas.width > maxDim || canvas.height > maxDim) {
+      const ratio = Math.min(maxDim / canvas.width, maxDim / canvas.height)
+      const resized = document.createElement('canvas')
+      resized.width = Math.round(canvas.width * ratio)
+      resized.height = Math.round(canvas.height * ratio)
+      const rCtx = resized.getContext('2d')
+      if (rCtx) {
+        rCtx.drawImage(canvas, 0, 0, resized.width, resized.height)
+        finalCanvas = resized
+      }
+    }
+
+    // Use JPEG for smaller file size (floor plans are mostly black/white)
     const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
+      finalCanvas.toBlob(
         (b) => {
           if (b) resolve(b)
           else reject(new Error('Failed to rasterize PDF page'))
         },
-        'image/png'
+        'image/jpeg',
+        0.9
       )
     })
     blobs.push(blob)

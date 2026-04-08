@@ -33,8 +33,8 @@ export function EditorMiniMap() {
   // Viewport rectangle in minimap coords
   const vpW = (stageSize.width / viewportScale) * scale / 50 // 50px per meter approx
   const vpH = (stageSize.height / viewportScale) * scale / 50
-  const vpX = toMiniX(-viewportPosition.x / viewportScale / 50 + minX)
-  const vpY = toMiniY(-viewportPosition.y / viewportScale / 50 + minY)
+  const vpX = toMiniX(-viewportPosition.x / viewportScale / 50)
+  const vpY = toMiniY(-viewportPosition.y / viewportScale / 50)
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return

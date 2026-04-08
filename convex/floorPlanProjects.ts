@@ -49,6 +49,67 @@ export const getById = query({
   },
 })
 
+/**
+ * Accepts a string that could be either a floorPlanProjects ID or a
+ * floorPlanDetails ID. Returns the resolved project (and, when the input was
+ * a detail ID, the resolved projectId so the caller can query details).
+ */
+export const getByFlexibleId = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return null
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return null
+
+    // Try as floorPlanProjects ID first
+    const projectId = ctx.db.normalizeId('floorPlanProjects', args.id)
+    if (projectId) {
+      const project = await ctx.db.get(projectId)
+      if (project && project.userId === user._id) {
+        return { project, projectId: project._id, resolvedFrom: 'project' as const }
+      }
+      return null
+    }
+
+    // Try as floorPlanDetails ID — look up its parent project
+    const detailId = ctx.db.normalizeId('floorPlanDetails', args.id)
+    if (detailId) {
+      const detail = await ctx.db.get(detailId)
+      if (!detail) return null
+      if (detail.userId !== user._id) return null
+
+      if (detail.projectId) {
+        const project = await ctx.db.get(detail.projectId)
+        if (project) {
+          return { project, projectId: project._id, resolvedFrom: 'detail' as const }
+        }
+      }
+
+      // Detail exists but has no parent project — synthesize a minimal project
+      return {
+        project: {
+          _id: detailId as unknown,
+          userId: user._id,
+          name: detail.label ?? `Floor ${detail.floorNumber}`,
+          floorCount: 1,
+          status: detail.extractionStatus === 'completed' ? 'editing' as const : 'extracting' as const,
+          createdAt: detail.createdAt,
+          updatedAt: detail.updatedAt,
+        },
+        projectId: null,
+        resolvedFrom: 'detail_orphan' as const,
+      }
+    }
+
+    return null
+  },
+})
+
 export const listByUser = query({
   args: {},
   handler: async (ctx) => {

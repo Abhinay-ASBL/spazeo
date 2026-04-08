@@ -127,7 +127,8 @@ export default function BuildingExteriorPage({
     )
   }
 
-  const modelUrl = building.optimizedModelUrl ?? building.modelUrl ?? null
+  // Always use local GLB for now (Convex-stored model may be Draco-compressed)
+  const modelUrl = null
   const hasModel = !!modelUrl
   const currentCorner = CORNERS.find((c) => c.key === selectedCorner)!
 

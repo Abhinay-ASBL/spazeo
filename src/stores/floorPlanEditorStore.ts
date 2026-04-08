@@ -142,6 +142,8 @@ interface FloorPlanEditorState {
   deleteDoor: (doorId: string) => void
   deleteWindow: (windowId: string) => void
 
+  setOverallDimensions: (overallWidth: number | undefined, overallHeight: number | undefined) => void
+
   // Undo/redo
   undo: () => void
   redo: () => void
@@ -316,6 +318,11 @@ export const useFloorPlanEditorStore = create<FloorPlanEditorState>((set, get) =
     },
     selectedElementId: s.selectedElementId === windowId ? null : s.selectedElementId,
     selectedElementType: s.selectedElementId === windowId ? null : s.selectedElementType,
+  })),
+
+  setOverallDimensions: (overallWidth, overallHeight) => set((s) => ({
+    ...pushUndo(s),
+    geometry: { ...s.geometry, overallWidth, overallHeight },
   })),
 
   // --- Undo/Redo ---

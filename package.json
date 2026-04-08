@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.38.2",
+    "@next/swc-darwin-arm64": "^16.2.2",
     "@photo-sphere-viewer/autorotate-plugin": "^5.14.1",
     "@photo-sphere-viewer/core": "^5.14.1",
     "@photo-sphere-viewer/markers-plugin": "^5.14.1",
@@ -26,7 +27,7 @@
     "framer-motion": "^12.34.3",
     "konva": "^10.2.0",
     "lucide-react": "^0.575.0",
-    "next": "16.1.6",
+    "next": "^16.1.6",
     "nipplejs": "^0.10.2",
     "pdfjs-dist": "^4.8.69",
     "react": "19.2.3",

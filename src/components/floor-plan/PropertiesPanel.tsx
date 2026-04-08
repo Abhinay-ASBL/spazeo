@@ -13,6 +13,7 @@ export function PropertiesPanel() {
   const geometry = useFloorPlanEditorStore((s) => s.geometry)
   const updateWall = useFloorPlanEditorStore((s) => s.updateWall)
   const updateRoom = useFloorPlanEditorStore((s) => s.updateRoom)
+  const setOverallDimensions = useFloorPlanEditorStore((s) => s.setOverallDimensions)
 
   // Find selected element
   const selectedWall = selectedType === 'wall' ? geometry.walls.find((w) => w.id === selectedId) : null
@@ -34,7 +35,7 @@ export function PropertiesPanel() {
               type="number"
               step={0.1}
               value={geometry.overallWidth ?? ''}
-              onChange={() => {/* Placeholder - will dispatch in Task 2 */}}
+              onChange={(e) => setOverallDimensions(parseFloat(e.target.value) || undefined, geometry.overallHeight)}
               className="w-full px-2 py-1 rounded bg-[#1B1916] border border-[#2E2A24] text-sm text-[#F5F3EF] focus:border-[#D4A017] focus:outline-none"
               placeholder="Auto"
             />
@@ -43,7 +44,7 @@ export function PropertiesPanel() {
               type="number"
               step={0.1}
               value={geometry.overallHeight ?? ''}
-              onChange={() => {/* Placeholder */}}
+              onChange={(e) => setOverallDimensions(geometry.overallWidth, parseFloat(e.target.value) || undefined)}
               className="w-full px-2 py-1 rounded bg-[#1B1916] border border-[#2E2A24] text-sm text-[#F5F3EF] focus:border-[#D4A017] focus:outline-none"
               placeholder="Auto"
             />

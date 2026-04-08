@@ -10,13 +10,13 @@ const internal = _internal as any
 // ── Alibaba Cloud Model Studio (DashScope) Configuration ──
 // Vision + Text: OpenAI-compatible endpoint
 const DASHSCOPE_CHAT_URL =
-  'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'
+  'https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions'
 // Image generation + editing: DashScope native endpoint
 const DASHSCOPE_IMAGE_URL =
-  'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+  'https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
 // Task status polling (for async image jobs)
 const DASHSCOPE_TASK_URL =
-  'https://dashscope-intl.aliyuncs.com/api/v1/tasks'
+  'https://coding-intl.dashscope.aliyuncs.com/api/v1/tasks'
 
 // Model assignments:
 // - Scene analysis (vision):     qwen3.5-plus  — best visual understanding + structured JSON output

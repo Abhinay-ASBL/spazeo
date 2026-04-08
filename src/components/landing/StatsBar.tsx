@@ -1,5 +1,5 @@
 const STATS = [
-  { value: '10,000+', label: 'Tours Created' },
+  { value: '50K+', label: 'Tours Created' },
   { value: '2M+', label: 'Tour Views' },
   { value: '500+', label: 'Real Estate Agents' },
   { value: '98%', label: 'Satisfaction Rate' },

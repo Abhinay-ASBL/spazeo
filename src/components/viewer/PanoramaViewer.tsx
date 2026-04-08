@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef, Component, type ReactNode } from 'react'
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
-import { PerspectiveCamera, TextureLoader, type Texture, SRGBColorSpace } from 'three'
+import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace } from 'three'
 import { OrbitControls } from '@react-three/drei'
 import { HotspotMarker } from './HotspotMarker'
 import { ImageOff, Loader2 } from 'lucide-react'
@@ -66,6 +66,88 @@ interface Props {
   zoomLevel?: number
 }
 
+/* ── Normalize non-2:1 panoramas to equirectangular 2:1 ──
+ *
+ * Standard equirectangular panoramas are 2:1 (360°×180°).
+ * DJI drone panoramas are often wider (e.g. 2.66:1 = 4750×1787).
+ * Mapping these directly onto a sphere stretches them vertically.
+ *
+ * Fix: pad the image to 2:1 with black bars (top/bottom for wide,
+ * left/right for tall) using a canvas, then use it as texture.
+ * The sphere stays full & closed, and the projection is correct.
+ *
+ * Also returns orbital polar angle limits so OrbitControls can
+ * prevent users from panning into the black-padded pole regions.
+ *
+ * Three.js UV mapping (with flipY=true):
+ *   V_uv = 0  → South Pole (-Y) → image bottom (nadir)
+ *   V_uv = 0.5 → equator → image center
+ *   V_uv = 1  → North Pole (+Y) → image top (zenith)
+ * OrbitControls phi mapping:
+ *   phi = V_uv * π  (phi=0 ↔ looking at nadir, phi=π ↔ looking at zenith)
+ */
+interface NormalizeResult {
+  texture: Texture
+  minPolarAngle: number // radians — bottom of valid content
+  maxPolarAngle: number // radians — top of valid content
+}
+
+function normalizeEquirectangular(img: HTMLImageElement): NormalizeResult | null {
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  if (!w || !h) return null
+
+  const ar = w / h
+  // Already close to 2:1 — no padding needed
+  if (ar >= 1.9 && ar <= 2.1) return null
+
+  const canvas = document.createElement('canvas')
+  let yOff = 0
+
+  if (ar > 2.1) {
+    // Wider than 2:1 → keep width, expand height to width/2
+    canvas.width = w
+    canvas.height = Math.round(w / 2)
+    yOff = Math.round((canvas.height - h) / 2)
+  } else {
+    // Narrower than 2:1 → keep height, expand width to height*2
+    canvas.width = Math.round(h * 2)
+    canvas.height = h
+    // No vertical padding, so full polar range is valid
+  }
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  // Fill black, then center the original image
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  const xOff = Math.round((canvas.width - w) / 2)
+  ctx.drawImage(img, xOff, yOff)
+
+  const tex = new Texture(canvas)
+  tex.colorSpace = SRGBColorSpace
+  tex.needsUpdate = true
+
+  // Compute polar limits from the padded canvas (with flipY applied):
+  //   canvas top (y=0) → UV V=1 (zenith/North Pole, phi=π)
+  //   canvas bottom (y=H) → UV V=0 (nadir/South Pole, phi=0)
+  // Original image occupies canvas rows [yOff, yOff+h].
+  // After flipY: validVMax_uv (zenith side) = 1 - yOff/H
+  //              validVMin_uv (nadir side)  = 1 - (yOff+h)/H
+  // Polar angle: phi = V_uv * π
+  const H = canvas.height
+  const validVMin = 1 - (yOff + h) / H  // UV V at bottom of original image
+  const validVMax = 1 - yOff / H         // UV V at top of original image
+  const BUFFER = 0.01                    // small margin to avoid hard seams
+
+  return {
+    texture: tex,
+    minPolarAngle: Math.max(0, (validVMin + BUFFER) * Math.PI),
+    maxPolarAngle: Math.min(Math.PI, (validVMax - BUFFER) * Math.PI),
+  }
+}
+
 /* ── Panorama Sphere ── */
 
 function PanoramaSphere({
@@ -89,7 +171,7 @@ function PanoramaSphere({
 
   return (
     <mesh scale={[-1, 1, 1]} onClick={handleClick}>
-      <sphereGeometry args={[500, 60, 40]} />
+      <sphereGeometry args={[500, 64, 48]} />
       <meshBasicMaterial map={texture} side={2} />
     </mesh>
   )
@@ -113,9 +195,13 @@ function CameraController({ zoomLevel = 1 }: { zoomLevel?: number }) {
 function Controls({
   autoRotate = false,
   resetTrigger,
+  minPolarAngle = 0,
+  maxPolarAngle = Math.PI,
 }: {
   autoRotate?: boolean
   resetTrigger: number
+  minPolarAngle?: number
+  maxPolarAngle?: number
 }) {
   const controlsRef = useRef<any>(null)
 
@@ -138,6 +224,8 @@ function Controls({
       enableDamping
       autoRotate={autoRotate}
       autoRotateSpeed={0.4}
+      minPolarAngle={minPolarAngle}
+      maxPolarAngle={maxPolarAngle}
     />
   )
 }
@@ -158,11 +246,26 @@ export function PanoramaViewer({
   const [fadeOpacity, setFadeOpacity] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [resetTrigger, setResetTrigger] = useState(0)
+  const [polarLimits, setPolarLimits] = useState({ min: 0, max: Math.PI })
 
   // Refs to avoid stale closures in setTimeout callbacks
   const isTransitioningRef = useRef(false)
   const isFirstLoadRef = useRef(true)
   const currentUrlRef = useRef<string>('')
+
+  // Helper: apply normalize result (or raw texture) and set polar limits
+  const applyTexture = useCallback((t: Texture) => {
+    const result = normalizeEquirectangular(t.image as HTMLImageElement)
+    if (result) {
+      setTexture(result.texture)
+      setPolarLimits({ min: result.minPolarAngle, max: result.maxPolarAngle })
+    } else {
+      t.colorSpace = SRGBColorSpace
+      t.needsUpdate = true
+      setTexture(t)
+      setPolarLimits({ min: 0, max: Math.PI })
+    }
+  }, [])
 
   useEffect(() => {
     if (!imageUrl) return
@@ -180,9 +283,7 @@ export function PanoramaViewer({
       loader.load(
         imageUrl,
         (t) => {
-          t.colorSpace = SRGBColorSpace
-          t.needsUpdate = true
-          setTexture(t)
+          applyTexture(t)
           setFadeOpacity(1)
           setIsLoading(false)
         },
@@ -211,11 +312,8 @@ export function PanoramaViewer({
       loader.load(
         capturedUrl,
         (t) => {
-          t.colorSpace = SRGBColorSpace
-          t.needsUpdate = true
-
-          // Step 3: Swap texture and reset camera
-          setTexture(t)
+          // Step 3: Normalize aspect ratio and swap texture + reset polar limits
+          applyTexture(t)
           setResetTrigger((n) => n + 1)
           setIsLoading(false)
 
@@ -240,7 +338,7 @@ export function PanoramaViewer({
     }, 400) // wait for fade-out to complete
 
     return () => clearTimeout(timer)
-  }, [imageUrl])
+  }, [imageUrl, applyTexture])
 
   return (
     <div
@@ -265,7 +363,12 @@ export function PanoramaViewer({
         <PanoramaErrorBoundary>
           <Canvas camera={{ fov: 75, near: 0.1, far: 1000 }}>
             <CameraController zoomLevel={zoomLevel} />
-            <Controls autoRotate={autoRotate && !isEditing} resetTrigger={resetTrigger} />
+            <Controls
+              autoRotate={autoRotate && !isEditing}
+              resetTrigger={resetTrigger}
+              minPolarAngle={polarLimits.min}
+              maxPolarAngle={polarLimits.max}
+            />
             {texture && (
               <PanoramaSphere
                 texture={texture}

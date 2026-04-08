@@ -817,3 +817,46 @@ export const incrementFloorPlanExtractions = internalMutation({
     })
   },
 })
+
+// Reset floor plan extraction counter (called by monthly cron or admin)
+export const resetFloorPlanExtractions = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error('Not authenticated')
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) throw new Error('User not found')
+
+    await ctx.db.patch(user._id, { floorPlanExtractionsUsed: 0 })
+  },
+})
+
+// Internal: reset extraction counter by email (for CLI/cron use)
+export const resetFloorPlanExtractionsInternal = internalMutation({
+  args: { email: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (args.email) {
+      const user = await ctx.db
+        .query('users')
+        .withIndex('by_email', (q) => q.eq('email', args.email!))
+        .unique()
+      if (user) {
+        await ctx.db.patch(user._id, { floorPlanExtractionsUsed: 0 })
+        return { reset: true, email: args.email }
+      }
+      return { reset: false, error: 'User not found' }
+    }
+    // Reset all users
+    const users = await ctx.db.query('users').collect()
+    for (const user of users) {
+      if ((user.floorPlanExtractionsUsed ?? 0) > 0) {
+        await ctx.db.patch(user._id, { floorPlanExtractionsUsed: 0 })
+      }
+    }
+    return { reset: true, count: users.length }
+  },
+})

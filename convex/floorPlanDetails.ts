@@ -87,6 +87,53 @@ export const listByProjectWithUrls = query({
   },
 })
 
+/**
+ * Accepts a string that could be either a floorPlanProjects ID or a
+ * floorPlanDetails ID. Returns the relevant detail(s) with image URLs.
+ */
+export const listByFlexibleIdWithUrls = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return []
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+
+    // Try as floorPlanProjects ID
+    const projectId = ctx.db.normalizeId('floorPlanProjects', args.id)
+    if (projectId) {
+      const floorPlans = await ctx.db
+        .query('floorPlanDetails')
+        .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
+        .collect()
+
+      const withUrls = await Promise.all(
+        floorPlans.map(async (fp) => {
+          const imageUrl = await ctx.storage.getUrl(fp.imageStorageId)
+          return { ...fp, imageUrl: imageUrl ?? '' }
+        })
+      )
+      return withUrls.sort((a, b) => a.floorNumber - b.floorNumber)
+    }
+
+    // Try as floorPlanDetails ID — return just that detail
+    const detailId = ctx.db.normalizeId('floorPlanDetails', args.id)
+    if (detailId) {
+      const detail = await ctx.db.get(detailId)
+      if (!detail || detail.userId !== user._id) return []
+
+      const imageUrl = await ctx.storage.getUrl(detail.imageStorageId)
+      return [{ ...detail, imageUrl: imageUrl ?? '' }]
+    }
+
+    return []
+  },
+})
+
 export const updateGeometry = mutation({
   args: {
     floorPlanId: v.id('floorPlanDetails'),
@@ -97,6 +144,8 @@ export const updateGeometry = mutation({
       windows: v.optional(v.array(v.any())),
       fixtures: v.optional(v.array(v.any())),
       dimensions: v.optional(v.any()),
+      overallWidth: v.optional(v.number()),
+      overallHeight: v.optional(v.number()),
     }),
   },
   handler: async (ctx, args) => {

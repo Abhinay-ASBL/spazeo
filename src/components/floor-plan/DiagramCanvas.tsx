@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Stage, Layer, Line, Circle, Text, Rect, Group } from 'react-konva'
 import type Konva from 'konva'
 import {
@@ -271,7 +271,7 @@ export function DiagramCanvas() {
   }, [setViewportPosition])
 
   // Generate grid lines
-  const gridLines: JSX.Element[] = []
+  const gridLines: React.JSX.Element[] = []
   const gridRange = 50 // meters
   for (let i = -gridRange; i <= gridRange; i += GRID_SIZE) {
     gridLines.push(
@@ -461,7 +461,7 @@ export function DiagramCanvas() {
 
         {/* Doors/Windows layer */}
         <Layer>
-          {geometry.doors.map((door: Door) => {
+          {(geometry.doors ?? []).map((door: Door) => {
             const wall = geometry.walls.find((w) => w.id === door.wallId)
             if (!wall) return null
             const pt = pointOnWall(wall, door.position)
@@ -506,7 +506,7 @@ export function DiagramCanvas() {
             )
           })}
 
-          {geometry.windows.map((win: FloorPlanWindow) => {
+          {(geometry.windows ?? []).map((win: FloorPlanWindow) => {
             const wall = geometry.walls.find((w) => w.id === win.wallId)
             if (!wall) return null
             const pt = pointOnWall(wall, win.position)

@@ -106,7 +106,7 @@ export default function NewFloorPlanPage() {
             for (let i = 0; i < fpFile.rasterizedBlobs.length; i++) {
               const blob = fpFile.rasterizedBlobs[i]
               const rotated = await applyRotation(blob, fpFile.rotation)
-              const storageId = await uploadBlob(rotated, 'image/png')
+              const storageId = await uploadBlob(rotated, rotated.type || 'image/jpeg')
 
               const detailId = await createDetail({
                 projectId,
@@ -136,6 +136,9 @@ export default function NewFloorPlanPage() {
         // 3. Trigger extraction for each detail
         toast.loading('Starting AI extraction...', { id: toastId })
 
+        let extractionFailures = 0
+        let limitError = ''
+
         for (const { detailId, storageId } of detailIds) {
           try {
             await extractFloorPlan({
@@ -143,12 +146,23 @@ export default function NewFloorPlanPage() {
               imageStorageId: storageId as never,
             })
           } catch (err) {
+            extractionFailures++
+            const msg = err instanceof Error ? err.message : String(err)
+            if (msg.includes('limit reached')) {
+              limitError = msg
+              break // No point retrying other extractions
+            }
             console.error(`Extraction failed for ${detailId}:`, err)
-            // Continue with other extractions
           }
         }
 
-        toast.success(`${detailIds.length} floor plan${detailIds.length > 1 ? 's' : ''} submitted for extraction`, { id: toastId })
+        if (limitError) {
+          toast.error(limitError, { id: toastId })
+        } else if (extractionFailures > 0) {
+          toast(`${detailIds.length - extractionFailures}/${detailIds.length} floor plans submitted. ${extractionFailures} failed.`, { id: toastId })
+        } else {
+          toast.success(`${detailIds.length} floor plan${detailIds.length > 1 ? 's' : ''} submitted for extraction`, { id: toastId })
+        }
 
         // 4. Navigate to floor plan list
         router.push('/floor-plans')

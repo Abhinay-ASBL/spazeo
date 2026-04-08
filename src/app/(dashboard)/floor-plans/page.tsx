@@ -1,9 +1,12 @@
 'use client'
 
-import { useQuery } from 'convex/react'
+import { useState } from 'react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import Link from 'next/link'
-import { Plus, Map, Clock, Layers } from 'lucide-react'
+import { Plus, Map, Clock, Layers, Trash2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; animate?: boolean }> = {
   uploading: { bg: 'rgba(251,191,36,0.12)', text: '#FBBF24' },
@@ -22,6 +25,23 @@ function formatDate(ts: number): string {
 
 export default function FloorPlansPage() {
   const projects = useQuery(api.floorPlanProjects.listByUser)
+  const removeProject = useMutation(api.floorPlanProjects.remove)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<Id<'floorPlanProjects'> | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async (projectId: Id<'floorPlanProjects'>) => {
+    setDeleting(true)
+    try {
+      await removeProject({ projectId })
+      toast.success('Floor plan deleted')
+    } catch (err) {
+      toast.error('Failed to delete floor plan')
+      console.error(err)
+    } finally {
+      setDeleting(false)
+      setConfirmDeleteId(null)
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -97,44 +117,87 @@ export default function FloorPlansPage() {
           {projects.map((project) => {
             const statusStyle = STATUS_COLORS[project.status] ?? STATUS_COLORS.uploading
 
+            const isConfirming = confirmDeleteId === project._id
+
             return (
-              <Link
+              <div
                 key={project._id}
-                href={`/floor-plans/${project._id}/edit`}
-                className="rounded-xl p-5 transition-all duration-200 hover:border-[rgba(212,160,23,0.2)]"
+                className="group relative rounded-xl p-5 transition-all duration-200 hover:border-[rgba(212,160,23,0.2)]"
                 style={{
                   backgroundColor: '#1B1916',
                   border: '1px solid rgba(212,160,23,0.08)',
                 }}
               >
-                {/* Name + status */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <h3
-                    className="text-sm font-medium truncate"
-                    style={{ color: '#F5F3EF', fontFamily: 'var(--font-jakarta)' }}
-                  >
-                    {project.name}
-                  </h3>
-                  <span
-                    className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium capitalize${statusStyle.animate ? ' animate-pulse' : ''}`}
-                    style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
-                  >
-                    {project.status}
-                  </span>
-                </div>
+                <Link
+                  href={`/floor-plans/${project._id}/edit`}
+                  className="block"
+                >
+                  {/* Name + status */}
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <h3
+                      className="text-sm font-medium truncate"
+                      style={{ color: '#F5F3EF', fontFamily: 'var(--font-jakarta)' }}
+                    >
+                      {project.name}
+                    </h3>
+                    <span
+                      className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium capitalize${statusStyle.animate ? ' animate-pulse' : ''}`}
+                      style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                    >
+                      {project.status}
+                    </span>
+                  </div>
 
-                {/* Meta */}
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1.5 text-xs" style={{ color: '#6B6560' }}>
-                    <Layers size={12} strokeWidth={1.5} />
-                    {project.floorCount} floor{project.floorCount > 1 ? 's' : ''}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs" style={{ color: '#6B6560' }}>
-                    <Clock size={12} strokeWidth={1.5} />
-                    {formatDate(project.createdAt)}
-                  </span>
-                </div>
-              </Link>
+                  {/* Meta */}
+                  <div className="flex items-center gap-4">
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: '#6B6560' }}>
+                      <Layers size={12} strokeWidth={1.5} />
+                      {project.floorCount} floor{project.floorCount > 1 ? 's' : ''}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: '#6B6560' }}>
+                      <Clock size={12} strokeWidth={1.5} />
+                      {formatDate(project.createdAt)}
+                    </span>
+                  </div>
+                </Link>
+
+                {/* Delete button */}
+                {isConfirming ? (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center gap-3 rounded-xl"
+                    style={{ backgroundColor: 'rgba(10,9,8,0.92)' }}
+                  >
+                    <p className="text-xs" style={{ color: '#A8A29E' }}>Delete this floor plan?</p>
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="px-3 py-1 text-xs rounded-md transition-colors"
+                      style={{ color: '#A8A29E', border: '1px solid #2E2A24' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleDelete(project._id)}
+                      disabled={deleting}
+                      className="px-3 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50"
+                      style={{ backgroundColor: '#F87171', color: '#FFFFFF' }}
+                    >
+                      {deleting ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setConfirmDeleteId(project._id)
+                    }}
+                    className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity duration-150"
+                    style={{ backgroundColor: 'rgba(248,113,113,0.1)' }}
+                    aria-label={`Delete ${project.name}`}
+                  >
+                    <Trash2 size={14} strokeWidth={1.5} style={{ color: '#F87171' }} />
+                  </button>
+                )}
+              </div>
             )
           })}
         </div>

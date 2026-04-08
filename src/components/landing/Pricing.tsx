@@ -11,7 +11,7 @@ const PLANS = [
     period: 'forever',
     description: 'Perfect for trying out Spazeo with your first virtual tour.',
     features: [
-      '1 virtual tour',
+      '3 virtual tours',
       'Up to 10 scenes',
       'Basic 360° viewer',
       'Spazeo watermark',

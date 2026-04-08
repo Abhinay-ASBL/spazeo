@@ -6,6 +6,20 @@ import { api } from '../../../../../../convex/_generated/api'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import type { FloorPlanGeometry } from '@/stores/floorPlanEditorStore'
 import { useFloorPlanEditorStore } from '@/stores/floorPlanEditorStore'
+
+function normalizeGeometry(g: unknown): FloorPlanGeometry {
+  const geo = g as Partial<FloorPlanGeometry>
+  return {
+    walls: geo.walls ?? [],
+    rooms: geo.rooms ?? [],
+    doors: geo.doors ?? [],
+    windows: geo.windows ?? [],
+    fixtures: geo.fixtures ?? [],
+    dimensions: geo.dimensions ?? [],
+    overallWidth: geo.overallWidth,
+    overallHeight: geo.overallHeight,
+  }
+}
 import { ExtractionProgress } from '@/components/floor-plan/ExtractionProgress'
 import { AnimatedBuildUp } from '@/components/floor-plan/AnimatedBuildUp'
 import { ChevronRight, Loader2 } from 'lucide-react'
@@ -27,11 +41,16 @@ interface FloorPlanEditorShellProps {
 
 export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
   const router = useRouter()
-  const id = projectId as Id<'floorPlanProjects'>
 
-  const project = useQuery(api.floorPlanProjects.getById, { projectId: id })
-  const floorPlans = useQuery(api.floorPlanDetails.listByProjectWithUrls, {
-    projectId: id,
+  // Use flexible queries that accept either floorPlanProjects or floorPlanDetails IDs
+  const projectResult = useQuery(api.floorPlanProjects.getByFlexibleId, { id: projectId })
+  const project = useMemo(() => {
+    if (projectResult === undefined) return undefined // loading
+    if (projectResult === null) return null // not found
+    return projectResult.project as { name?: string; _id?: unknown } | null
+  }, [projectResult])
+  const floorPlans = useQuery(api.floorPlanDetails.listByFlexibleIdWithUrls, {
+    id: projectId,
   })
 
   const [activeFloorIndex, setActiveFloorIndex] = useState(0)
@@ -80,7 +99,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
       setPageState('extracting')
     } else if (fp.extractionStatus === 'completed' && fp.geometry && !editingGeometry) {
       // Already completed -- go straight to editing
-      setEditingGeometry(fp.geometry as FloorPlanGeometry)
+      setEditingGeometry(normalizeGeometry(fp.geometry))
       setPageState('editing')
     } else if (fp.extractionStatus === 'failed' && !editingGeometry) {
       setPageState('error')
@@ -89,7 +108,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
 
   const handleExtractionComplete = useCallback(
     (geometry: FloorPlanGeometry) => {
-      setBuildUpGeometry(geometry)
+      setBuildUpGeometry(normalizeGeometry(geometry))
       setPageState('build-up')
     },
     []

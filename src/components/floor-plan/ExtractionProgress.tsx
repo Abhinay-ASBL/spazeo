@@ -40,7 +40,19 @@ export function ExtractionProgress({
   onError,
 }: ExtractionProgressProps) {
   const job = useQuery(api.floorPlanJobs.getByFloorPlan, { floorPlanId })
+  const floorPlan = useQuery(api.floorPlanDetails.getById, { floorPlanId })
   const hasCompletedRef = useRef(false)
+  const mountedAtRef = useRef(Date.now())
+
+  // If floor plan already completed (e.g., job finished before navigating here)
+  useEffect(() => {
+    if (hasCompletedRef.current) return
+    if (floorPlan && floorPlan.extractionStatus === 'completed' && floorPlan.geometry) {
+      hasCompletedRef.current = true
+      toast.success('Floor plan extracted successfully')
+      onComplete(floorPlan.geometry as FloorPlanGeometry)
+    }
+  }, [floorPlan, onComplete])
 
   useEffect(() => {
     if (!job || hasCompletedRef.current) return
@@ -49,7 +61,6 @@ export function ExtractionProgress({
       hasCompletedRef.current = true
       toast.success('Floor plan extracted successfully')
       const geometry = job.output as FloorPlanGeometry
-      // If partial results (walls but no rooms), still pass through
       onComplete(geometry)
     }
 
@@ -57,6 +68,12 @@ export function ExtractionProgress({
       onError()
     }
   }, [job, onComplete, onError])
+
+  // No job exists and detail is still pending — extraction never started
+  const noJobExists = job === null && floorPlan !== undefined && floorPlan !== null
+  const stuckPending = noJobExists && (floorPlan.extractionStatus === 'pending' || floorPlan.extractionStatus === 'failed')
+  // Timeout: if stuck in processing for over 2 minutes
+  const timedOut = !hasCompletedRef.current && job?.status === 'processing' && (Date.now() - mountedAtRef.current > 120_000)
 
   const statusText =
     job?.status === 'processing'
@@ -115,6 +132,65 @@ export function ExtractionProgress({
             >
               <RefreshCw className="h-4 w-4" />
               Start Over
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Stuck state — no job was created (e.g., plan limit reached before job creation)
+  if (stuckPending || timedOut) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div
+          className="rounded-xl p-8 text-center max-w-md"
+          style={{ backgroundColor: '#1B1916' }}
+        >
+          <div
+            className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+            style={{ backgroundColor: 'rgba(248, 113, 113, 0.15)' }}
+          >
+            <AlertTriangle className="h-6 w-6" style={{ color: '#F87171' }} />
+          </div>
+
+          <h3
+            className="text-lg font-semibold mb-2"
+            style={{ color: '#F5F3EF', fontFamily: 'var(--font-jakarta)' }}
+          >
+            {timedOut ? 'Extraction Timed Out' : 'Extraction Not Started'}
+          </h3>
+
+          <p className="text-sm mb-6" style={{ color: '#A8A29E' }}>
+            {timedOut
+              ? 'The extraction is taking longer than expected. You can start over or continue editing manually.'
+              : 'The extraction could not be started. This may be due to a plan limit or a temporary issue.'}
+          </p>
+
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => onComplete(EMPTY_GEOMETRY)}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: 'transparent',
+                border: '1.5px solid #D4A017',
+                color: '#D4A017',
+              }}
+            >
+              <Edit3 className="h-4 w-4" />
+              Edit Manually
+            </button>
+
+            <Link
+              href="/floor-plans/new"
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: '#D4A017',
+                color: '#0A0908',
+              }}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try Again
             </Link>
           </div>
         </div>

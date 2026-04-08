@@ -124,7 +124,7 @@ SPAZEO.
 
 ### Theme: Dark Cinematic
 Spazeo uses a **dark-first** design. All backgrounds are warm-tinted carbon blacks.
-Light themes are not supported — the entire interface is dark.
+A light theme is available for embedded widgets, print previews, or partner integrations (see Section 5b).
 
 ### Primary Colors — Brand Gold
 | Swatch | Name | HEX | RGB | Usage |
