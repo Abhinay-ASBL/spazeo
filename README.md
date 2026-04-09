@@ -4,7 +4,7 @@
 
 Spazeo converts panorama photos into immersive, walkable 3D experiences using Gaussian Splatting, AI staging, depth estimation, and smart search.
 
----
+--- 
 
 ## Tech Stack
 
