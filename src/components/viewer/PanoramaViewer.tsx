@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef, useMemo, Component, type ReactNode } from 'react'
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
-import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace } from 'three'
+import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter } from 'three'
 import { OrbitControls } from '@react-three/drei'
 import { HotspotMarker } from './HotspotMarker'
 import { ImageOff, Loader2 } from 'lucide-react'
@@ -128,6 +128,8 @@ function normalizeEquirectangular(img: HTMLImageElement): NormalizeResult | null
 
   const tex = new Texture(canvas)
   tex.colorSpace = SRGBColorSpace
+  tex.minFilter = LinearMipMapLinearFilter
+  tex.generateMipmaps = true
   tex.needsUpdate = true
 
   // Compute polar limits from the padded canvas (with flipY applied):
@@ -184,7 +186,7 @@ function CameraController({ zoomLevel = 1 }: { zoomLevel?: number }) {
   const { camera } = useThree()
   useEffect(() => {
     if (camera instanceof PerspectiveCamera) {
-      camera.fov = 50 / zoomLevel
+      camera.fov = 65 / zoomLevel
       camera.updateProjectionMatrix()
     }
   }, [camera, zoomLevel])
@@ -262,6 +264,8 @@ export function PanoramaViewer({
       setPolarLimits({ min: result.minPolarAngle, max: result.maxPolarAngle })
     } else {
       t.colorSpace = SRGBColorSpace
+      t.minFilter = LinearMipMapLinearFilter
+      t.generateMipmaps = true
       t.needsUpdate = true
       setTexture(t)
       setPolarLimits({ min: 0, max: Math.PI })
@@ -387,7 +391,7 @@ export function PanoramaViewer({
         }}
       >
         <PanoramaErrorBoundary>
-          <Canvas camera={{ fov: 50, near: 0.1, far: 1000 }}>
+          <Canvas camera={{ fov: 65, near: 0.1, far: 1000 }}>
             <CameraController zoomLevel={zoomLevel} />
             <Controls
               autoRotate={autoRotate && !isEditing}
