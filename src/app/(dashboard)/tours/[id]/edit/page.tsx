@@ -44,6 +44,7 @@ import {
   Key,
   Pencil,
   Check,
+  CopyPlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { CaptureUpload } from '@/components/tour/CaptureUpload'
@@ -136,6 +137,7 @@ export default function TourEditorPage() {
   const createHotspot = useMutation(api.hotspots.create)
   const updateHotspot = useMutation(api.hotspots.update)
   const removeHotspot = useMutation(api.hotspots.remove)
+  const copyHotspotsToAllScenes = useMutation(api.hotspots.copyToAllScenes)
   const setTourPassword = useAction(api.tours.setTourPassword)
 
   // AI analysis disabled
@@ -170,6 +172,8 @@ export default function TourEditorPage() {
   const [hotspotCtaUrl, setHotspotCtaUrl] = useState('')
   const [hotspotMarkerStyle, setHotspotMarkerStyle] = useState<'ring' | 'arrow' | 'dot' | 'label'>('ring')
   const [hotspotAccentColor, setHotspotAccentColor] = useState('')
+
+  const [replicatingHotspots, setReplicatingHotspots] = useState(false)
 
   // Hotspot editing state
   const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null)
@@ -527,7 +531,7 @@ export default function TourEditorPage() {
         panelLayout: hotspotPanelLayout,
         ctaLabel: hotspotCtaLabel || undefined,
         ctaUrl: hotspotCtaUrl || undefined,
-        markerStyle: hotspotType === 'navigation' ? hotspotMarkerStyle : undefined,
+        markerStyle: hotspotMarkerStyle || undefined,
         accentColor: hotspotAccentColor || undefined,
       })
       toast.success('Hotspot added')
@@ -596,6 +600,21 @@ export default function TourEditorPage() {
     },
     [removeHotspot]
   )
+
+  /* ── Replicate all hotspots from active scene to every other scene ── */
+  const handleReplicateHotspots = useCallback(async () => {
+    if (!activeScene || replicatingHotspots) return
+    setReplicatingHotspots(true)
+    try {
+      const result = await copyHotspotsToAllScenes({ sourceSceneId: activeScene._id, tourId })
+      toast.success(`Replicated to ${sceneList.length - 1} scene${sceneList.length - 1 !== 1 ? 's' : ''} (${result.copied} hotspots)`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Replication failed'
+      toast.error(msg)
+    } finally {
+      setReplicatingHotspots(false)
+    }
+  }, [activeScene, copyHotspotsToAllScenes, tourId, sceneList.length, replicatingHotspots])
 
   /* ── Start editing a hotspot ── */
   const startEditingHotspot = useCallback(
@@ -1331,8 +1350,8 @@ export default function TourEditorPage() {
                   </div>
                 )}
 
-                {/* Navigation: marker style picker */}
-                {hotspotType === 'navigation' && (
+                {/* Marker style picker — available for all types */}
+                {true && (
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
                       Marker Style
@@ -1799,32 +1818,51 @@ export default function TourEditorPage() {
                   <span className="text-xs font-medium" style={{ color: '#A8A29E' }}>
                     Hotspots ({activeSceneHotspots.length})
                   </span>
-                  <button
-                    onClick={() => {
-                      setIsPlacingHotspot(!isPlacingHotspot)
-                      setPendingPosition(null)
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-all"
-                    style={{
-                      backgroundColor: isPlacingHotspot
-                        ? 'rgba(45,212,191,0.15)'
-                        : 'rgba(212,160,23,0.08)',
-                      color: isPlacingHotspot ? '#2DD4BF' : '#D4A017',
-                      border: isPlacingHotspot
-                        ? '1px solid rgba(45,212,191,0.3)'
-                        : '1px solid transparent',
-                    }}
-                  >
-                    {isPlacingHotspot ? (
-                      <>
-                        <X size={11} /> Cancel
-                      </>
-                    ) : (
-                      <>
-                        <MousePointer2 size={11} /> Add
-                      </>
+                  <div className="flex items-center gap-1.5">
+                    {/* Replicate button — only when there are hotspots and multiple scenes */}
+                    {activeSceneHotspots.length > 0 && sceneList.length > 1 && (
+                      <button
+                        onClick={handleReplicateHotspots}
+                        disabled={replicatingHotspots}
+                        title="Replicate all hotspots from this scene to every other scene"
+                        className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-all disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'rgba(251,122,84,0.08)',
+                          color: '#FB7A54',
+                          border: '1px solid transparent',
+                        }}
+                      >
+                        {replicatingHotspots ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <CopyPlus size={11} />
+                        )}
+                        Replicate
+                      </button>
                     )}
-                  </button>
+                    <button
+                      onClick={() => {
+                        setIsPlacingHotspot(!isPlacingHotspot)
+                        setPendingPosition(null)
+                      }}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-all"
+                      style={{
+                        backgroundColor: isPlacingHotspot
+                          ? 'rgba(45,212,191,0.15)'
+                          : 'rgba(212,160,23,0.08)',
+                        color: isPlacingHotspot ? '#2DD4BF' : '#D4A017',
+                        border: isPlacingHotspot
+                          ? '1px solid rgba(45,212,191,0.3)'
+                          : '1px solid transparent',
+                      }}
+                    >
+                      {isPlacingHotspot ? (
+                        <><X size={11} /> Cancel</>
+                      ) : (
+                        <><MousePointer2 size={11} /> Add</>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Hotspot list */}
@@ -1965,9 +2003,8 @@ export default function TourEditorPage() {
                             </div>
                           )}
 
-                          {/* Marker Style — navigation only */}
-                          {hotspot.type === 'navigation' && (
-                            <div className="flex flex-col gap-1">
+                          {/* Marker Style — all types */}
+                          <div className="flex flex-col gap-1">
                               <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Marker Style</label>
                               <div style={{ display: 'flex', gap: 4 }}>
                                 {([
@@ -1996,7 +2033,6 @@ export default function TourEditorPage() {
                                 ))}
                               </div>
                             </div>
-                          )}
 
                           {/* Icon picker */}
                           <div className="flex flex-col gap-1">

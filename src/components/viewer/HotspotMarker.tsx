@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Html } from '@react-three/drei'
+import { useFrame, useThree } from '@react-three/fiber'
+import { Vector3 } from 'three'
 import {
   Navigation,
   Info,
@@ -51,6 +53,7 @@ interface Props {
   hotspot: HotspotData
   onClick: () => void
   isSelected?: boolean
+  labelLineHeight?: number  // stagger height to prevent label collision
 }
 
 const TYPE_CONFIG = {
@@ -80,7 +83,187 @@ const ICON_REGISTRY: Record<string, React.ComponentType<{ size?: number; strokeW
   key: Key,
 }
 
-export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
+/* ── LabelMarker ─────────────────────────────────────────────────────────
+ * Separate component so hooks (useFrame, useThree) are always called at
+ * the component top level, not inside a conditional.
+ *
+ * Spring physics:
+ *   springPos/springVel drive opacity + scale.
+ *   When a hotspot enters camera view the spring overshoots slightly,
+ *   creating a natural "pop" bounce.  When the camera rotates away the
+ *   spring decays to 0 (auto-hide).
+ * ─────────────────────────────────────────────────────────────────────── */
+function LabelMarker({
+  hotspot,
+  config,
+  onClick,
+  lineHeight = 22,
+}: {
+  hotspot: HotspotData
+  config: (typeof TYPE_CONFIG)[keyof typeof TYPE_CONFIG]
+  onClick: () => void
+  lineHeight?: number
+}) {
+  const { camera } = useThree()
+  const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
+  const [isHovered, setIsHovered] = useState(false)
+
+  const wrapRef   = useRef<HTMLDivElement>(null)
+  const springPos = useRef(0)   // current animated value  0→1
+  const springVel = useRef(0)   // velocity (for spring overshoot)
+  const hotVec    = useRef(new Vector3(hotspot.position.x, hotspot.position.y, hotspot.position.z))
+
+  const labelColor   = hotspot.accentColor || '#1A6BE8'
+  const displayTitle = hotspot.title || hotspot.tooltip
+  const displaySub   = hotspot.description || hotspot.content
+
+  // Per-frame spring update — no React state, direct DOM mutation for performance
+  useFrame((_, delta) => {
+    if (!wrapRef.current) return
+
+    // Camera direction (from camera toward sphere center)
+    const camDir = camera.position.clone().normalize().negate()
+    const dot    = camDir.dot(hotVec.current.clone().normalize())
+
+    // Target: fully visible when dot > 0.30 (≈72° from cam center)
+    //         start fading in at dot > 0.10
+    const target = dot > 0.10 ? Math.min(1, (dot - 0.10) / 0.35) : 0
+
+    // Frame-rate-independent spring step
+    const dt          = Math.min(delta, 0.05) * 60          // normalize to 60 fps
+    const stiffness   = 0.18 * dt
+    const damping     = 0.72
+
+    springVel.current += (target - springPos.current) * stiffness
+    springVel.current *= damping
+    springPos.current  = Math.max(0, springPos.current + springVel.current)
+
+    const s       = springPos.current
+    // Scale: ease-out-back gives the "pop" overshoot on enter
+    const scale   = 0.3 + 0.7 * (s < 1 ? s * s * (3 - 2 * s) : s)  // smoothstep but allows >1
+    const opacity = Math.min(1, s * s)
+
+    wrapRef.current.style.opacity        = opacity.toFixed(3)
+    wrapRef.current.style.transform      = `scale(${scale.toFixed(3)})`
+    wrapRef.current.style.pointerEvents  = s > 0.35 ? 'auto' : 'none'
+  })
+
+  const handleClick = useCallback(() => {
+    if (hotspot.type === 'navigation') {
+      onClick()
+    } else {
+      setActiveHotspot(hotspot._id)
+    }
+  }, [hotspot.type, hotspot._id, onClick, setActiveHotspot])
+
+  return (
+    <Html
+      position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
+      center
+      zIndexRange={[10, 0]}
+    >
+      {/* Outer wrapper — spring drives opacity + scale on this element */}
+      <div
+        ref={wrapRef}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          userSelect: 'none',
+          opacity: 0,
+          transform: 'scale(0.3)',
+          transformOrigin: 'bottom center',  // grow from the dot upward
+          pointerEvents: 'none',
+        }}
+      >
+        {/* Pill label */}
+        <button
+          onClick={handleClick}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          aria-label={displayTitle ?? config.label}
+          style={{
+            background: `linear-gradient(135deg, ${labelColor}F5 0%, ${labelColor}CC 100%)`,
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.25)',
+            borderRadius: 9999,
+            padding: displaySub ? '6px 14px 5px' : '7px 14px',
+            cursor: 'pointer',
+            outline: 'none',
+            transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+            transition: 'transform 180ms ease, box-shadow 180ms ease',
+            boxShadow: isHovered
+              ? `0 8px 24px rgba(0,0,0,0.55), 0 0 0 1.5px ${labelColor}80`
+              : `0 3px 14px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3)`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 0,
+            maxWidth: 200,
+            minWidth: 80,
+            textAlign: 'center',
+          }}
+        >
+          {displayTitle && (
+            <span style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: '#ffffff',
+              fontFamily: 'var(--font-dmsans)',
+              lineHeight: 1.35,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 185,
+              display: 'block',
+              letterSpacing: '0.01em',
+            }}>
+              {displayTitle}
+            </span>
+          )}
+          {displaySub && (
+            <span style={{
+              fontSize: 10.5,
+              fontWeight: 500,
+              color: 'rgba(255,255,255,0.88)',
+              fontFamily: 'var(--font-dmsans)',
+              lineHeight: 1.3,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 185,
+              display: 'block',
+              marginTop: 1,
+            }}>
+              {displaySub}
+            </span>
+          )}
+        </button>
+
+        {/* Connecting line — height varies per stagger slot */}
+        <div style={{
+          width: 2,
+          height: lineHeight,
+          background: `linear-gradient(to bottom, ${labelColor}, ${labelColor}50)`,
+        }} />
+
+        {/* Anchor dot */}
+        <div style={{
+          width: 12,
+          height: 12,
+          borderRadius: '50%',
+          backgroundColor: labelColor,
+          border: '2.5px solid rgba(255,255,255,0.85)',
+          boxShadow: `0 0 0 3px ${labelColor}50, 0 2px 6px rgba(0,0,0,0.4)`,
+          flexShrink: 0,
+        }} />
+      </div>
+    </Html>
+  )
+}
+
+export function HotspotMarker({ hotspot, onClick, isSelected, labelLineHeight }: Props) {
   const [isHovered, setIsHovered] = useState(false)
   const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
   const config = TYPE_CONFIG[hotspot.type] ?? TYPE_CONFIG.navigation
@@ -93,6 +276,18 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
 
   // Visibility toggle — return null to skip rendering hidden hotspots
   if (hotspot.visible === false) return null
+
+  /* ── Label style — delegate to LabelMarker (spring physics + auto-hide) ── */
+  if (hotspot.markerStyle === 'label') {
+    return (
+      <LabelMarker
+        hotspot={hotspot}
+        config={config}
+        onClick={onClick}
+        lineHeight={labelLineHeight ?? 22}
+      />
+    )
+  }
 
   if (hotspot.type === 'navigation') {
     // Derive horizontal yaw angle from position on sphere

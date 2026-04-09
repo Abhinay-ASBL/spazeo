@@ -112,6 +112,42 @@ export const remove = mutation({
   },
 })
 
+export const copyToAllScenes = mutation({
+  args: {
+    sourceSceneId: v.id('scenes'),
+    tourId: v.id('tours'),
+  },
+  handler: async (ctx, { sourceSceneId, tourId }) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error('Not authenticated')
+
+    const sourceHotspots = await ctx.db
+      .query('hotspots')
+      .withIndex('by_sceneId', (q) => q.eq('sceneId', sourceSceneId))
+      .collect()
+
+    if (sourceHotspots.length === 0) return { copied: 0 }
+
+    const allScenes = await ctx.db
+      .query('scenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
+      .collect()
+
+    const targetScenes = allScenes.filter((s) => s._id !== sourceSceneId)
+
+    let copied = 0
+    for (const scene of targetScenes) {
+      for (const h of sourceHotspots) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { _id, _creationTime, sceneId, ...rest } = h
+        await ctx.db.insert('hotspots', { ...rest, sceneId: scene._id })
+        copied++
+      }
+    }
+    return { copied }
+  },
+})
+
 // Phase 5: Bulk-insert doorway hotspots for a floor-plan-derived scene.
 // Used standalone from public pages after a tour has already been created.
 export const insertDoorwayHotspots = mutation({

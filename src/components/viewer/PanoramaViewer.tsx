@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useState, useRef, Component, type ReactNode } from 'react'
+import { useEffect, useCallback, useState, useRef, useMemo, Component, type ReactNode } from 'react'
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
 import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace } from 'three'
 import { OrbitControls } from '@react-three/drei'
@@ -53,6 +53,7 @@ interface HotspotData {
   title?: string
   description?: string
   imageUrl?: string | null
+  markerStyle?: 'ring' | 'arrow' | 'dot' | 'label'
 }
 
 interface Props {
@@ -99,18 +100,18 @@ function normalizeEquirectangular(img: HTMLImageElement): NormalizeResult | null
 
   const ar = w / h
   // Already close to 2:1 — no padding needed
-  if (ar >= 1.9 && ar <= 2.1) return null
+  if (ar >= 1.95 && ar <= 2.05) return null
 
   const canvas = document.createElement('canvas')
   let yOff = 0
 
-  if (ar > 2.1) {
-    // Wider than 2:1 → keep width, expand height to width/2
+  if (ar > 2.0) {
+    // Wider than 2:1 → keep width, expand height to width/2 (black bars top/bottom)
     canvas.width = w
     canvas.height = Math.round(w / 2)
     yOff = Math.round((canvas.height - h) / 2)
   } else {
-    // Narrower than 2:1 → keep height, expand width to height*2
+    // Narrower than 2:1 → keep height, expand width to height*2 (black bars left/right)
     canvas.width = Math.round(h * 2)
     canvas.height = h
     // No vertical padding, so full polar range is valid
@@ -171,7 +172,7 @@ function PanoramaSphere({
 
   return (
     <mesh scale={[-1, 1, 1]} onClick={handleClick}>
-      <sphereGeometry args={[500, 64, 48]} />
+      <sphereGeometry args={[500, 128, 64]} />
       <meshBasicMaterial map={texture} side={2} />
     </mesh>
   )
@@ -183,7 +184,7 @@ function CameraController({ zoomLevel = 1 }: { zoomLevel?: number }) {
   const { camera } = useThree()
   useEffect(() => {
     if (camera instanceof PerspectiveCamera) {
-      camera.fov = 75 / zoomLevel
+      camera.fov = 50 / zoomLevel
       camera.updateProjectionMatrix()
     }
   }, [camera, zoomLevel])
@@ -340,6 +341,31 @@ export function PanoramaViewer({
     return () => clearTimeout(timer)
   }, [imageUrl, applyTexture])
 
+  // Compute stagger line heights for label hotspots so pills don't overlap.
+  // Sort by yaw angle, then assign heights from a stepped ladder so nearby
+  // labels get different heights. Non-label hotspots are not included.
+  const labelLineHeights = useMemo(() => {
+    const labelHotspots = hotspots.filter((h) => h.markerStyle === 'label')
+    if (labelHotspots.length <= 1) return new Map<string, number>()
+
+    // Compute yaw angle (horizontal bearing) for each label hotspot
+    const withYaw = labelHotspots.map((h) => ({
+      id: h._id,
+      yaw: Math.atan2(h.position.x, -h.position.z), // -π to π
+    }))
+    // Sort by yaw so we process them left-to-right around the sphere
+    withYaw.sort((a, b) => a.yaw - b.yaw)
+
+    // Assign heights from a stepped ladder that cycles through offsets.
+    // This ensures adjacent hotspots get distinct heights.
+    const steps = [20, 52, 36, 68, 28, 60, 44]
+    const map = new Map<string, number>()
+    withYaw.forEach(({ id }, i) => {
+      map.set(id, steps[i % steps.length])
+    })
+    return map
+  }, [hotspots])
+
   return (
     <div
       style={{
@@ -361,7 +387,7 @@ export function PanoramaViewer({
         }}
       >
         <PanoramaErrorBoundary>
-          <Canvas camera={{ fov: 75, near: 0.1, far: 1000 }}>
+          <Canvas camera={{ fov: 50, near: 0.1, far: 1000 }}>
             <CameraController zoomLevel={zoomLevel} />
             <Controls
               autoRotate={autoRotate && !isEditing}
@@ -383,6 +409,7 @@ export function PanoramaViewer({
                 key={hotspot._id}
                 hotspot={hotspot}
                 onClick={() => onHotspotClick?.(hotspot)}
+                labelLineHeight={labelLineHeights.get(hotspot._id)}
               />
             ))}
           </Canvas>
