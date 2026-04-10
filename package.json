@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "TURBOPACK=0 next build",
-    "vercel-build": "npx convex codegen && TURBOPACK=0 next build",
+    "build": "next build",
+    "vercel-build": "npx convex codegen && next build",
     "start": "next start",
     "lint": "eslint"
   },
