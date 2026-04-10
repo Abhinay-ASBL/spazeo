@@ -33,7 +33,7 @@ type InputType = 'video' | 'photos'
 const ACTIVE_STATUSES = ['uploading', 'queued', 'extracting_frames', 'reconstructing', 'compressing']
 
 const VIDEO_MAX_SIZE = 500 * 1024 * 1024 // 500MB
-const PHOTO_MAX_SIZE = 50 * 1024 * 1024  // 50MB per photo
+const PHOTO_MAX_SIZE = 100 * 1024 * 1024 // 100MB per photo
 const PHOTO_MIN_COUNT = 10
 const PHOTO_MAX_COUNT = 30
 

@@ -60,7 +60,7 @@ export function UploadZone({ onUpload, maxFiles, className }: UploadZoneProps) {
       'image/png': ['.png'],
       'image/webp': ['.webp'],
     },
-    maxSize: 52428800,
+    maxSize: 104857600,
     multiple: true,
     maxFiles,
   })
