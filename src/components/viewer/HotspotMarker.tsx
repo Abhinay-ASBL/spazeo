@@ -113,7 +113,7 @@ function LabelMarker({
   const springVel = useRef(0)   // velocity (for spring overshoot)
   const hotVec    = useRef(new Vector3(hotspot.position.x, hotspot.position.y, hotspot.position.z))
 
-  const labelColor   = hotspot.accentColor || '#1A6BE8'
+  const labelColor   = hotspot.accentColor || config.color
   const displayTitle = hotspot.title || hotspot.tooltip
   const displaySub   = hotspot.description || hotspot.content
 
@@ -241,23 +241,33 @@ function LabelMarker({
           )}
         </button>
 
-        {/* Connecting line — height varies per stagger slot */}
+        {/* Connecting line */}
         <div style={{
-          width: 2,
+          width: 1.5,
           height: lineHeight,
-          background: `linear-gradient(to bottom, ${labelColor}, ${labelColor}50)`,
+          background: `linear-gradient(to bottom, ${labelColor}DD, ${labelColor}30)`,
         }} />
 
-        {/* Anchor dot */}
-        <div style={{
-          width: 12,
-          height: 12,
-          borderRadius: '50%',
-          backgroundColor: labelColor,
-          border: '2.5px solid rgba(255,255,255,0.85)',
-          boxShadow: `0 0 0 3px ${labelColor}50, 0 2px 6px rgba(0,0,0,0.4)`,
-          flexShrink: 0,
-        }} />
+        {/* Anchor dot — marks the exact selected point */}
+        <div style={{ position: 'relative', flexShrink: 0, width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {/* Pulse ring */}
+          <span style={{
+            position: 'absolute',
+            inset: -4,
+            borderRadius: '50%',
+            border: `1.5px solid ${labelColor}`,
+            animation: 'hotspot-pulse 2s ease-out infinite',
+            pointerEvents: 'none',
+          }} />
+          <div style={{
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            backgroundColor: labelColor,
+            border: '2px solid rgba(255,255,255,0.9)',
+            boxShadow: `0 0 0 2px ${labelColor}60, 0 2px 6px rgba(0,0,0,0.5)`,
+          }} />
+        </div>
       </div>
     </Html>
   )
@@ -277,14 +287,14 @@ export function HotspotMarker({ hotspot, onClick, isSelected, labelLineHeight }:
   // Visibility toggle — return null to skip rendering hidden hotspots
   if (hotspot.visible === false) return null
 
-  /* ── Label style — delegate to LabelMarker (spring physics + auto-hide) ── */
-  if (hotspot.markerStyle === 'label') {
+  /* ── Label style OR info type — callout: dot → line → label above ── */
+  if (hotspot.markerStyle === 'label' || hotspot.type === 'info') {
     return (
       <LabelMarker
         hotspot={hotspot}
         config={config}
         onClick={onClick}
-        lineHeight={labelLineHeight ?? 22}
+        lineHeight={labelLineHeight ?? 32}
       />
     )
   }
