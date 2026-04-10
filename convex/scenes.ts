@@ -77,7 +77,7 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -155,7 +155,7 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const { sceneId, ...updates } = args
@@ -177,7 +177,7 @@ export const reorder = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     for (const { sceneId, order } of args.scenes) {
@@ -192,7 +192,7 @@ export const setCover = mutation({
     sceneId: v.id('scenes'),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     await ctx.db.patch(args.tourId, { coverSceneId: args.sceneId })
@@ -205,7 +205,7 @@ export const replaceImage = mutation({
     newImageStorageId: v.id('_storage'),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const scene = await ctx.db.get(args.sceneId)
@@ -232,7 +232,7 @@ export const replaceImage = mutation({
 export const remove = mutation({
   args: { sceneId: v.id('scenes') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db

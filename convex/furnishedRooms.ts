@@ -7,7 +7,7 @@ export const create = mutation({
     title: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     // Find user by clerkId
@@ -114,7 +114,7 @@ export const getBySlug = query({
 export const getByTourId = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const rooms = await ctx.db
@@ -140,7 +140,7 @@ export const savePlacements = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     // Verify room exists
@@ -175,7 +175,7 @@ export const savePlacements = mutation({
 export const deleteRoom = mutation({
   args: { furnishedRoomId: v.id('furnishedRooms') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     // Delete all placements for this room

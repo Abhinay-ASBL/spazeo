@@ -36,7 +36,7 @@ export const getByBuilding = query({
     endDate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -68,7 +68,7 @@ export const getByBuilding = query({
 export const getOverview = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db
@@ -140,7 +140,7 @@ export const getOverview = query({
 export const getFloorHeatmap = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -173,7 +173,7 @@ export const getFloorHeatmap = query({
 export const getUnitInteractions = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -206,7 +206,7 @@ export const getUnitInteractions = query({
 export const getViewComparisons = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db

@@ -34,7 +34,7 @@ const PRICE_IDS: Record<string, Record<string, string>> = {
 export const getCurrent = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db
@@ -53,7 +53,7 @@ export const getCurrent = query({
 export const getUsage = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db
@@ -207,7 +207,7 @@ export const createCheckoutSession = action({
     interval: v.union(v.literal('monthly'), v.literal('annual')),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.runQuery(internal.users.getByClerkIdInternal, {
@@ -263,7 +263,7 @@ export const createCheckoutSession = action({
 export const createCustomerPortalSession = action({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.runQuery(internal.users.getByClerkIdInternal, {
@@ -294,7 +294,7 @@ export const createCustomerPortalSession = action({
 export const cancel = action({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.runQuery(internal.users.getByClerkIdInternal, {
@@ -334,7 +334,7 @@ export const cancel = action({
 export const getInvoices = action({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.runQuery(internal.users.getByClerkIdInternal, {

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, Component } from 'react'
+import type { ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { useQuery, useMutation } from 'convex/react'
 import { useAuth } from '@clerk/nextjs'
@@ -12,12 +13,58 @@ import { ConnectionStatus } from '@/components/ui/ConnectionStatus'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { ShortcutsOverlay } from '@/components/dashboard/ShortcutsOverlay'
 
+// Catches transient Convex auth errors on first load (timing issue during Clerk
+// OAuth callback) and silently retries instead of showing "Something went wrong".
+class ConvexRetryBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; retries: number }
+> {
+  private timer: ReturnType<typeof setTimeout> | null = null
+
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false, retries: 0 }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidUpdate(_: unknown, prev: { hasError: boolean }) {
+    if (this.state.hasError && !prev.hasError && this.state.retries < 5) {
+      this.timer = setTimeout(() => {
+        this.setState(s => ({ hasError: false, retries: s.retries + 1 }))
+      }, 800)
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.timer) clearTimeout(this.timer)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0A0908' }}>
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 size={32} className="animate-spin" style={{ color: '#D4A017' }} />
+            <p className="text-sm" style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}>
+              Loading your workspace...
+            </p>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 const Sidebar = dynamic(
   () => import('@/components/layout/Sidebar').then((mod) => mod.Sidebar),
   { ssr: false }
 )
 
-export function DashboardLayoutClient({
+function DashboardLayoutInner({
   children,
 }: {
   children: React.ReactNode
@@ -93,6 +140,14 @@ export function DashboardLayoutClient({
       </main>
       <ShortcutsOverlay isOpen={showOverlay} onClose={closeOverlay} />
     </div>
+  )
+}
+
+export function DashboardLayoutClient({ children }: { children: React.ReactNode }) {
+  return (
+    <ConvexRetryBoundary>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </ConvexRetryBoundary>
   )
 }
 

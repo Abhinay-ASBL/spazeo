@@ -159,10 +159,15 @@ function LabelMarker({
   return (
     <Html
       position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
-      center
       zIndexRange={[10, 0]}
     >
-      {/* Outer wrapper — spring drives opacity + scale on this element */}
+      {/*
+        Positioning wrapper: translates the element so its BOTTOM-CENTER sits
+        exactly at the 3D anchor point — meaning the dot is at the selected spot.
+        Without this, `center` would put the middle of the entire column there.
+      */}
+      <div style={{ transform: 'translate(-50%, -100%)', display: 'inline-flex' }}>
+      {/* Spring wrapper — spring drives opacity + scale on this element */}
       <div
         ref={wrapRef}
         style={{
@@ -268,6 +273,7 @@ function LabelMarker({
             boxShadow: `0 0 0 2px ${labelColor}60, 0 2px 6px rgba(0,0,0,0.5)`,
           }} />
         </div>
+      </div>
       </div>
     </Html>
   )

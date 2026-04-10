@@ -60,7 +60,7 @@ export const create = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     return await ctx.db.insert('viewPositions', {
@@ -95,7 +95,7 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const existing = await ctx.db.get(args.positionId)
@@ -112,7 +112,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { positionId: v.id('viewPositions') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const existing = await ctx.db.get(args.positionId)
@@ -145,7 +145,7 @@ export const cloneToFloors = mutation({
     blockId: v.id('buildingBlocks'),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const sourcePositions = await ctx.db
@@ -214,7 +214,7 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const ids = []

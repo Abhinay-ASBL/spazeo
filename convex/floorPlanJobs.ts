@@ -69,7 +69,7 @@ export const fail = internalMutation({
 export const getByFloorPlan = query({
   args: { floorPlanId: v.id('floorPlanDetails') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const jobs = await ctx.db

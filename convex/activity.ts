@@ -32,7 +32,7 @@ export const log = internalMutation({
 export const getRecent = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -57,7 +57,7 @@ export const list = query({
     cursor: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return { items: [], nextCursor: null }
 
     const user = await ctx.db

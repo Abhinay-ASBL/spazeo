@@ -29,7 +29,7 @@ export const listAll = query({
     endDate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -122,7 +122,7 @@ export const getDetail = query({
 export const getStats = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db
@@ -241,7 +241,7 @@ export const updateStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     await ctx.db.patch(args.leadId, { status: args.status })
@@ -254,7 +254,7 @@ export const addNote = mutation({
     text: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const lead = await ctx.db.get(args.leadId)
@@ -270,7 +270,7 @@ export const addNote = mutation({
 export const remove = mutation({
   args: { leadId: v.id('leads') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
     await ctx.db.delete(args.leadId)
   },
@@ -281,7 +281,7 @@ export const exportCsv = action({
     tourId: v.optional(v.id('tours')),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     // Fetch leads through the public query

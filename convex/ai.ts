@@ -26,7 +26,7 @@ export const listJobs = query({
     tourId: v.optional(v.id('tours')),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -69,7 +69,7 @@ export const getJobsByTour = query({
 export const getUsage = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db

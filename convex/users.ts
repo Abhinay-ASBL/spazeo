@@ -25,13 +25,17 @@ export const getByClerkId = query({
 export const getCurrent = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) return null
+    try {
+      const identity = await ctx.auth.getUserIdentity().catch(() => null)
+      if (!identity) return null
 
-    return await ctx.db
-      .query('users')
-      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
-      .unique()
+      return await ctx.db
+        .query('users')
+        .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+        .unique()
+    } catch {
+      return null
+    }
   },
 })
 
@@ -74,7 +78,7 @@ export const upsertFromClerk = internalMutation({
 export const ensureUser = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const existing = await ctx.db
@@ -118,7 +122,7 @@ export const completeOnboarding = mutation({
     country: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -166,7 +170,7 @@ export const saveOnboardingStep = mutation({
     website: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -210,7 +214,7 @@ export const updateProfile = mutation({
     onboardingComplete: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -243,7 +247,7 @@ export const updateNotificationPreferences = mutation({
     productUpdates: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -265,7 +269,7 @@ export const updateNotificationPreferences = mutation({
 export const generateApiKey = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -293,7 +297,7 @@ export const generateApiKey = mutation({
 export const revokeApiKey = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -310,7 +314,7 @@ export const revokeApiKey = mutation({
 export const requestDeletion = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -329,7 +333,7 @@ export const requestDeletion = mutation({
 export const reactivateAccount = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -452,7 +456,7 @@ export const exportData = action({
   args: {},
   returns: v.string(),
   handler: async (ctx): Promise<string> => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const data: unknown = await ctx.runQuery(internal.users.getAllUserDataInternal, {
@@ -509,7 +513,7 @@ export const resetFailedLogins = internalMutation({
 export const deleteAccount = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -644,7 +648,7 @@ export const deleteAccount = mutation({
 export const getOnboardingProgress = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db
@@ -708,7 +712,7 @@ export const getOnboardingProgress = query({
 export const dismissChecklist = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -822,7 +826,7 @@ export const incrementFloorPlanExtractions = internalMutation({
 export const resetFloorPlanExtractions = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db

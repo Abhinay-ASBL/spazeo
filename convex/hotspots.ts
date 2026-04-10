@@ -64,7 +64,7 @@ export const create = mutation({
     markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
     return await ctx.db.insert('hotspots', args)
   },
@@ -92,7 +92,7 @@ export const update = mutation({
     markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const { hotspotId, ...updates } = args
@@ -106,7 +106,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { hotspotId: v.id('hotspots') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
     await ctx.db.delete(args.hotspotId)
   },
@@ -118,7 +118,7 @@ export const copyToAllScenes = mutation({
     tourId: v.id('tours'),
   },
   handler: async (ctx, { sourceSceneId, tourId }) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const sourceHotspots = await ctx.db
@@ -161,7 +161,7 @@ export const insertDoorwayHotspots = mutation({
     ),
   },
   handler: async (ctx, { sceneId, doors }) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     for (const door of doors) {

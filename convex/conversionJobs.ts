@@ -48,7 +48,7 @@ export const create = mutation({
     inputFormat: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     return await ctx.db.insert('conversionJobs', {
@@ -129,7 +129,7 @@ export const fail = internalMutation({
 export const retry = mutation({
   args: { jobId: v.id('conversionJobs') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const job = await ctx.db.get(args.jobId)
@@ -154,7 +154,7 @@ export const triggerConversion = action({
     inputFormat: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const jobId = await ctx.runMutation(

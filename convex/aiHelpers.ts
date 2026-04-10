@@ -74,7 +74,7 @@ export const updateJobStatus = internalMutation({
 export const retryJob = mutation({
   args: { jobId: v.id('aiJobs') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const job = await ctx.db.get(args.jobId)

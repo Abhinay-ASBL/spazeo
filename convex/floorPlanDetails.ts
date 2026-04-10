@@ -11,7 +11,7 @@ export const create = mutation({
     originalFileType: v.union(v.literal('pdf'), v.literal('image'), v.literal('sketch')),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -34,7 +34,7 @@ export const create = mutation({
 export const getById = query({
   args: { floorPlanId: v.id('floorPlanDetails') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const floorPlan = await ctx.db.get(args.floorPlanId)
@@ -53,7 +53,7 @@ export const getById = query({
 export const listByProject = query({
   args: { projectId: v.id('floorPlanProjects') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const floorPlans = await ctx.db
@@ -68,7 +68,7 @@ export const listByProject = query({
 export const listByProjectWithUrls = query({
   args: { projectId: v.id('floorPlanProjects') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const floorPlans = await ctx.db
@@ -94,7 +94,7 @@ export const listByProjectWithUrls = query({
 export const listByFlexibleIdWithUrls = query({
   args: { id: v.string() },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -149,7 +149,7 @@ export const updateGeometry = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const floorPlan = await ctx.db.get(args.floorPlanId)
@@ -201,7 +201,7 @@ export const saveVersion = internalMutation({
 export const resetToAiVersion = mutation({
   args: { floorPlanId: v.id('floorPlanDetails') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const floorPlan = await ctx.db.get(args.floorPlanId)

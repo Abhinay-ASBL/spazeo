@@ -97,7 +97,7 @@ export const create = internalMutation({
 export const remove = mutation({
   args: { panoramaId: v.id('exteriorPanoramas') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const panorama = await ctx.db.get(args.panoramaId)
@@ -114,7 +114,7 @@ export const remove = mutation({
 
 export const generateUploadUrl = mutation({
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     return await ctx.storage.generateUploadUrl()
@@ -139,7 +139,7 @@ export const savePanorama = mutation({
     environmentUsed: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     return await ctx.db.insert('exteriorPanoramas', {

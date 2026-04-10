@@ -104,7 +104,7 @@ export const create = mutation({
     price: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     return await ctx.db.insert('buildingUnits', {
@@ -134,7 +134,7 @@ export const update = mutation({
     balconyViewPositionIds: v.optional(v.array(v.id('viewPositions'))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const { unitId, ...updates } = args
@@ -149,7 +149,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { unitId: v.id('buildingUnits') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     await ctx.db.delete(args.unitId)
@@ -162,7 +162,7 @@ export const linkTour = mutation({
     tourId: v.id('tours'),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     await ctx.db.patch(args.unitId, { tourId: args.tourId })
@@ -172,7 +172,7 @@ export const linkTour = mutation({
 export const unlinkTour = mutation({
   args: { unitId: v.id('buildingUnits') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     await ctx.db.patch(args.unitId, { tourId: undefined })
@@ -185,7 +185,7 @@ export const updateStatus = mutation({
     status: statusValidator,
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     await ctx.db.patch(args.unitId, { status: args.status })
@@ -208,7 +208,7 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const ids = []

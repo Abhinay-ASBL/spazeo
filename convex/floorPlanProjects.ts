@@ -8,7 +8,7 @@ export const create = mutation({
     floorCount: v.number(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const user = await ctx.db
@@ -33,7 +33,7 @@ export const create = mutation({
 export const getById = query({
   args: { projectId: v.id('floorPlanProjects') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const project = await ctx.db.get(args.projectId)
@@ -57,7 +57,7 @@ export const getById = query({
 export const getByFlexibleId = query({
   args: { id: v.string() },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
     const user = await ctx.db
@@ -113,7 +113,7 @@ export const getByFlexibleId = query({
 export const listByUser = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
 
     const user = await ctx.db
@@ -142,7 +142,7 @@ export const update = mutation({
     tourId: v.optional(v.id('tours')),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const project = await ctx.db.get(args.projectId)
@@ -169,7 +169,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { projectId: v.id('floorPlanProjects') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
     const project = await ctx.db.get(args.projectId)
