@@ -263,6 +263,14 @@ export default function TourEditorPage() {
     return hotspotsByTour.filter((h) => h.sceneId === activeScene._id)
   }, [activeScene, hotspotsByTour])
 
+  // Override editing hotspot position with local editPosition for real-time D-pad preview
+  const viewerHotspots = useMemo(() => {
+    if (!editingHotspotId || !editPosition) return activeSceneHotspots
+    return activeSceneHotspots.map(h =>
+      h._id === editingHotspotId ? { ...h, position: editPosition } : h
+    )
+  }, [activeSceneHotspots, editingHotspotId, editPosition])
+
   // Sync description when active scene changes
   useEffect(() => {
     if (activeScene?.description) {
@@ -508,16 +516,13 @@ export default function TourEditorPage() {
   /* ── D-pad position nudge (edit only) ── */
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const applyNudge = useCallback((
-    setter: React.Dispatch<React.SetStateAction<{ x: number; y: number; z: number } | null>>,
-    dx: number, dy: number
-  ) => {
-    setter(prev => {
-      if (!prev) return prev
-      const { x, y, z } = prev
+  const applyNudge = useCallback((dx: number, dy: number) => {
+    setEditPosition(prev => {
+      const pos = prev ?? { x: 0, y: 0, z: 1 } // default: forward-facing
+      const { x, y, z } = pos
       const pitch = Math.asin(Math.max(-1, Math.min(1, y)))
       const yaw = Math.atan2(x, z)
-      const step = 0.002 // ~0.11° — ~1 px on a typical 4K panorama
+      const step = 0.002 // ~0.11° ≈ 1 px on a 4K panorama
       const newPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch + dy * step))
       const newYaw = yaw + dx * step
       return {
@@ -529,8 +534,8 @@ export default function TourEditorPage() {
   }, [])
 
   const handleEditNudgeStart = useCallback((dx: number, dy: number) => {
-    applyNudge(setEditPosition, dx, dy)
-    nudgeIntervalRef.current = setInterval(() => applyNudge(setEditPosition, dx, dy), 120)
+    applyNudge(dx, dy)
+    nudgeIntervalRef.current = setInterval(() => applyNudge(dx, dy), 120)
   }, [applyNudge])
 
   const handleNudgeEnd = useCallback(() => {
@@ -1089,7 +1094,7 @@ export default function TourEditorPage() {
             <PanoramaViewer
               imageUrl={proxyImageUrl(activeScene.imageUrl) ?? activeScene.imageUrl}
               height="100%"
-              hotspots={activeSceneHotspots as any[]}
+              hotspots={viewerHotspots as any[]}
               onHotspotClick={handleHotspotClick as any}
               onSphereClick={handleSphereClick}
               isEditing={isPlacingHotspot}
@@ -2213,49 +2218,68 @@ export default function TourEditorPage() {
                           </div>
 
                           {/* Position D-pad — fine-tune placement */}
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Fine-tune Position</label>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                              <button
-                                type="button"
-                                aria-label="Move up"
-                                onPointerDown={() => handleEditNudgeStart(0, 1)}
-                                onPointerUp={handleNudgeEnd}
-                                onPointerLeave={handleNudgeEnd}
-                                style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.08)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
-                              ><ChevronUp size={15} /></button>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <button
-                                  type="button"
-                                  aria-label="Move left"
-                                  onPointerDown={() => handleEditNudgeStart(-1, 0)}
-                                  onPointerUp={handleNudgeEnd}
-                                  onPointerLeave={handleNudgeEnd}
-                                  style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.08)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
-                                ><ChevronLeft size={15} /></button>
-                                <div style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(212,160,23,0.2)', backgroundColor: 'rgba(212,160,23,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#D4A017', opacity: 0.5 }} />
+                          {(() => {
+                            const pos = editPosition ?? (hotspot.position as { x: number; y: number; z: number } | undefined)
+                            const yawDeg = pos ? Math.round(Math.atan2(pos.x, pos.z) * 180 / Math.PI) : 0
+                            const pitchDeg = pos ? Math.round(Math.asin(Math.max(-1, Math.min(1, pos.y))) * 180 / Math.PI) : 0
+                            return (
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>Fine-tune Position</label>
+                                {/* Coordinates */}
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <div style={{ flex: 1, backgroundColor: '#0A0908', borderRadius: 6, border: '1px solid rgba(212,160,23,0.15)', padding: '4px 6px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: 9, color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}>H (yaw)</div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#D4A017', fontFamily: 'var(--font-dmsans)', fontVariantNumeric: 'tabular-nums' }}>{yawDeg}°</div>
+                                  </div>
+                                  <div style={{ flex: 1, backgroundColor: '#0A0908', borderRadius: 6, border: '1px solid rgba(212,160,23,0.15)', padding: '4px 6px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: 9, color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}>V (pitch)</div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#D4A017', fontFamily: 'var(--font-dmsans)', fontVariantNumeric: 'tabular-nums' }}>{pitchDeg}°</div>
+                                  </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  aria-label="Move right"
-                                  onPointerDown={() => handleEditNudgeStart(1, 0)}
-                                  onPointerUp={handleNudgeEnd}
-                                  onPointerLeave={handleNudgeEnd}
-                                  style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.08)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
-                                ><ChevronRight size={15} /></button>
+                                {/* D-pad */}
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                  <button
+                                    type="button"
+                                    aria-label="Move up"
+                                    onMouseDown={(e) => { e.preventDefault(); handleEditNudgeStart(0, 1) }}
+                                    onMouseUp={handleNudgeEnd}
+                                    onMouseLeave={handleNudgeEnd}
+                                    style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.1)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
+                                  ><ChevronUp size={15} /></button>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <button
+                                      type="button"
+                                      aria-label="Move left"
+                                      onMouseDown={(e) => { e.preventDefault(); handleEditNudgeStart(-1, 0) }}
+                                      onMouseUp={handleNudgeEnd}
+                                      onMouseLeave={handleNudgeEnd}
+                                      style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.1)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
+                                    ><ChevronLeft size={15} /></button>
+                                    <div style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(212,160,23,0.2)', backgroundColor: 'rgba(212,160,23,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#D4A017', opacity: 0.5 }} />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      aria-label="Move right"
+                                      onMouseDown={(e) => { e.preventDefault(); handleEditNudgeStart(1, 0) }}
+                                      onMouseUp={handleNudgeEnd}
+                                      onMouseLeave={handleNudgeEnd}
+                                      style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.1)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
+                                    ><ChevronRight size={15} /></button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    aria-label="Move down"
+                                    onMouseDown={(e) => { e.preventDefault(); handleEditNudgeStart(0, -1) }}
+                                    onMouseUp={handleNudgeEnd}
+                                    onMouseLeave={handleNudgeEnd}
+                                    style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.1)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
+                                  ><ChevronDown size={15} /></button>
+                                </div>
+                                <p style={{ fontSize: 9, color: '#6B6560', textAlign: 'center', fontFamily: 'var(--font-dmsans)' }}>~1 px per tap · hold to move · updates live on panorama</p>
                               </div>
-                              <button
-                                type="button"
-                                aria-label="Move down"
-                                onPointerDown={() => handleEditNudgeStart(0, -1)}
-                                onPointerUp={handleNudgeEnd}
-                                onPointerLeave={handleNudgeEnd}
-                                style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid rgba(255,255,255,0.08)', backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A017' }}
-                              ><ChevronDown size={15} /></button>
-                            </div>
-                            <p style={{ fontSize: 9, color: '#6B6560', textAlign: 'center', fontFamily: 'var(--font-dmsans)' }}>~1 px per tap · hold to move</p>
-                          </div>
+                            )
+                          })()}
 
                           {/* Save / Cancel buttons */}
                           <div className="flex gap-2 mt-1">
