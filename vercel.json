@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "NODE_OPTIONS=--max-old-space-size=6144 next build --no-turbopack",
+  "buildCommand": "NODE_OPTIONS=--max-old-space-size=6144 next build",
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["bom1"],
