@@ -5,6 +5,8 @@
   "framework": "nextjs",
   "regions": ["bom1"],
   "env": {
+    "NEXT_PUBLIC_CONVEX_URL": "https://convexasbl.duckdns.org",
+    "NEXT_PUBLIC_CONVEX_SITE_URL": "https://convexasbl.duckdns.org",
     "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
     "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
     "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL": "/dashboard",
