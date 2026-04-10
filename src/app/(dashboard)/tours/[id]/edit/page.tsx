@@ -28,6 +28,9 @@ import {
   Settings,
   Layers,
   ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Home,
   Bed,
@@ -500,6 +503,39 @@ export default function TourEditorPage() {
     },
     [isPlacingHotspot]
   )
+
+  /* ── D-pad position nudge ── */
+  const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const nudgeHotspotPosition = useCallback((dx: number, dy: number) => {
+    setPendingPosition(prev => {
+      if (!prev) return prev
+      const { x, y, z } = prev
+      // Spherical: pitch = elevation angle, yaw = horizontal angle
+      const pitch = Math.asin(Math.max(-1, Math.min(1, y)))
+      const yaw = Math.atan2(x, z)
+      const step = 0.045 // ~2.6° per tick
+      const newPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch + dy * step))
+      const newYaw = yaw + dx * step
+      return {
+        x: Math.cos(newPitch) * Math.sin(newYaw),
+        y: Math.sin(newPitch),
+        z: Math.cos(newPitch) * Math.cos(newYaw),
+      }
+    })
+  }, [])
+
+  const handleNudgeStart = useCallback((dx: number, dy: number) => {
+    nudgeHotspotPosition(dx, dy)
+    nudgeIntervalRef.current = setInterval(() => nudgeHotspotPosition(dx, dy), 120)
+  }, [nudgeHotspotPosition])
+
+  const handleNudgeEnd = useCallback(() => {
+    if (nudgeIntervalRef.current) {
+      clearInterval(nudgeIntervalRef.current)
+      nudgeIntervalRef.current = null
+    }
+  }, [])
 
   /* ── Confirm hotspot creation ── */
   const handleConfirmHotspot = useCallback(async () => {
@@ -1236,6 +1272,86 @@ export default function TourEditorPage() {
 
               {/* Scrollable body */}
               <div className="flex flex-col gap-3 p-4 overflow-y-auto">
+
+                {/* Position D-pad */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                    Adjust Position
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    {/* Up */}
+                    <button
+                      type="button"
+                      aria-label="Move hotspot up"
+                      onPointerDown={() => handleNudgeStart(0, 1)}
+                      onPointerUp={handleNudgeEnd}
+                      onPointerLeave={handleNudgeEnd}
+                      style={{
+                        width: 36, height: 36, borderRadius: 8, border: '1.5px solid rgba(255,255,255,0.08)',
+                        backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', color: '#D4A017',
+                      }}
+                    >
+                      <ChevronUp size={18} />
+                    </button>
+                    {/* Middle row: Left · Center · Right */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <button
+                        type="button"
+                        aria-label="Move hotspot left"
+                        onPointerDown={() => handleNudgeStart(-1, 0)}
+                        onPointerUp={handleNudgeEnd}
+                        onPointerLeave={handleNudgeEnd}
+                        style={{
+                          width: 36, height: 36, borderRadius: 8, border: '1.5px solid rgba(255,255,255,0.08)',
+                          backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', color: '#D4A017',
+                        }}
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                      {/* Center indicator */}
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 8, border: '1.5px solid rgba(212,160,23,0.2)',
+                        backgroundColor: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#D4A017', opacity: 0.6 }} />
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Move hotspot right"
+                        onPointerDown={() => handleNudgeStart(1, 0)}
+                        onPointerUp={handleNudgeEnd}
+                        onPointerLeave={handleNudgeEnd}
+                        style={{
+                          width: 36, height: 36, borderRadius: 8, border: '1.5px solid rgba(255,255,255,0.08)',
+                          backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', color: '#D4A017',
+                        }}
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                    {/* Down */}
+                    <button
+                      type="button"
+                      aria-label="Move hotspot down"
+                      onPointerDown={() => handleNudgeStart(0, -1)}
+                      onPointerUp={handleNudgeEnd}
+                      onPointerLeave={handleNudgeEnd}
+                      style={{
+                        width: 36, height: 36, borderRadius: 8, border: '1.5px solid rgba(255,255,255,0.08)',
+                        backgroundColor: '#1B1916', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', color: '#D4A017',
+                      }}
+                    >
+                      <ChevronDown size={18} />
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 10, color: '#6B6560', textAlign: 'center', fontFamily: 'var(--font-dmsans)' }}>
+                    Hold to move continuously · Click the panorama to reposition
+                  </p>
+                </div>
 
                 {/* Type selector */}
                 <div className="flex flex-col gap-1.5">
