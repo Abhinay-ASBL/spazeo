@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next'
+import path from 'path'
 
 const securityHeaders = [
   {
@@ -32,6 +33,9 @@ const securityHeaders = [
 ]
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: path.join(__dirname),
+  },
   // Prevent spark.js WASM/Worker from being bundled server-side
   serverExternalPackages: ['@sparkjsdev/spark'],
   async headers() {

@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useCallback, useState, useRef, useMemo, Component, type ReactNode } from 'react'
-import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
-import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter } from 'three'
+import { Canvas, useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
+import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh } from 'three'
 import { OrbitControls } from '@react-three/drei'
 import { HotspotMarker } from './HotspotMarker'
 import { ImageOff, Loader2 } from 'lucide-react'
@@ -65,6 +65,7 @@ interface Props {
   isEditing?: boolean
   autoRotate?: boolean
   zoomLevel?: number
+  previewPosition?: { x: number; y: number; z: number } | null
 }
 
 /* ── Normalize non-2:1 panoramas to equirectangular 2:1 ──
@@ -166,8 +167,25 @@ function PanoramaSphere({
     (event: ThreeEvent<MouseEvent>) => {
       if (!isEditing || !onSphereClick) return
       event.stopPropagation()
-      const point = event.point.clone().normalize().multiplyScalar(480)
-      onSphereClick({ x: point.x, y: point.y, z: point.z })
+      // Compute hit point from the world-space ray instead of event.point —
+      // event.point goes through the mesh's negative-scale matrixWorld, which
+      // some Three.js versions handle inconsistently. Ray-sphere math is
+      // unambiguous: solve |O + tD|² = R² for the far intersection (camera
+      // sits inside the sphere).
+      const O = event.ray.origin
+      const D = event.ray.direction
+      const R = 500
+      const b = O.dot(D)
+      const c = O.dot(O) - R * R
+      const disc = b * b - c
+      if (disc < 0) return
+      const t = -b + Math.sqrt(disc)
+      const hitX = O.x + D.x * t
+      const hitY = O.y + D.y * t
+      const hitZ = O.z + D.z * t
+      const len = Math.sqrt(hitX * hitX + hitY * hitY + hitZ * hitZ) || 1
+      const k = 480 / len
+      onSphereClick({ x: hitX * k, y: hitY * k, z: hitZ * k })
     },
     [isEditing, onSphereClick]
   )
@@ -177,6 +195,35 @@ function PanoramaSphere({
       <sphereGeometry args={[500, 128, 64]} />
       <meshBasicMaterial map={texture} side={2} />
     </mesh>
+  )
+}
+
+/* ── Preview Marker (pulsing dot at pending placement) ── */
+
+function PreviewMarker({ position }: { position: { x: number; y: number; z: number } }) {
+  const ringRef = useRef<Mesh>(null)
+  const dotRef = useRef<Mesh>(null)
+  useFrame((_, delta) => {
+    if (ringRef.current) {
+      const t = (ringRef.current.userData.t ?? 0) + delta * 2.4
+      ringRef.current.userData.t = t
+      const s = 1 + Math.sin(t) * 0.25
+      ringRef.current.scale.setScalar(s)
+      const mat = ringRef.current.material as any
+      if (mat) mat.opacity = 0.55 + Math.sin(t) * 0.25
+    }
+  })
+  return (
+    <group position={[position.x, position.y, position.z]}>
+      <mesh ref={dotRef}>
+        <sphereGeometry args={[6, 16, 16]} />
+        <meshBasicMaterial color="#D4A017" depthTest={false} transparent />
+      </mesh>
+      <mesh ref={ringRef}>
+        <ringGeometry args={[10, 14, 32]} />
+        <meshBasicMaterial color="#D4A017" depthTest={false} transparent opacity={0.7} side={2} />
+      </mesh>
+    </group>
   )
 }
 
@@ -244,6 +291,7 @@ export function PanoramaViewer({
   isEditing = false,
   autoRotate = false,
   zoomLevel = 1,
+  previewPosition = null,
 }: Props) {
   const [texture, setTexture] = useState<Texture | null>(null)
   const [fadeOpacity, setFadeOpacity] = useState(1)
@@ -345,28 +393,19 @@ export function PanoramaViewer({
     return () => clearTimeout(timer)
   }, [imageUrl, applyTexture])
 
-  // Compute stagger line heights for label hotspots so pills don't overlap.
-  // Sort by yaw angle, then assign heights from a stepped ladder so nearby
-  // labels get different heights. Non-label hotspots are not included.
+  // Stable line-height per hotspot so adding/removing labels doesn't reshuffle
+  // existing ones (which used to look like the labels were "jumping" when you
+  // placed a new pin next to an existing one). Hash the _id into the stepped
+  // ladder — deterministic per hotspot, independent of neighbors.
   const labelLineHeights = useMemo(() => {
-    const labelHotspots = hotspots.filter((h) => h.markerStyle === 'label')
-    if (labelHotspots.length <= 1) return new Map<string, number>()
-
-    // Compute yaw angle (horizontal bearing) for each label hotspot
-    const withYaw = labelHotspots.map((h) => ({
-      id: h._id,
-      yaw: Math.atan2(h.position.x, -h.position.z), // -π to π
-    }))
-    // Sort by yaw so we process them left-to-right around the sphere
-    withYaw.sort((a, b) => a.yaw - b.yaw)
-
-    // Assign heights from a stepped ladder that cycles through offsets.
-    // This ensures adjacent hotspots get distinct heights.
     const steps = [20, 52, 36, 68, 28, 60, 44]
     const map = new Map<string, number>()
-    withYaw.forEach(({ id }, i) => {
-      map.set(id, steps[i % steps.length])
-    })
+    for (const h of hotspots) {
+      if (h.markerStyle !== 'label') continue
+      let hash = 0
+      for (let i = 0; i < h._id.length; i++) hash = (hash * 31 + h._id.charCodeAt(i)) | 0
+      map.set(h._id, steps[Math.abs(hash) % steps.length])
+    }
     return map
   }, [hotspots])
 
@@ -416,6 +455,9 @@ export function PanoramaViewer({
                 labelLineHeight={labelLineHeights.get(hotspot._id)}
               />
             ))}
+
+            {/* Pending placement preview */}
+            {previewPosition && <PreviewMarker position={previewPosition} />}
           </Canvas>
         </PanoramaErrorBoundary>
       </div>

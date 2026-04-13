@@ -159,6 +159,7 @@ export default function TourEditorPage() {
   // Hotspot creation state
   const [isPlacingHotspot, setIsPlacingHotspot] = useState(false)
   const [pendingPosition, setPendingPosition] = useState<{ x: number; y: number; z: number } | null>(null)
+  const [isCreatingHotspot, setIsCreatingHotspot] = useState(false)
   const [hotspotType, setHotspotType] = useState<'navigation' | 'info' | 'media' | 'link'>('navigation')
   const [hotspotTooltip, setHotspotTooltip] = useState('')
   const [hotspotTargetSceneId, setHotspotTargetSceneId] = useState<string>('')
@@ -548,6 +549,8 @@ export default function TourEditorPage() {
   /* ── Confirm hotspot creation ── */
   const handleConfirmHotspot = useCallback(async () => {
     if (!pendingPosition || !activeScene) return
+    if (isCreatingHotspot) return
+    setIsCreatingHotspot(true)
 
     try {
       let imageStorageId: Id<'_storage'> | undefined
@@ -598,12 +601,15 @@ export default function TourEditorPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
       toast.error(msg)
+    } finally {
+      setIsCreatingHotspot(false)
     }
   }, [
     createHotspot,
     generateUploadUrl,
     activeScene,
     pendingPosition,
+    isCreatingHotspot,
     hotspotType,
     hotspotTooltip,
     hotspotTitle,
@@ -1098,6 +1104,7 @@ export default function TourEditorPage() {
               onHotspotClick={handleHotspotClick as any}
               onSphereClick={handleSphereClick}
               isEditing={isPlacingHotspot}
+              previewPosition={pendingPosition}
               autoRotate={tourSettings.autoRotate && previewMode}
             />
           ) : (
@@ -1671,10 +1678,11 @@ export default function TourEditorPage() {
               <div className="px-4 pb-4 flex-shrink-0">
                 <button
                   onClick={handleConfirmHotspot}
-                  className="w-full h-10 rounded-lg text-[13px] font-semibold transition-all"
+                  disabled={isCreatingHotspot}
+                  className="w-full h-10 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: '#2DD4BF', color: '#0A0908', fontFamily: 'var(--font-dmsans)' }}
                 >
-                  Add Hotspot
+                  {isCreatingHotspot ? 'Adding…' : 'Add Hotspot'}
                 </button>
               </div>
             </div>
