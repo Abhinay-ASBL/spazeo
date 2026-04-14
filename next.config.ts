@@ -38,6 +38,14 @@ const nextConfig: NextConfig = {
   },
   // Prevent spark.js WASM/Worker from being bundled server-side
   serverExternalPackages: ['@sparkjsdev/spark'],
+  // Single-process build to stay within Vercel's 8GB container.
+  // Parallel build workers each spawn their own V8 heap; with
+  // three.js + react-three-fiber + pdfjs + spark + photo-sphere
+  // in this app, the sum blew past 8GB and triggered SIGKILL.
+  experimental: {
+    cpus: 1,
+    workerThreads: false,
+  },
   async headers() {
     return [
       {
