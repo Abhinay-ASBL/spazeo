@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "NEXT_PUBLIC_CONVEX_URL=https://convexasbl.duckdns.org NEXT_PUBLIC_CONVEX_SITE_URL=https://convexasbl.duckdns.org NODE_OPTIONS=--max-old-space-size=6144 next build",
+  "buildCommand": "NEXT_PUBLIC_CONVEX_URL=https://convexasbl.duckdns.org NEXT_PUBLIC_CONVEX_SITE_URL=https://convexasbl.duckdns.org NODE_OPTIONS=--max-old-space-size=6144 next build --webpack",
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["bom1"],
