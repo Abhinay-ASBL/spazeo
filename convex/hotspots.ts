@@ -62,6 +62,7 @@ export const create = mutation({
     ctaUrl: v.optional(v.string()),
     accentColor: v.optional(v.string()),
     markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
+    lineHeight: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
@@ -90,6 +91,7 @@ export const update = mutation({
     ctaUrl: v.optional(v.string()),
     accentColor: v.optional(v.string()),
     markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
+    lineHeight: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)

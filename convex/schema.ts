@@ -212,6 +212,7 @@ export default defineSchema({
     ctaUrl: v.optional(v.string()),
     accentColor: v.optional(v.string()),
     markerStyle: v.optional(v.union(v.literal('ring'), v.literal('arrow'), v.literal('dot'), v.literal('label'))),
+    lineHeight: v.optional(v.number()),
   }).index('by_sceneId', ['sceneId']),
 
   floorPlans: defineTable({

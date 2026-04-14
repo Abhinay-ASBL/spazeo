@@ -176,6 +176,7 @@ export default function TourEditorPage() {
   const [hotspotCtaUrl, setHotspotCtaUrl] = useState('')
   const [hotspotMarkerStyle, setHotspotMarkerStyle] = useState<'ring' | 'arrow' | 'dot' | 'label'>('ring')
   const [hotspotAccentColor, setHotspotAccentColor] = useState('')
+  const [hotspotLineHeight, setHotspotLineHeight] = useState<number>(32)
 
   const [replicatingHotspots, setReplicatingHotspots] = useState(false)
 
@@ -188,11 +189,13 @@ export default function TourEditorPage() {
     ctaLabel: string; ctaUrl: string; accentColor: string
     markerStyle: 'ring' | 'arrow' | 'dot' | 'label'
     targetSceneId: string; visible: boolean
+    lineHeight: number | null
   }>({
     title: '', description: '', content: '', tooltip: '',
     iconName: '', panelLayout: 'compact',
     ctaLabel: '', ctaUrl: '', accentColor: '',
     markerStyle: 'ring', targetSceneId: '', visible: true,
+    lineHeight: null,
   })
 
   // Active info/media/link hotspot popup
@@ -266,11 +269,17 @@ export default function TourEditorPage() {
 
   // Override editing hotspot position with local editPosition for real-time D-pad preview
   const viewerHotspots = useMemo(() => {
-    if (!editingHotspotId || !editPosition) return activeSceneHotspots
-    return activeSceneHotspots.map(h =>
-      h._id === editingHotspotId ? { ...h, position: editPosition } : h
-    )
-  }, [activeSceneHotspots, editingHotspotId, editPosition])
+    if (!editingHotspotId) return activeSceneHotspots
+    return activeSceneHotspots.map(h => {
+      if (h._id !== editingHotspotId) return h
+      return {
+        ...h,
+        ...(editPosition ? { position: editPosition } : {}),
+        markerStyle: editFields.markerStyle,
+        ...(editFields.lineHeight !== null ? { lineHeight: editFields.lineHeight } : { lineHeight: undefined }),
+      }
+    })
+  }, [activeSceneHotspots, editingHotspotId, editPosition, editFields.markerStyle, editFields.lineHeight])
 
   // Sync description when active scene changes
   useEffect(() => {
@@ -580,6 +589,7 @@ export default function TourEditorPage() {
         ctaUrl: hotspotCtaUrl || undefined,
         markerStyle: hotspotMarkerStyle || undefined,
         accentColor: hotspotAccentColor || undefined,
+        lineHeight: hotspotLineHeight,
       })
       toast.success('Hotspot added')
       setPendingPosition(null)
@@ -597,6 +607,7 @@ export default function TourEditorPage() {
       setHotspotCtaUrl('')
       setHotspotMarkerStyle('ring')
       setHotspotAccentColor('')
+      setHotspotLineHeight(32)
       setIsPlacingHotspot(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
@@ -624,6 +635,7 @@ export default function TourEditorPage() {
     hotspotCtaUrl,
     hotspotMarkerStyle,
     hotspotAccentColor,
+    hotspotLineHeight,
   ])
 
   /* ── Update hotspot tooltip ── */
@@ -685,6 +697,7 @@ export default function TourEditorPage() {
         markerStyle: (hotspot.markerStyle as 'ring' | 'arrow' | 'dot' | 'label') || 'ring',
         targetSceneId: (hotspot.targetSceneId as string) || '',
         visible: (hotspot.visible as boolean) ?? true,
+        lineHeight: typeof hotspot.lineHeight === 'number' ? (hotspot.lineHeight as number) : null,
       })
     },
     []
@@ -709,6 +722,7 @@ export default function TourEditorPage() {
           markerStyle: editFields.markerStyle || undefined,
           targetSceneId: editFields.targetSceneId ? editFields.targetSceneId as Id<'scenes'> : undefined,
           visible: editFields.visible,
+          lineHeight: editFields.lineHeight ?? undefined,
           ...(editPosition ? { position: editPosition } : {}),
         })
         toast.success('Hotspot updated')
@@ -1447,6 +1461,29 @@ export default function TourEditorPage() {
                   </div>
                 )}
 
+                {/* Line Height — label/info only (controls callout connector length) */}
+                {(hotspotMarkerStyle === 'label' || hotspotType === 'info') && (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                        Line Height
+                      </label>
+                      <span className="text-[11px] tabular-nums" style={{ color: '#A8A29E' }}>
+                        {hotspotLineHeight}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={hotspotLineHeight}
+                      onChange={(e) => setHotspotLineHeight(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#D4A017' }}
+                    />
+                  </div>
+                )}
+
                 {/* Info: description */}
                 {hotspotType === 'info' && (
                   <div className="flex flex-col gap-1.5">
@@ -2089,6 +2126,39 @@ export default function TourEditorPage() {
                                 ))}
                               </div>
                             </div>
+
+                          {/* Line Height — label-style callouts only */}
+                          {(editFields.markerStyle === 'label' || hotspot.type === 'info') && (
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#6B6560' }}>
+                                  Line Height
+                                </label>
+                                <span className="text-[10px] tabular-nums" style={{ color: '#A8A29E' }}>
+                                  {editFields.lineHeight ?? 32}px
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min={8}
+                                max={200}
+                                step={1}
+                                value={editFields.lineHeight ?? 32}
+                                onChange={(e) => setEditFields(f => ({ ...f, lineHeight: Number(e.target.value) }))}
+                                style={{ width: '100%', accentColor: '#D4A017' }}
+                              />
+                              {editFields.lineHeight !== null && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditFields(f => ({ ...f, lineHeight: null }))}
+                                  className="self-start text-[10px]"
+                                  style={{ color: '#6B6560', textDecoration: 'underline' }}
+                                >
+                                  Reset to auto
+                                </button>
+                              )}
+                            </div>
+                          )}
 
                           {/* Icon picker */}
                           <div className="flex flex-col gap-1">

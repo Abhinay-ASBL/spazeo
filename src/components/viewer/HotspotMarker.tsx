@@ -47,13 +47,13 @@ interface HotspotData {
   ctaUrl?: string
   accentColor?: string
   markerStyle?: 'ring' | 'arrow' | 'dot' | 'label'
+  lineHeight?: number
 }
 
 interface Props {
   hotspot: HotspotData
   onClick: () => void
   isSelected?: boolean
-  labelLineHeight?: number  // stagger height to prevent label collision
 }
 
 const TYPE_CONFIG = {
@@ -97,12 +97,10 @@ function LabelMarker({
   hotspot,
   config,
   onClick,
-  lineHeight = 22,
 }: {
   hotspot: HotspotData
   config: (typeof TYPE_CONFIG)[keyof typeof TYPE_CONFIG]
   onClick: () => void
-  lineHeight?: number
 }) {
   const { camera } = useThree()
   const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
@@ -156,105 +154,44 @@ function LabelMarker({
     }
   }, [hotspot.type, hotspot._id, onClick, setActiveHotspot])
 
+  const lineHeight = typeof hotspot.lineHeight === 'number' ? hotspot.lineHeight : 32
+  const DOT_SIZE = 14
+  const DOT_HALF = DOT_SIZE / 2
+
   return (
     <Html
       position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
       zIndexRange={[10, 0]}
     >
       {/*
-        Positioning wrapper: translates the element so its BOTTOM-CENTER sits
-        exactly at the 3D anchor point — meaning the dot is at the selected spot.
-        Without this, `center` would put the middle of the entire column there.
+        Callout layout — the DOT sits exactly at the click point, a vertical
+        line rises from the dot's top edge, and the label pill sits on top
+        of the line. The whole structure is anchored from a zero-size div so
+        children positioned with `bottom:` and `transform: translate(-50%…)`
+        measure from the click point (0,0 in this local box).
       */}
-      <div style={{ transform: 'translate(-50%, -100%)', display: 'inline-flex' }}>
-      {/* Spring wrapper — spring drives opacity + scale on this element */}
       <div
         ref={wrapRef}
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          userSelect: 'none',
+          position: 'relative',
+          width: 0,
+          height: 0,
           opacity: 0,
           transform: 'scale(0.3)',
-          transformOrigin: 'bottom center',  // grow from the dot upward
+          transformOrigin: '0 0', // scale out from the click point
           pointerEvents: 'none',
         }}
       >
-        {/* Pill label */}
-        <button
-          onClick={handleClick}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          aria-label={displayTitle ?? config.label}
-          style={{
-            background: `linear-gradient(135deg, ${labelColor}F5 0%, ${labelColor}CC 100%)`,
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.25)',
-            borderRadius: 9999,
-            padding: displaySub ? '6px 14px 5px' : '7px 14px',
-            cursor: 'pointer',
-            outline: 'none',
-            transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
-            transition: 'transform 180ms ease, box-shadow 180ms ease',
-            boxShadow: isHovered
-              ? `0 8px 24px rgba(0,0,0,0.55), 0 0 0 1.5px ${labelColor}80`
-              : `0 3px 14px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3)`,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 0,
-            maxWidth: 200,
-            minWidth: 80,
-            textAlign: 'center',
-          }}
-        >
-          {displayTitle && (
-            <span style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#ffffff',
-              fontFamily: 'var(--font-dmsans)',
-              lineHeight: 1.35,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 185,
-              display: 'block',
-              letterSpacing: '0.01em',
-            }}>
-              {displayTitle}
-            </span>
-          )}
-          {displaySub && (
-            <span style={{
-              fontSize: 10.5,
-              fontWeight: 500,
-              color: 'rgba(255,255,255,0.88)',
-              fontFamily: 'var(--font-dmsans)',
-              lineHeight: 1.3,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 185,
-              display: 'block',
-              marginTop: 1,
-            }}>
-              {displaySub}
-            </span>
-          )}
-        </button>
-
-        {/* Connecting line */}
+        {/* Anchor dot — center at (0, 0) = click point */}
         <div style={{
-          width: 1.5,
-          height: lineHeight,
-          background: `linear-gradient(to bottom, ${labelColor}DD, ${labelColor}30)`,
-        }} />
-
-        {/* Anchor dot — marks the exact selected point */}
-        <div style={{ position: 'relative', flexShrink: 0, width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: DOT_SIZE,
+          height: DOT_SIZE,
+          transform: 'translate(-50%, -50%)',
+          pointerEvents: 'none',
+        }}>
           {/* Pulse ring */}
           <span style={{
             position: 'absolute',
@@ -262,24 +199,107 @@ function LabelMarker({
             borderRadius: '50%',
             border: `1.5px solid ${labelColor}`,
             animation: 'hotspot-pulse 2s ease-out infinite',
-            pointerEvents: 'none',
           }} />
+          {/* Solid dot */}
           <div style={{
-            width: 10,
-            height: 10,
+            width: '100%',
+            height: '100%',
             borderRadius: '50%',
             backgroundColor: labelColor,
             border: '2px solid rgba(255,255,255,0.9)',
             boxShadow: `0 0 0 2px ${labelColor}60, 0 2px 6px rgba(0,0,0,0.5)`,
           }} />
         </div>
-      </div>
+
+        {/* Connecting line — bottom touches the dot's top edge, goes up */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          bottom: DOT_HALF,
+          width: 1.5,
+          height: lineHeight,
+          transform: 'translateX(-50%)',
+          background: `linear-gradient(to top, ${labelColor}DD, ${labelColor}60)`,
+          pointerEvents: 'none',
+        }} />
+
+        {/* Label pill — sits directly above the top of the line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          bottom: DOT_HALF + lineHeight,
+          transform: 'translateX(-50%)',
+        }}>
+          <button
+            onClick={handleClick}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            aria-label={displayTitle ?? config.label}
+            style={{
+              background: `linear-gradient(135deg, ${labelColor}F5 0%, ${labelColor}CC 100%)`,
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              borderRadius: 9999,
+              padding: displaySub ? '6px 14px 5px' : '7px 14px',
+              cursor: 'pointer',
+              outline: 'none',
+              transition: 'box-shadow 180ms ease, transform 180ms ease',
+              transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+              boxShadow: isHovered
+                ? `0 8px 24px rgba(0,0,0,0.55), 0 0 0 1.5px ${labelColor}80`
+                : `0 3px 14px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.3)`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 0,
+              maxWidth: 200,
+              minWidth: 80,
+              textAlign: 'center',
+            }}
+          >
+            {displayTitle && (
+              <span style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#ffffff',
+                fontFamily: 'var(--font-dmsans)',
+                lineHeight: 1.35,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 185,
+                display: 'block',
+                letterSpacing: '0.01em',
+              }}>
+                {displayTitle}
+              </span>
+            )}
+            {displaySub && (
+              <span style={{
+                fontSize: 10.5,
+                fontWeight: 500,
+                color: 'rgba(255,255,255,0.88)',
+                fontFamily: 'var(--font-dmsans)',
+                lineHeight: 1.3,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 185,
+                display: 'block',
+                marginTop: 1,
+              }}>
+                {displaySub}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
     </Html>
   )
 }
 
-export function HotspotMarker({ hotspot, onClick, isSelected, labelLineHeight }: Props) {
+export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
   const [isHovered, setIsHovered] = useState(false)
   const setActiveHotspot = useViewerStore((s) => s.setActiveHotspot)
   const config = TYPE_CONFIG[hotspot.type] ?? TYPE_CONFIG.navigation
@@ -293,16 +313,9 @@ export function HotspotMarker({ hotspot, onClick, isSelected, labelLineHeight }:
   // Visibility toggle — return null to skip rendering hidden hotspots
   if (hotspot.visible === false) return null
 
-  /* ── Label style OR info type — callout: dot → line → label above ── */
+  /* ── Label style OR info type — pill anchored at click point ── */
   if (hotspot.markerStyle === 'label' || hotspot.type === 'info') {
-    return (
-      <LabelMarker
-        hotspot={hotspot}
-        config={config}
-        onClick={onClick}
-        lineHeight={labelLineHeight ?? 32}
-      />
-    )
+    return <LabelMarker hotspot={hotspot} config={config} onClick={onClick} />
   }
 
   if (hotspot.type === 'navigation') {

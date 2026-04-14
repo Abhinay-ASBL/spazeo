@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useState, useRef, useMemo, Component, type ReactNode } from 'react'
+import { useEffect, useCallback, useState, useRef, Component, type ReactNode } from 'react'
 import { Canvas, useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh } from 'three'
 import { OrbitControls } from '@react-three/drei'
@@ -43,6 +43,7 @@ class PanoramaErrorBoundary extends Component<
 
 interface HotspotData {
   _id: string
+  _creationTime?: number
   sceneId: string
   targetSceneId?: string
   type: 'navigation' | 'info' | 'media' | 'link'
@@ -54,6 +55,7 @@ interface HotspotData {
   description?: string
   imageUrl?: string | null
   markerStyle?: 'ring' | 'arrow' | 'dot' | 'label'
+  lineHeight?: number
 }
 
 interface Props {
@@ -393,22 +395,6 @@ export function PanoramaViewer({
     return () => clearTimeout(timer)
   }, [imageUrl, applyTexture])
 
-  // Stable line-height per hotspot so adding/removing labels doesn't reshuffle
-  // existing ones (which used to look like the labels were "jumping" when you
-  // placed a new pin next to an existing one). Hash the _id into the stepped
-  // ladder — deterministic per hotspot, independent of neighbors.
-  const labelLineHeights = useMemo(() => {
-    const steps = [20, 52, 36, 68, 28, 60, 44]
-    const map = new Map<string, number>()
-    for (const h of hotspots) {
-      if (h.markerStyle !== 'label') continue
-      let hash = 0
-      for (let i = 0; i < h._id.length; i++) hash = (hash * 31 + h._id.charCodeAt(i)) | 0
-      map.set(h._id, steps[Math.abs(hash) % steps.length])
-    }
-    return map
-  }, [hotspots])
-
   return (
     <div
       style={{
@@ -452,7 +438,6 @@ export function PanoramaViewer({
                 key={hotspot._id}
                 hotspot={hotspot}
                 onClick={() => onHotspotClick?.(hotspot)}
-                labelLineHeight={labelLineHeights.get(hotspot._id)}
               />
             ))}
 
