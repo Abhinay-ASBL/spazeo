@@ -269,9 +269,11 @@ export default defineSchema({
         city: v.optional(v.string()),
       })
     ),
+    sessionId: v.optional(v.string()),
   })
     .index('by_tourId', ['tourId'])
-    .index('by_email', ['email']),
+    .index('by_email', ['email'])
+    .index('by_sessionId', ['sessionId']),
 
   analytics: defineTable({
     tourId: v.id('tours'),
