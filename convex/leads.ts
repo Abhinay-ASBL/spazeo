@@ -182,6 +182,7 @@ export const capture = mutation({
         city: v.optional(v.string()),
       })
     ),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const leadId = await ctx.db.insert('leads', {
@@ -353,6 +354,63 @@ export const listAllInternal = internalQuery({
     )
 
     return allLeads.flat().sort((a, b) => b._creationTime - a._creationTime)
+  },
+})
+
+export const getWithActivity = query({
+  args: { leadId: v.id('leads') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+    const lead = await ctx.db.get(args.leadId)
+    if (!lead) return null
+    const tour = await ctx.db.get(lead.tourId)
+    if (!tour) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || tour.userId !== user._id) return null
+
+    let timeline: Array<{
+      _id: string
+      event: string
+      sceneId?: string
+      duration?: number
+      metadata?: unknown
+      timestamp: number
+    }> = []
+    if (lead.sessionId) {
+      const events = await ctx.db
+        .query('analytics')
+        .withIndex('by_tourId', (q) => q.eq('tourId', lead.tourId))
+        .collect()
+      timeline = events
+        .filter((e) => e.sessionId === lead.sessionId)
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .map((e) => ({
+          _id: e._id,
+          event: e.event,
+          sceneId: e.sceneId as string | undefined,
+          duration: e.duration,
+          metadata: e.metadata,
+          timestamp: e.timestamp,
+        }))
+    }
+
+    const scenes = await ctx.db
+      .query('scenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', lead.tourId))
+      .collect()
+    const sceneTitles: Record<string, string> = {}
+    for (const s of scenes) sceneTitles[s._id] = s.title
+
+    return {
+      lead,
+      tour: { _id: tour._id, title: tour.title, slug: tour.slug },
+      timeline,
+      sceneTitles,
+    }
   },
 })
 
