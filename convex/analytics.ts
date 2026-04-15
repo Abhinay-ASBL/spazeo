@@ -971,3 +971,76 @@ export const getSessionsByTour = query({
     return args.limit ? rows.slice(0, args.limit) : rows
   },
 })
+
+export const getYawHeatmap = query({
+  args: { sceneId: v.id('scenes') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+    const scene = await ctx.db.get(args.sceneId)
+    if (!scene) return null
+    const tour = await ctx.db.get(scene.tourId)
+    if (!tour) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || tour.userId !== user._id) return null
+
+    const events = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId', (q) => q.eq('tourId', scene.tourId))
+      .collect()
+
+    const YAW_BINS = 36 // 10° each over 360°
+    const PITCH_BINS = 9 // 20° each over ±90° => 180°
+    const grid: number[][] = Array.from({ length: PITCH_BINS }, () =>
+      Array.from({ length: YAW_BINS }, () => 0)
+    )
+    let total = 0
+    for (const e of events) {
+      if (e.event !== 'view_direction') continue
+      if (e.sceneId !== args.sceneId) continue
+      const m = e.metadata as { yaw?: number; pitch?: number } | undefined
+      if (!m || typeof m.yaw !== 'number' || typeof m.pitch !== 'number') continue
+      const yawNorm = ((m.yaw % 360) + 360) % 360
+      const yawBin = Math.min(YAW_BINS - 1, Math.floor(yawNorm / (360 / YAW_BINS)))
+      const pitchNorm = Math.max(-90, Math.min(90, m.pitch))
+      const pitchBin = Math.min(
+        PITCH_BINS - 1,
+        Math.floor(((pitchNorm + 90) / 180) * PITCH_BINS)
+      )
+      grid[pitchBin][yawBin] += 1
+      total += 1
+    }
+    return { grid, total, yawBins: YAW_BINS, pitchBins: PITCH_BINS }
+  },
+})
+
+export const getHotspotClickCounts = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return {}
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) return {}
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || tour.userId !== user._id) return {}
+
+    const events = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+    const counts: Record<string, number> = {}
+    for (const e of events) {
+      if (e.event !== 'hotspot_click') continue
+      const m = e.metadata as { hotspotId?: string } | undefined
+      if (!m?.hotspotId) continue
+      counts[m.hotspotId] = (counts[m.hotspotId] ?? 0) + 1
+    }
+    return counts
+  },
+})
