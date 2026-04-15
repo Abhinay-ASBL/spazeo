@@ -874,3 +874,100 @@ export const trackBatch = mutation({
     }
   },
 })
+
+export const getBySession = query({
+  args: { sessionId: v.string(), tourId: v.optional(v.id('tours')) },
+  handler: async (ctx, args) => {
+    const all = args.tourId
+      ? await ctx.db
+          .query('analytics')
+          .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId!))
+          .collect()
+      : await ctx.db.query('analytics').collect()
+    return all
+      .filter((e) => e.sessionId === args.sessionId)
+      .sort((a, b) => a.timestamp - b.timestamp)
+  },
+})
+
+export const getSessionsByTour = query({
+  args: { tourId: v.id('tours'), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return []
+
+    const events = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+
+    const bySession = new Map<
+      string,
+      {
+        sessionId: string
+        startedAt: number
+        endedAt: number
+        scenes: Set<string>
+        hotspotClicks: number
+        deviceType?: string
+        country?: string
+        city?: string
+      }
+    >()
+    for (const e of events) {
+      let s = bySession.get(e.sessionId)
+      if (!s) {
+        s = {
+          sessionId: e.sessionId,
+          startedAt: e.timestamp,
+          endedAt: e.timestamp,
+          scenes: new Set<string>(),
+          hotspotClicks: 0,
+          deviceType: e.deviceType,
+          country: e.country,
+          city: e.city,
+        }
+        bySession.set(e.sessionId, s)
+      }
+      s.startedAt = Math.min(s.startedAt, e.timestamp)
+      s.endedAt = Math.max(s.endedAt, e.timestamp)
+      if (e.sceneId) s.scenes.add(e.sceneId as string)
+      if (e.event === 'hotspot_click') s.hotspotClicks += 1
+      if (!s.deviceType && e.deviceType) s.deviceType = e.deviceType
+      if (!s.country && e.country) s.country = e.country
+      if (!s.city && e.city) s.city = e.city
+    }
+
+    const leads = await ctx.db
+      .query('leads')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+    const leadBySession = new Map<string, string>()
+    for (const l of leads) {
+      if (l.sessionId) leadBySession.set(l.sessionId, l._id)
+    }
+
+    const rows = Array.from(bySession.values())
+      .map((s) => ({
+        sessionId: s.sessionId,
+        startedAt: s.startedAt,
+        duration: Math.round((s.endedAt - s.startedAt) / 1000),
+        scenesVisited: s.scenes.size,
+        hotspotClicks: s.hotspotClicks,
+        deviceType: s.deviceType,
+        country: s.country,
+        city: s.city,
+        leadId: leadBySession.get(s.sessionId),
+      }))
+      .sort((a, b) => b.startedAt - a.startedAt)
+
+    return args.limit ? rows.slice(0, args.limit) : rows
+  },
+})
