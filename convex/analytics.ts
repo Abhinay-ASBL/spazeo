@@ -828,3 +828,49 @@ export const getTourPerformance = query({
     return results.sort((a, b) => b.views - a.views)
   },
 })
+
+export const trackBatch = mutation({
+  args: {
+    tourId: v.id('tours'),
+    sessionId: v.string(),
+    deviceType: v.optional(
+      v.union(v.literal('desktop'), v.literal('mobile'), v.literal('tablet'))
+    ),
+    country: v.optional(v.string()),
+    city: v.optional(v.string()),
+    events: v.array(
+      v.object({
+        event: v.string(),
+        sceneId: v.optional(v.id('scenes')),
+        duration: v.optional(v.number()),
+        metadata: v.optional(v.any()),
+        timestamp: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    let tourViewEmitted = false
+    for (const e of args.events) {
+      await ctx.db.insert('analytics', {
+        tourId: args.tourId,
+        sessionId: args.sessionId,
+        event: e.event,
+        sceneId: e.sceneId,
+        duration: e.duration,
+        metadata: e.metadata,
+        deviceType: args.deviceType,
+        country: args.country,
+        city: args.city,
+        timestamp: e.timestamp ?? now,
+      })
+      if (e.event === 'tour_view') tourViewEmitted = true
+    }
+    if (tourViewEmitted) {
+      const tour = await ctx.db.get(args.tourId)
+      if (tour) {
+        await ctx.db.patch(args.tourId, { viewCount: tour.viewCount + 1 })
+      }
+    }
+  },
+})
