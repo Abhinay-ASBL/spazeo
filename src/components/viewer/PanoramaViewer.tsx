@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef, Component, type ReactNode } from 'react'
 import { Canvas, useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
-import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh } from 'three'
+import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh, Vector3 } from 'three'
 import { OrbitControls } from '@react-three/drei'
 import { HotspotMarker } from './HotspotMarker'
 import { ImageOff, Loader2 } from 'lucide-react'
@@ -68,6 +68,11 @@ interface Props {
   autoRotate?: boolean
   zoomLevel?: number
   previewPosition?: { x: number; y: number; z: number } | null
+  onViewDirectionReady?: (
+    getter: () => { yaw: number; pitch: number; zoom?: number } | null
+  ) => void
+  onDragStart?: () => void
+  onDragEnd?: () => void
 }
 
 /* ── Normalize non-2:1 panoramas to equirectangular 2:1 ──
@@ -249,19 +254,40 @@ function Controls({
   resetTrigger,
   minPolarAngle = 0,
   maxPolarAngle = Math.PI,
+  onViewDirectionReady,
+  onDragStart,
+  onDragEnd,
 }: {
   autoRotate?: boolean
   resetTrigger: number
   minPolarAngle?: number
   maxPolarAngle?: number
+  onViewDirectionReady?: (
+    getter: () => { yaw: number; pitch: number; zoom?: number } | null
+  ) => void
+  onDragStart?: () => void
+  onDragEnd?: () => void
 }) {
   const controlsRef = useRef<any>(null)
+  const { camera } = useThree()
 
   useEffect(() => {
     if (resetTrigger > 0 && controlsRef.current) {
       controlsRef.current.reset()
     }
   }, [resetTrigger])
+
+  useEffect(() => {
+    if (!onViewDirectionReady) return
+    const getter = () => {
+      const dir = camera.getWorldDirection(new Vector3())
+      const yaw = (Math.atan2(dir.x, -dir.z) * 180) / Math.PI
+      const pitch = (Math.asin(Math.max(-1, Math.min(1, dir.y))) * 180) / Math.PI
+      const zoom = (camera as PerspectiveCamera).zoom ?? 1
+      return { yaw, pitch, zoom }
+    }
+    onViewDirectionReady(getter)
+  }, [camera, onViewDirectionReady])
 
   return (
     <OrbitControls
@@ -278,6 +304,8 @@ function Controls({
       autoRotateSpeed={0.4}
       minPolarAngle={minPolarAngle}
       maxPolarAngle={maxPolarAngle}
+      onStart={() => onDragStart?.()}
+      onEnd={() => onDragEnd?.()}
     />
   )
 }
@@ -294,6 +322,9 @@ export function PanoramaViewer({
   autoRotate = false,
   zoomLevel = 1,
   previewPosition = null,
+  onViewDirectionReady,
+  onDragStart,
+  onDragEnd,
 }: Props) {
   const [texture, setTexture] = useState<Texture | null>(null)
   const [fadeOpacity, setFadeOpacity] = useState(1)
@@ -423,6 +454,9 @@ export function PanoramaViewer({
               resetTrigger={resetTrigger}
               minPolarAngle={polarLimits.min}
               maxPolarAngle={polarLimits.max}
+              onViewDirectionReady={onViewDirectionReady}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
             />
             {texture && (
               <PanoramaSphere
