@@ -23,6 +23,8 @@ import { AnimatePresence } from 'framer-motion'
 import { HotspotInfoPanel } from '@/components/viewer/HotspotInfoPanel'
 import { HotspotVideoModal } from '@/components/viewer/HotspotVideoModal'
 import { useViewerStore } from '@/hooks/useViewerStore'
+import { useSessionTracker } from '@/hooks/useSessionTracker'
+import { usePanoramaTracking } from '@/hooks/usePanoramaTracking'
 
 /* ── Lazy-load PanoramaViewer ── */
 const PanoramaViewer = dynamic(
@@ -184,7 +186,6 @@ export default function PublicTourViewerPage() {
 
   const tourData = useQuery(api.tours.getBySlug, { slug })
   const captureLead = useMutation(api.leads.capture)
-  const trackAnalytics = useMutation(api.analytics.track)
 
   // Resolve splat URL when tour has a splatStorageId (3D viewer)
   const hasSplat = !!(tourData && '_id' in tourData && tourData.splatStorageId)
@@ -234,8 +235,8 @@ export default function PublicTourViewerPage() {
   const tour = unlockedTour ?? tourData
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const sessionIdRef = useRef(crypto.randomUUID())
   const viewTrackedRef = useRef(false)
+  const leadFormShownRef = useRef(false)
 
   // Derived auto-rotate value from idle timer + manual toggle (VIEW-03)
   const isAutoRotating = manualRotate && idleActive
@@ -265,24 +266,6 @@ export default function PublicTourViewerPage() {
     }
   }, [tour?.scenes, activeSceneId])
 
-  // Track tour view once
-  useEffect(() => {
-    if (tour && '_id' in tour && tour._id && !viewTrackedRef.current && !('requiresPassword' in tour && tour.requiresPassword)) {
-      viewTrackedRef.current = true
-      const deviceType = /Mobi/i.test(navigator.userAgent)
-        ? ('mobile' as const)
-        : /Tablet/i.test(navigator.userAgent)
-          ? ('tablet' as const)
-          : ('desktop' as const)
-      trackAnalytics({
-        tourId: tour._id as Id<'tours'>,
-        event: 'tour_view',
-        sessionId: sessionIdRef.current,
-        deviceType,
-      }).catch(() => {})
-    }
-  }, [tour, trackAnalytics])
-
   const activeScene = tour?.scenes?.find((s: { _id: string }) => s._id === activeSceneId)
     ?? tour?.scenes?.[0]
     ?? null
@@ -293,6 +276,50 @@ export default function PublicTourViewerPage() {
     ? (activeHotspots.find((h: { _id: string }) => h._id === activeHotspotId) ?? null)
     : null
 
+  /* ── Session + panorama tracking ── */
+  const tourIdForTracking =
+    tour && '_id' in tour && !('requiresPassword' in tour && tour.requiresPassword)
+      ? (tour._id as Id<'tours'>)
+      : null
+
+  const { sessionId, trackEvent } = useSessionTracker(tourIdForTracking)
+
+  const viewDirectionGetterRef = useRef<
+    null | (() => { yaw: number; pitch: number; zoom?: number } | null)
+  >(null)
+  const getViewDirection = useCallback(
+    () => (viewDirectionGetterRef.current ? viewDirectionGetterRef.current() : null),
+    []
+  )
+
+  const { onDragStart: panoOnDragStart, onDragEnd: panoOnDragEnd } = usePanoramaTracking({
+    sceneId: activeSceneId as Id<'scenes'> | null,
+    sceneOrder: typeof activeScene?.order === 'number' ? activeScene.order : undefined,
+    getViewDirection,
+    trackEvent,
+  })
+
+  // Track tour view once
+  useEffect(() => {
+    if (!tourIdForTracking || viewTrackedRef.current) return
+    viewTrackedRef.current = true
+    trackEvent({
+      event: 'tour_view',
+      metadata: {
+        referrer: typeof document !== 'undefined' ? document.referrer : undefined,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+      },
+    })
+  }, [tourIdForTracking, trackEvent])
+
+  // Track lead form shown when panel opens
+  useEffect(() => {
+    if (!panelOpen) return
+    if (leadFormShownRef.current) return
+    leadFormShownRef.current = true
+    trackEvent({ event: 'lead_form_shown' })
+  }, [panelOpen, trackEvent])
+
   // Close info panel when scene changes
   useEffect(() => {
     setActiveHotspot(null)
@@ -301,6 +328,15 @@ export default function PublicTourViewerPage() {
   /* ── Hotspot click → navigate scenes, open info panel, or open video modal ── */
   const handleHotspotClick = useCallback(
     (hotspot: { type: string; targetSceneId?: string; _id?: string; content?: string; videoUrl?: string; title?: string; description?: string }) => {
+      trackEvent({
+        event: 'hotspot_click',
+        sceneId: activeSceneId as Id<'scenes'> | undefined,
+        metadata: {
+          hotspotId: hotspot._id,
+          hotspotType: hotspot.type,
+          targetSceneId: hotspot.targetSceneId,
+        },
+      })
       // Navigation: panel-first if hotspot has title/description; navigate immediately otherwise
       if (hotspot.type === 'navigation' && hotspot.targetSceneId) {
         const hasInfoContent = !!(hotspot.title || (hotspot as Record<string, unknown>).description)
@@ -324,7 +360,7 @@ export default function PublicTourViewerPage() {
         setActiveHotspot(hotspot._id)
       }
     },
-    [setActiveHotspot]
+    [setActiveHotspot, trackEvent, activeSceneId]
   )
 
   /* ── Fullscreen toggle ── */
@@ -524,6 +560,11 @@ export default function PublicTourViewerPage() {
           onHotspotClick={handleHotspotClick as any}
           autoRotate={isAutoRotating}
           zoomLevel={zoomLevel}
+          onViewDirectionReady={(getter) => {
+            viewDirectionGetterRef.current = getter
+          }}
+          onDragStart={panoOnDragStart}
+          onDragEnd={panoOnDragEnd}
         />
       ) : (
         <div className="flex h-full items-center justify-center">
@@ -757,7 +798,9 @@ export default function PublicTourViewerPage() {
                   email: leadForm.email.trim(),
                   phone: leadForm.phone.trim() || undefined,
                   source: 'tour_viewer',
+                  sessionId,
                 })
+                trackEvent({ event: 'lead_form_submitted' })
                 toast.success('Thank you! We will be in touch shortly.')
                 setLeadForm({ name: '', email: '', phone: '' })
                 setPanelOpen(false)
