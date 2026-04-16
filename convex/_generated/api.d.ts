@@ -22,6 +22,7 @@ import type * as consents from "../consents.js";
 import type * as contact from "../contact.js";
 import type * as conversionJobs from "../conversionJobs.js";
 import type * as crons from "../crons.js";
+import type * as customers from "../customers.js";
 import type * as demoTours from "../demoTours.js";
 import type * as emails from "../emails.js";
 import type * as exteriorPanoramas from "../exteriorPanoramas.js";
@@ -69,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   contact: typeof contact;
   conversionJobs: typeof conversionJobs;
   crons: typeof crons;
+  customers: typeof customers;
   demoTours: typeof demoTours;
   emails: typeof emails;
   exteriorPanoramas: typeof exteriorPanoramas;
