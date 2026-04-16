@@ -3,6 +3,9 @@
 import { useState } from 'react'
 import { useQuery, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { SessionsTable } from '@/components/analytics/SessionsTable'
+import { AttentionHeatmap } from '@/components/analytics/AttentionHeatmap'
 import {
   Eye,
   Users,
@@ -77,12 +80,17 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>('30d')
   const [tourSearch, setTourSearch] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [selectedTourId, setSelectedTourId] = useState<Id<'tours'> | null>(null)
   const exportCsv = useAction(api.analytics.exportCsv)
 
   // getDashboardOverview only accepts 7d/30d/90d — pass undefined for 'all' (defaults to 30d overview)
   const overviewPeriod = period === 'all' ? undefined : period
   const overview = useQuery(api.analytics.getDashboardOverview, { period: overviewPeriod })
   const tourPerformance = useQuery(api.analytics.getTourPerformance, { period })
+  const selectedTourScenes = useQuery(
+    api.scenes.listByTour,
+    selectedTourId ? { tourId: selectedTourId } : 'skip'
+  )
 
   const isLoading = overview === undefined || tourPerformance === undefined
 
@@ -617,11 +625,16 @@ export default function AnalyticsPage() {
               {filteredTours.map((tour, idx) => (
                 <tr
                   key={tour.tourId}
+                  onClick={() => setSelectedTourId(
+                    selectedTourId === tour.tourId ? null : tour.tourId as Id<'tours'>
+                  )}
                   style={{
                     borderBottom:
                       idx < filteredTours.length - 1
                         ? '1px solid rgba(212,160,23,0.06)'
                         : 'none',
+                    cursor: 'pointer',
+                    backgroundColor: selectedTourId === tour.tourId ? 'rgba(212,160,23,0.05)' : 'transparent',
                   }}
                 >
                   <td style={{ padding: '14px 24px' }}>
@@ -674,6 +687,50 @@ export default function AnalyticsPage() {
           </div>
         )}
       </div>
+
+      {/* Visitor Sessions & Attention Heatmap — shown when a tour is selected */}
+      {selectedTourId && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 32, marginTop: 32 }}>
+          <div>
+            <h2
+              style={{
+                fontSize: 16,
+                fontWeight: 600,
+                color: '#F5F3EF',
+                fontFamily: 'var(--font-jakarta)',
+                marginBottom: 12,
+              }}
+            >
+              Visitor sessions
+            </h2>
+            <SessionsTable tourId={selectedTourId} />
+          </div>
+
+          {selectedTourScenes && selectedTourScenes.length > 0 && (
+            <div>
+              <h2
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: '#F5F3EF',
+                  fontFamily: 'var(--font-jakarta)',
+                  marginBottom: 12,
+                }}
+              >
+                Attention heatmaps
+              </h2>
+              <div style={{ display: 'grid', gap: 16 }}>
+                {selectedTourScenes.map((s) => (
+                  <div key={s._id}>
+                    <p style={{ fontSize: 12, color: '#A8A29E', marginBottom: 4 }}>{s.title}</p>
+                    <AttentionHeatmap sceneId={s._id} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
