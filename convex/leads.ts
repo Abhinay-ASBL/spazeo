@@ -183,6 +183,7 @@ export const capture = mutation({
       })
     ),
     sessionId: v.optional(v.string()),
+    customerId: v.optional(v.id('customers')),
   },
   handler: async (ctx, args) => {
     const leadId = await ctx.db.insert('leads', {
