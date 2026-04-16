@@ -24,6 +24,7 @@ import {
   Archive,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { LeadActivityDrawer } from '@/components/leads/LeadActivityDrawer'
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -754,6 +755,11 @@ export default function LeadsPage() {
                             </div>
                           )}
                         </div>
+                      </div>
+
+                      {/* Session Activity */}
+                      <div style={{ marginTop: 16 }}>
+                        <LeadActivityDrawer leadId={lead._id} />
                       </div>
                     </div>
                   )}
