@@ -42,6 +42,7 @@ import type * as passwordUtils from "../passwordUtils.js";
 import type * as pricing from "../pricing.js";
 import type * as reconstructionActions from "../reconstructionActions.js";
 import type * as reconstructionJobs from "../reconstructionJobs.js";
+import type * as salesSessions from "../salesSessions.js";
 import type * as scenes from "../scenes.js";
 import type * as search from "../search.js";
 import type * as subscriptions from "../subscriptions.js";
@@ -90,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   pricing: typeof pricing;
   reconstructionActions: typeof reconstructionActions;
   reconstructionJobs: typeof reconstructionJobs;
+  salesSessions: typeof salesSessions;
   scenes: typeof scenes;
   search: typeof search;
   subscriptions: typeof subscriptions;
