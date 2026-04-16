@@ -270,6 +270,7 @@ export default defineSchema({
       })
     ),
     sessionId: v.optional(v.string()),
+    customerId: v.optional(v.id('customers')),
   })
     .index('by_tourId', ['tourId'])
     .index('by_email', ['email'])
@@ -311,6 +312,35 @@ export default defineSchema({
     ),
     topCountries: v.optional(v.any()), // Record<country, count>
   }).index('by_tourId_date', ['tourId', 'date']),
+
+  customers: defineTable({
+    phone: v.string(),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    createdBy: v.id('users'),
+    notes: v.optional(
+      v.array(v.object({ text: v.string(), createdAt: v.number() }))
+    ),
+  })
+    .index('by_phone', ['phone'])
+    .index('by_createdBy', ['createdBy']),
+
+  salesSessions: defineTable({
+    tourId: v.id('tours'),
+    customerId: v.id('customers'),
+    salespersonId: v.id('users'),
+    sessionId: v.string(),
+    interestLevel: v.optional(
+      v.union(v.literal('hot'), v.literal('warm'), v.literal('cold'))
+    ),
+    postTourNote: v.optional(v.string()),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index('by_tourId', ['tourId'])
+    .index('by_customerId', ['customerId'])
+    .index('by_salespersonId', ['salespersonId'])
+    .index('by_sessionId', ['sessionId']),
 
   activityLog: defineTable({
     userId: v.id('users'),
