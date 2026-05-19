@@ -430,9 +430,9 @@ function TowerStage({
 
   return (
     <div className="w-full">
-      {/* Cinematic hero — taller, editorial overlay */}
+      {/* Cinematic hero — 4:3 on mobile, 21:9 on desktop */}
       <div className="relative w-full overflow-hidden">
-        <div className="relative w-full" style={{ aspectRatio: '21/9' }}>
+        <div className="relative w-full [aspect-ratio:4/3] md:[aspect-ratio:21/9]">
           <Image
             src={cfg.heroUrl ?? '/legacy-towers/plans/tower-hero.jpg'}
             alt={cfg.projectName}
@@ -458,19 +458,19 @@ function TowerStage({
           />
 
           {/* Editorial overline + display title — top left */}
-          <div className="absolute left-6 top-6 lg:left-10 lg:top-10 max-w-2xl">
+          <div className="absolute left-5 top-5 sm:left-8 sm:top-8 lg:left-10 lg:top-10 max-w-2xl">
             <p
-              className="text-[10px] uppercase tracking-[0.32em]"
+              className="text-[9px] sm:text-[10px] uppercase tracking-[0.32em]"
               style={{ color: GOLD, fontFamily: 'var(--font-jakarta)' }}
             >
               ASBL · Hyderabad
             </p>
             <h1
-              className="mt-3 font-black leading-[0.92] tracking-[-0.04em]"
+              className="mt-2 sm:mt-3 font-black leading-[0.9] tracking-[-0.04em]"
               style={{
                 color: '#F5F3EF',
                 fontFamily: 'var(--font-jakarta)',
-                fontSize: 'clamp(36px, 5.6vw, 72px)',
+                fontSize: 'clamp(28px, 5.6vw, 72px)',
               }}
             >
               Legacy
@@ -541,22 +541,24 @@ function TowerStage({
             })}
 
           {/* Bottom caption strip */}
-          <div className="absolute bottom-0 left-0 right-0 px-6 pb-8 lg:px-10 lg:pb-10">
+          <div className="absolute bottom-0 left-0 right-0 px-6 pb-6 lg:px-10 lg:pb-10">
             <div className="flex items-end justify-between gap-6">
               <p
-                className="max-w-md text-sm leading-relaxed"
+                className="hidden sm:block max-w-md text-sm leading-relaxed"
                 style={{ color: '#A8A29E' }}
               >
-                Tap a tower above, walk any floor, look out from any window. The
-                view is the listing.
+                Tap a tower above, walk any floor, look out from any window.
               </p>
-              <div className="hidden sm:flex items-center gap-2 text-[10px] uppercase tracking-[0.18em]" style={{ color: '#6B6560' }}>
+              <div
+                className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em]"
+                style={{ color: '#A8A29E' }}
+              >
                 <span className="h-1 w-1 rounded-full" style={{ background: GOLD }} />
                 {cfg.towers.length} Towers
                 <span className="mx-2 h-px w-4" style={{ background: 'rgba(212,160,23,0.3)' }} />
                 {cfg.totalFloors} Floors
                 <span className="mx-2 h-px w-4" style={{ background: 'rgba(212,160,23,0.3)' }} />
-                360° Live
+                360°
               </div>
             </div>
           </div>
@@ -595,7 +597,7 @@ function TowerStage({
                   className="group flex w-full items-center gap-6 py-7 text-left transition-all duration-300 lg:gap-10 lg:py-10 cursor-pointer"
                   style={{
                     borderBottom: '1px solid rgba(212,160,23,0.1)',
-                    paddingLeft: isHov ? 16 : 0,
+                    transform: isHov ? 'translateX(8px)' : 'translateX(0)',
                   }}
                 >
                   {/* Index */}
@@ -610,11 +612,11 @@ function TowerStage({
                   <span
                     className="shrink-0 font-black leading-none transition-all duration-300"
                     style={{
-                      color: isHov ? GOLD : '#1B1916',
+                      color: isHov ? GOLD : 'rgba(212,160,23,0.28)',
                       fontFamily: 'var(--font-jakarta)',
-                      fontSize: 'clamp(56px, 9vw, 120px)',
+                      fontSize: 'clamp(64px, 9vw, 128px)',
                       letterSpacing: '-0.06em',
-                      WebkitTextStroke: isHov ? '0' : '1px rgba(212,160,23,0.5)',
+                      WebkitTextStroke: isHov ? '0px' : '1.5px rgba(212,160,23,0.55)',
                     }}
                   >
                     {t.id}
@@ -894,16 +896,18 @@ function FloorStage({
                   <button
                     key={s.heightM}
                     onClick={() => onChange(s.floor)}
-                    className="group flex w-full items-center justify-between py-2.5 text-left transition-all cursor-pointer"
+                    className="group flex w-full items-center justify-between py-3 text-left transition-all duration-150 cursor-pointer"
                     style={{
-                      paddingLeft: active ? 12 : 0,
+                      paddingLeft: 12,
+                      paddingRight: 8,
+                      background: active ? 'rgba(212,160,23,0.08)' : 'transparent',
                       borderLeft: active
-                        ? `2px solid ${GOLD}`
-                        : '2px solid transparent',
+                        ? `3px solid ${GOLD}`
+                        : '3px solid transparent',
                     }}
                   >
                     <span
-                      className="text-sm font-semibold tracking-tight"
+                      className="text-sm font-bold tracking-tight"
                       style={{
                         color: active ? GOLD : '#A8A29E',
                         fontFamily: 'var(--font-jakarta)',
@@ -913,7 +917,7 @@ function FloorStage({
                     </span>
                     <span
                       className="font-mono text-[10px] tabular-nums"
-                      style={{ color: active ? GOLD : '#5A5248' }}
+                      style={{ color: active ? GOLD : '#4A4540' }}
                     >
                       F{s.floor}
                     </span>
@@ -1220,17 +1224,17 @@ function ViewStage({
     <div className="mx-auto w-full max-w-7xl px-6 py-8 lg:px-10 lg:py-10">
       {/* Editorial attribution — single line */}
       <div
-        className="mb-6 flex flex-wrap items-end justify-between gap-4 pb-5"
+        className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3 pb-5"
         style={{ borderBottom: '1px solid rgba(212,160,23,0.15)' }}
       >
-        <div className="flex items-baseline gap-3 flex-wrap">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span
-            className="text-[10px] uppercase tracking-[0.18em]"
+            className="text-[10px] uppercase tracking-[0.18em] font-semibold"
             style={{ color: GOLD }}
           >
             Tower {tower.id}
           </span>
-          <span className="h-3 w-px" style={{ background: 'rgba(212,160,23,0.3)' }} />
+          <span className="hidden sm:block h-3 w-px" style={{ background: 'rgba(212,160,23,0.3)' }} />
           <span
             className="text-[10px] uppercase tracking-[0.18em]"
             style={{ color: '#A8A29E' }}
@@ -1239,7 +1243,7 @@ function ViewStage({
           </span>
           {unit && (
             <>
-              <span className="h-3 w-px" style={{ background: 'rgba(212,160,23,0.3)' }} />
+              <span className="hidden sm:block h-3 w-px" style={{ background: 'rgba(212,160,23,0.3)' }} />
               <span
                 className="text-base font-bold tracking-tight"
                 style={{
@@ -1259,30 +1263,29 @@ function ViewStage({
             </>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onChangeTower}
-            className="px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] transition-colors cursor-pointer"
-            style={{ color: '#A8A29E' }}
-          >
-            ← Tower
-          </button>
-          <span className="h-3 w-px" style={{ background: 'rgba(212,160,23,0.2)' }} />
-          <button
-            onClick={onChangeFloor}
-            className="px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] transition-colors cursor-pointer"
-            style={{ color: '#A8A29E' }}
-          >
-            ← Floor
-          </button>
-          <span className="h-3 w-px" style={{ background: 'rgba(212,160,23,0.2)' }} />
-          <button
-            onClick={onChangeUnit}
-            className="px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] transition-colors cursor-pointer"
-            style={{ color: '#A8A29E' }}
-          >
-            ← Unit
-          </button>
+        <div className="flex flex-wrap items-center gap-1">
+          {[
+            { label: 'Tower', fn: onChangeTower },
+            { label: 'Floor', fn: onChangeFloor },
+            { label: 'Unit', fn: onChangeUnit },
+          ].map(({ label, fn }, i, arr) => (
+            <div key={label} className="flex items-center gap-1">
+              <button
+                onClick={fn}
+                className="flex items-center gap-1 rounded px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] transition-all cursor-pointer hover:text-[#F5F3EF]"
+                style={{
+                  color: '#6B6560',
+                  background: 'rgba(245,243,239,0.04)',
+                }}
+              >
+                <ArrowLeft size={9} strokeWidth={1.5} />
+                {label}
+              </button>
+              {i < arr.length - 1 && (
+                <span className="h-3 w-px" style={{ background: 'rgba(212,160,23,0.15)' }} />
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -1291,7 +1294,7 @@ function ViewStage({
         <div
           className="relative overflow-hidden"
           style={{
-            height: 'clamp(360px, 64vw, 72vh)',
+            height: 'clamp(320px, 56vw, 72vh)',
             background: '#000',
           }}
         >
@@ -1307,15 +1310,16 @@ function ViewStage({
 
           {/* Vertical elevation scale — left edge */}
           <div
-            className="absolute left-0 top-0 bottom-0 flex flex-col justify-center pl-4 pr-2"
+            className="absolute left-0 top-0 bottom-0 flex flex-col justify-center"
             style={{ zIndex: 10 }}
           >
             <div
-              className="flex flex-col gap-0.5 py-3 pl-3 pr-4"
+              className="flex flex-col gap-0 py-2 pl-3 pr-4 overflow-y-auto"
               style={{
-                background: 'rgba(10,9,8,0.65)',
+                background: 'rgba(10,9,8,0.72)',
                 backdropFilter: 'blur(16px)',
                 borderLeft: `2px solid ${GOLD}`,
+                maxHeight: '80%',
               }}
             >
               {[...heightSamples].reverse().map((s) => {
@@ -1324,19 +1328,19 @@ function ViewStage({
                   <button
                     key={s.heightM}
                     onClick={() => onChangeFloorDirect(s.floor)}
-                    className="flex items-center gap-2 py-1 text-left transition-all cursor-pointer"
+                    className="flex items-center gap-2 py-2 text-left transition-all cursor-pointer"
                   >
                     <span
-                      className="h-1 transition-all"
+                      className="h-0.5 shrink-0 transition-all duration-200"
                       style={{
-                        width: active ? 14 : 6,
-                        background: active ? GOLD : 'rgba(168,162,158,0.4)',
+                        width: active ? 12 : 5,
+                        background: active ? GOLD : 'rgba(168,162,158,0.35)',
                       }}
                     />
                     <span
-                      className="text-[10px] font-bold tracking-wider transition-colors"
+                      className="whitespace-nowrap text-[10px] font-bold tracking-wider transition-colors"
                       style={{
-                        color: active ? GOLD : '#A8A29E',
+                        color: active ? GOLD : '#6B6560',
                         fontFamily: 'var(--font-jakarta)',
                       }}
                     >
