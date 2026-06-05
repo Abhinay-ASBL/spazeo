@@ -539,6 +539,10 @@ export default function PublicTourViewerPage() {
           }}
           onDragStart={panoOnDragStart}
           onDragEnd={panoOnDragEnd}
+          preloadUrls={(scenes as Array<{ _id: string; imageUrl?: string | null }>)
+            .filter((s) => s._id !== activeSceneId && s.imageUrl)
+            .map((s) => proxyUrl(s.imageUrl as string))
+            .filter((u): u is string => !!u)}
         />
       ) : (
         <div className="flex h-full items-center justify-center">

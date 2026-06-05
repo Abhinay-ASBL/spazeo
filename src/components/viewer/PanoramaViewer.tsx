@@ -2,8 +2,9 @@
 
 import { useEffect, useCallback, useState, useRef, Component, type ReactNode } from 'react'
 import { Canvas, useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
-import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh, Vector3 } from 'three'
+import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh, Vector3, MeshBasicMaterial } from 'three'
 import { OrbitControls } from '@react-three/drei'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { HotspotMarker } from './HotspotMarker'
 import { ImageOff, Loader2 } from 'lucide-react'
 
@@ -41,7 +42,7 @@ class PanoramaErrorBoundary extends Component<
 
 /* ── Types ── */
 
-interface HotspotData {
+export interface HotspotData {
   _id: string
   _creationTime?: number
   sceneId: string
@@ -54,8 +55,10 @@ interface HotspotData {
   title?: string
   description?: string
   imageUrl?: string | null
-  markerStyle?: 'ring' | 'arrow' | 'dot' | 'label'
+  markerStyle?: 'ring' | 'arrow' | 'dot' | 'label' | 'sticky'
   lineHeight?: number
+  readOnly?: boolean
+  size?: number
 }
 
 interface Props {
@@ -73,6 +76,18 @@ interface Props {
   ) => void
   onDragStart?: () => void
   onDragEnd?: () => void
+  minAzimuthAngle?: number
+  maxAzimuthAngle?: number
+  polarClampMin?: number
+  polarClampMax?: number
+  /** Initial horizontal look direction in radians (OrbitControls azimuth: 0=South, π/2=East, π=North, -π/2=West) */
+  initialYaw?: number
+  /** Initial vertical tilt in radians. Positive = look down (more ground). Default: 0 (horizon). */
+  initialPitch?: number
+  /** Half-width of horizontal arc in radians. π = full 360°, π/3 = ±60° each side. Default: π (unrestricted) */
+  azimuthHalfArc?: number
+  /** URLs to preload in the background after the first scene loads */
+  preloadUrls?: string[]
 }
 
 /* ── Normalize non-2:1 panoramas to equirectangular 2:1 ──
@@ -209,20 +224,19 @@ function PanoramaSphere({
 
 function PreviewMarker({ position }: { position: { x: number; y: number; z: number } }) {
   const ringRef = useRef<Mesh>(null)
-  const dotRef = useRef<Mesh>(null)
   useFrame((_, delta) => {
     if (ringRef.current) {
       const t = (ringRef.current.userData.t ?? 0) + delta * 2.4
       ringRef.current.userData.t = t
       const s = 1 + Math.sin(t) * 0.25
       ringRef.current.scale.setScalar(s)
-      const mat = ringRef.current.material as any
-      if (mat) mat.opacity = 0.55 + Math.sin(t) * 0.25
+      const mat = ringRef.current.material as MeshBasicMaterial
+      mat.opacity = 0.55 + Math.sin(t) * 0.25
     }
   })
   return (
     <group position={[position.x, position.y, position.z]}>
-      <mesh ref={dotRef}>
+      <mesh>
         <sphereGeometry args={[6, 16, 16]} />
         <meshBasicMaterial color="#D4A017" depthTest={false} transparent />
       </mesh>
@@ -254,6 +268,11 @@ function Controls({
   resetTrigger,
   minPolarAngle = 0,
   maxPolarAngle = Math.PI,
+  minAzimuthAngle,
+  maxAzimuthAngle,
+  initialYaw,
+  initialPitch,
+  azimuthHalfArc = Math.PI,
   onViewDirectionReady,
   onDragStart,
   onDragEnd,
@@ -262,20 +281,74 @@ function Controls({
   resetTrigger: number
   minPolarAngle?: number
   maxPolarAngle?: number
+  minAzimuthAngle?: number
+  maxAzimuthAngle?: number
+  initialYaw?: number
+  /** Initial vertical tilt in radians. Positive = look down (show more ground). Default: 0 (horizon). */
+  initialPitch?: number
+  azimuthHalfArc?: number
   onViewDirectionReady?: (
     getter: () => { yaw: number; pitch: number; zoom?: number } | null
   ) => void
   onDragStart?: () => void
   onDragEnd?: () => void
 }) {
-  const controlsRef = useRef<any>(null)
+  const controlsRef = useRef<OrbitControlsImpl>(null)
   const { camera } = useThree()
+  const yawAppliedRef = useRef(false)
+
+  const polarLocked = Math.abs(maxPolarAngle - minPolarAngle) < 0.001
+
+  // Position camera at initialYaw + initialPitch on mount and whenever they change
+  useEffect(() => {
+    if (!controlsRef.current) return
+    const yaw = initialYaw ?? 0
+    const pos = camera.position
+    const horizDist = Math.sqrt(pos.x * pos.x + pos.z * pos.z) || 5
+    camera.position.x = Math.sin(yaw) * horizDist
+    camera.position.z = Math.cos(yaw) * horizDist
+    if (polarLocked) {
+      camera.position.y = 0
+    } else {
+      camera.position.y = horizDist * Math.tan(initialPitch ?? 0)
+    }
+    controlsRef.current.update()
+    controlsRef.current.saveState()
+    yawAppliedRef.current = true
+  }, [initialYaw, initialPitch, polarLocked, camera])
 
   useEffect(() => {
     if (resetTrigger > 0 && controlsRef.current) {
       controlsRef.current.reset()
     }
   }, [resetTrigger])
+
+  // Wrap-safe azimuth clamping + horizon enforcement every frame
+  useFrame(() => {
+    if (!controlsRef.current || !yawAppliedRef.current) return
+
+    // When polar is locked (damping disabled), force camera.y = 0 every frame.
+    // OrbitControls already clamps phi via minPolarAngle===maxPolarAngle;
+    // this catches any residual floating-point drift.
+    if (polarLocked) {
+      camera.position.y = 0
+    }
+
+    if (azimuthHalfArc >= Math.PI) return
+    const pos = camera.position
+    const theta = Math.atan2(pos.x, pos.z)
+    const yaw = initialYaw ?? 0
+    let delta = theta - yaw
+    while (delta > Math.PI) delta -= 2 * Math.PI
+    while (delta < -Math.PI) delta += 2 * Math.PI
+    if (Math.abs(delta) > azimuthHalfArc) {
+      const clampedTheta = yaw + Math.sign(delta) * azimuthHalfArc
+      const horizDist = Math.sqrt(pos.x * pos.x + pos.z * pos.z) || 5
+      camera.position.x = Math.sin(clampedTheta) * horizDist
+      camera.position.z = Math.cos(clampedTheta) * horizDist
+      controlsRef.current.update()
+    }
+  })
 
   useEffect(() => {
     if (!onViewDirectionReady) return
@@ -298,19 +371,53 @@ function Controls({
       zoomSpeed={0.5}
       minDistance={0.1}
       maxDistance={5}
-      dampingFactor={0.1}
-      enableDamping
+      dampingFactor={polarLocked ? 0 : 0.1}
+      enableDamping={!polarLocked}
       autoRotate={autoRotate}
       autoRotateSpeed={0.4}
       minPolarAngle={minPolarAngle}
       maxPolarAngle={maxPolarAngle}
+      minAzimuthAngle={azimuthHalfArc < Math.PI ? undefined : minAzimuthAngle}
+      maxAzimuthAngle={azimuthHalfArc < Math.PI ? undefined : maxAzimuthAngle}
       onStart={() => onDragStart?.()}
       onEnd={() => onDragEnd?.()}
     />
   )
 }
 
+/* ── WebGL capability check ──
+ * react-three-fiber's <Canvas> throws hard when a WebGL context can't be
+ * created (headless/sandboxed browsers, GPU disabled, blocklisted drivers).
+ * Probe support before mounting the Canvas so we can degrade gracefully
+ * instead of surfacing an uncaught THREE.WebGLRenderer error.
+ */
+function isWebGLAvailable(): boolean {
+  try {
+    const canvas = document.createElement('canvas')
+    const gl =
+      canvas.getContext('webgl') ||
+      canvas.getContext('experimental-webgl')
+    return !!gl
+  } catch {
+    return false
+  }
+}
+
 /* ── Main Component ── */
+
+type CachedEntry = { texture: Texture; minPolar: number; maxPolar: number }
+
+function processRawTexture(t: Texture): CachedEntry {
+  const result = normalizeEquirectangular(t.image as HTMLImageElement)
+  if (result) {
+    return { texture: result.texture, minPolar: result.minPolarAngle, maxPolar: result.maxPolarAngle }
+  }
+  t.colorSpace = SRGBColorSpace
+  t.minFilter = LinearMipMapLinearFilter
+  t.generateMipmaps = true
+  t.needsUpdate = true
+  return { texture: t, minPolar: 0, maxPolar: Math.PI }
+}
 
 export function PanoramaViewer({
   imageUrl,
@@ -325,40 +432,94 @@ export function PanoramaViewer({
   onViewDirectionReady,
   onDragStart,
   onDragEnd,
+  minAzimuthAngle,
+  maxAzimuthAngle,
+  polarClampMin,
+  polarClampMax,
+  initialYaw,
+  initialPitch,
+  azimuthHalfArc,
+  preloadUrls,
 }: Props) {
   const [texture, setTexture] = useState<Texture | null>(null)
   const [fadeOpacity, setFadeOpacity] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(!!imageUrl)
   const [resetTrigger, setResetTrigger] = useState(0)
   const [polarLimits, setPolarLimits] = useState({ min: 0, max: Math.PI })
+  // null = not yet probed (SSR/first paint), true/false = client probe result
+  const [webglSupported, setWebglSupported] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    setWebglSupported(isWebGLAvailable())
+  }, [])
 
   // Refs to avoid stale closures in setTimeout callbacks
   const isTransitioningRef = useRef(false)
   const isFirstLoadRef = useRef(true)
   const currentUrlRef = useRef<string>('')
+  // Texture cache: url → processed {texture, polarLimits}
+  const textureCacheRef = useRef<Map<string, CachedEntry>>(new Map())
 
-  // Helper: apply normalize result (or raw texture) and set polar limits
-  const applyTexture = useCallback((t: Texture) => {
-    const result = normalizeEquirectangular(t.image as HTMLImageElement)
-    if (result) {
-      setTexture(result.texture)
-      setPolarLimits({ min: result.minPolarAngle, max: result.maxPolarAngle })
-    } else {
-      t.colorSpace = SRGBColorSpace
-      t.minFilter = LinearMipMapLinearFilter
-      t.generateMipmaps = true
-      t.needsUpdate = true
-      setTexture(t)
-      setPolarLimits({ min: 0, max: Math.PI })
-    }
+  const applyEntry = useCallback(({ texture: t, minPolar, maxPolar }: CachedEntry) => {
+    setTexture(t)
+    setPolarLimits({ min: minPolar, max: maxPolar })
   }, [])
 
+  // Legacy helper used by TextureLoader callbacks
+  const applyTexture = useCallback((t: Texture) => {
+    applyEntry(processRawTexture(t))
+  }, [applyEntry])
+
+  // Background preload: fires after first scene finishes loading
   useEffect(() => {
-    if (!imageUrl) return
+    if (isLoading || !preloadUrls || preloadUrls.length === 0) return
+    preloadUrls.forEach((url) => {
+      if (!url || url === imageUrl || textureCacheRef.current.has(url)) return
+      const loader = new TextureLoader()
+      loader.crossOrigin = 'anonymous'
+      loader.load(url, (t) => {
+        if (!textureCacheRef.current.has(url)) {
+          textureCacheRef.current.set(url, processRawTexture(t))
+        }
+      })
+    })
+  }, [isLoading, preloadUrls, imageUrl])
+
+  useEffect(() => {
+    if (!imageUrl) {
+      setIsLoading(false)
+      return
+    }
 
     // Skip if same URL
-    if (imageUrl === currentUrlRef.current) return
+    if (imageUrl === currentUrlRef.current) {
+      setIsLoading(false)
+      return
+    }
     currentUrlRef.current = imageUrl
+
+    // Cache hit — apply immediately (first load: no transition; subsequent: fade swap)
+    const cached = textureCacheRef.current.get(imageUrl)
+    if (cached) {
+      if (isFirstLoadRef.current) {
+        isFirstLoadRef.current = false
+        applyEntry(cached)
+        setFadeOpacity(1)
+        setIsLoading(false)
+        return
+      }
+      if (isTransitioningRef.current) return
+      isTransitioningRef.current = true
+      setFadeOpacity(0)
+      setTimeout(() => {
+        applyEntry(cached)
+        setResetTrigger((n) => n + 1)
+        setFadeOpacity(1)
+        setIsLoading(false)
+        setTimeout(() => { isTransitioningRef.current = false }, 420)
+      }, 400)
+      return
+    }
 
     if (isFirstLoadRef.current) {
       // First load — no transition, just load directly
@@ -369,7 +530,9 @@ export function PanoramaViewer({
       loader.load(
         imageUrl,
         (t) => {
-          applyTexture(t)
+          const entry = processRawTexture(t)
+          textureCacheRef.current.set(imageUrl, entry)
+          applyEntry(entry)
           setFadeOpacity(1)
           setIsLoading(false)
         },
@@ -398,33 +561,26 @@ export function PanoramaViewer({
       loader.load(
         capturedUrl,
         (t) => {
-          // Step 3: Normalize aspect ratio and swap texture + reset polar limits
-          applyTexture(t)
+          const entry = processRawTexture(t)
+          textureCacheRef.current.set(capturedUrl, entry)
+          applyEntry(entry)
           setResetTrigger((n) => n + 1)
           setIsLoading(false)
-
-          // Step 4: Fade in
           setFadeOpacity(1)
-
-          setTimeout(() => {
-            isTransitioningRef.current = false
-          }, 420) // slightly longer than CSS transition
+          setTimeout(() => { isTransitioningRef.current = false }, 420)
         },
         undefined,
         (err) => {
           console.error('[PanoramaViewer] texture load error:', err)
-          // Stay on current scene, fade back in
           setIsLoading(false)
           setFadeOpacity(1)
-          setTimeout(() => {
-            isTransitioningRef.current = false
-          }, 420)
+          setTimeout(() => { isTransitioningRef.current = false }, 420)
         }
       )
     }, 400) // wait for fade-out to complete
 
     return () => clearTimeout(timer)
-  }, [imageUrl, applyTexture])
+  }, [imageUrl, applyEntry])
 
   return (
     <div
@@ -446,43 +602,91 @@ export function PanoramaViewer({
           transition: 'opacity 0.4s ease',
         }}
       >
-        <PanoramaErrorBoundary>
-          <Canvas camera={{ fov: 65, near: 0.1, far: 1000 }}>
-            <CameraController zoomLevel={zoomLevel} />
-            <Controls
-              autoRotate={autoRotate && !isEditing}
-              resetTrigger={resetTrigger}
-              minPolarAngle={polarLimits.min}
-              maxPolarAngle={polarLimits.max}
-              onViewDirectionReady={onViewDirectionReady}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
+        {webglSupported === false ? (
+          /* WebGL unavailable — degrade to a flat panorama image */
+          imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt="Panorama view"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block',
+              }}
             />
-            {texture && (
-              <PanoramaSphere
-                texture={texture}
-                onSphereClick={onSphereClick}
-                isEditing={isEditing}
+          ) : (
+            <div
+              className="flex h-full w-full flex-col items-center justify-center gap-3"
+              style={{ backgroundColor: '#0A0908' }}
+            >
+              <ImageOff size={32} style={{ color: '#6B6560' }} />
+              <p
+                className="text-sm"
+                style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
+              >
+                Could not load panorama image
+              </p>
+            </div>
+          )
+        ) : webglSupported === true ? (
+          <PanoramaErrorBoundary>
+            <Canvas
+              camera={{ fov: 65, near: 0.1, far: 1000 }}
+              onCreated={({ gl }) => {
+                // OrbitControls (three-stdlib) calls releasePointerCapture with a
+                // stale pointer id when a touch ends mid-gesture or during unmount.
+                // Browsers throw NotFoundError. Patch once — persists for canvas
+                // lifetime, never restored, so unmount racing is not an issue.
+                const el = gl.domElement
+                const _orig = el.releasePointerCapture.bind(el)
+                el.releasePointerCapture = (id: number) => {
+                  try { _orig(id) } catch { /* stale pointer id */ }
+                }
+              }}
+            >
+              <CameraController zoomLevel={zoomLevel} />
+              <Controls
+                autoRotate={autoRotate && !isEditing}
+                resetTrigger={resetTrigger}
+                minPolarAngle={polarClampMin !== undefined ? Math.max(polarLimits.min, polarClampMin) : polarLimits.min}
+                maxPolarAngle={polarClampMax !== undefined ? Math.min(polarLimits.max, polarClampMax) : polarLimits.max}
+                minAzimuthAngle={minAzimuthAngle}
+                maxAzimuthAngle={maxAzimuthAngle}
+                initialYaw={initialYaw}
+                initialPitch={initialPitch}
+                azimuthHalfArc={azimuthHalfArc}
+                onViewDirectionReady={onViewDirectionReady}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
               />
-            )}
+              {texture && (
+                <PanoramaSphere
+                  texture={texture}
+                  onSphereClick={onSphereClick}
+                  isEditing={isEditing}
+                />
+              )}
 
-            {/* Render hotspot markers */}
-            {hotspots.map((hotspot) => (
-              <HotspotMarker
-                key={hotspot._id}
-                hotspot={hotspot}
-                onClick={() => onHotspotClick?.(hotspot)}
-              />
-            ))}
+              {/* Render hotspot markers */}
+              {hotspots.map((hotspot) => (
+                <HotspotMarker
+                  key={hotspot._id}
+                  hotspot={hotspot}
+                  onClick={() => onHotspotClick?.(hotspot)}
+                />
+              ))}
 
-            {/* Pending placement preview */}
-            {previewPosition && <PreviewMarker position={previewPosition} />}
-          </Canvas>
-        </PanoramaErrorBoundary>
+              {/* Pending placement preview */}
+              {previewPosition && <PreviewMarker position={previewPosition} />}
+            </Canvas>
+          </PanoramaErrorBoundary>
+        ) : null}
       </div>
 
-      {/* Loading spinner — shown during texture load */}
-      {isLoading && (
+      {/* Loading spinner — shown during texture load (WebGL path only) */}
+      {isLoading && webglSupported !== false && (
         <div
           className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
         >
