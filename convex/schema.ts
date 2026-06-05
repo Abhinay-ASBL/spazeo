@@ -112,6 +112,7 @@ export default defineSchema({
     brandingConfig: v.optional(
       v.object({
         logoStorageId: v.optional(v.id('_storage')),
+        logoUrl: v.optional(v.string()),
         brandColor: v.optional(v.string()),
         showPoweredBy: v.optional(v.boolean()),
       })
@@ -293,7 +294,8 @@ export default defineSchema({
   })
     .index('by_tourId', ['tourId'])
     .index('by_event', ['event'])
-    .index('by_timestamp', ['timestamp']),
+    .index('by_timestamp', ['timestamp'])
+    .index('by_tourId_timestamp', ['tourId', 'timestamp']),
 
   dailyAnalytics: defineTable({
     tourId: v.id('tours'),
@@ -879,4 +881,100 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_email', ['email']),
+
+  // ─── Legacy Towers config (single-row admin-editable) ───────────────────────
+  legacyTowerConfigs: defineTable({
+    slug: v.string(), // identity key (e.g. 'asbl-legacy-towers')
+    projectName: v.string(),
+    projectTagline: v.optional(v.string()),
+    projectLocation: v.optional(v.string()),
+    heroStorageId: v.optional(v.id('_storage')),
+    sitePlanStorageId: v.optional(v.id('_storage')),
+    totalFloors: v.number(),
+    floorsPerSection: v.optional(v.number()),
+    heightSamples: v.array(
+      v.object({
+        heightM: v.number(),
+        floor: v.number(),
+        label: v.string(),
+      })
+    ),
+    towers: v.array(
+      v.object({
+        id: v.string(), // 'A' | 'B' | 'C' | custom
+        name: v.string(),
+        tagline: v.optional(v.string()),
+        floorPlanStorageId: v.optional(v.id('_storage')),
+        heroStorageId: v.optional(v.id('_storage')),
+        heroLeftPct: v.optional(v.number()),
+        heroTopPct: v.optional(v.number()),
+        heroRightPct: v.optional(v.number()),
+        heroBottomPct: v.optional(v.number()),
+      })
+    ),
+    corners: v.array(
+      v.object({
+        id: v.string(),
+        direction: v.string(),
+        sitePlanLeftPct: v.number(),
+        sitePlanTopPct: v.number(),
+        floorPlanLeftPct: v.number(),
+        floorPlanTopPct: v.number(),
+      })
+    ),
+    unitTypes: v.array(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        bhk: v.number(),
+        areaSqft: v.optional(v.number()),
+        layoutStorageId: v.optional(v.id('_storage')),
+        towerId: v.optional(v.string()),
+        points: v.optional(
+          v.array(v.object({ leftPct: v.number(), topPct: v.number() }))
+        ),
+        balconyYawRad: v.optional(v.number()),
+        balconyYawRads: v.optional(v.array(v.object({ heightM: v.number(), yawRad: v.number() }))),
+        balconyHotspots: v.optional(
+          v.array(
+            v.object({
+              id: v.string(),
+              heightM: v.number(),
+              x: v.number(),
+              y: v.number(),
+              z: v.number(),
+              title: v.string(),
+              description: v.optional(v.string()),
+              lineHeight: v.optional(v.number()),
+            })
+          )
+        ),
+        balconyStickyLabels: v.optional(
+          v.array(
+            v.object({
+              id: v.string(),
+              heightM: v.number(),
+              text: v.string(),
+              x: v.optional(v.number()),
+              y: v.optional(v.number()),
+              z: v.optional(v.number()),
+              size: v.optional(v.number()),
+            })
+          )
+        ),
+      })
+    ),
+    panoramas: v.array(
+      v.object({
+        towerId: v.string(),
+        cornerId: v.string(), // legacy corner id OR composite key for unit-vertex
+        heightM: v.number(),
+        storageId: v.id('_storage'),
+        timeOfDay: v.optional(v.string()),
+        unitId: v.optional(v.string()),
+        vertexIndex: v.optional(v.number()),
+      })
+    ),
+    updatedAt: v.number(),
+  }).index('by_slug', ['slug']),
 })

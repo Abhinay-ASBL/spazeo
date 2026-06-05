@@ -162,14 +162,15 @@ export const getBySlug = query({
       })
     )
 
-    const logoUrl = tour.brandingConfig?.logoStorageId
-      ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
-      : null
+    const resolvedLogoUrl = tour.brandingConfig?.logoUrl
+      ?? (tour.brandingConfig?.logoStorageId
+        ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
+        : null)
 
     return {
       ...tour,
       brandingConfig: tour.brandingConfig
-        ? { ...tour.brandingConfig, logoUrl }
+        ? { ...tour.brandingConfig, logoUrl: resolvedLogoUrl }
         : undefined,
       scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
       requiresPassword: false,
@@ -213,14 +214,15 @@ export const getBySlugWithScenes = query({
       })
     )
 
-    const logoUrl = tour.brandingConfig?.logoStorageId
-      ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
-      : null
+    const resolvedLogoUrl = tour.brandingConfig?.logoUrl
+      ?? (tour.brandingConfig?.logoStorageId
+        ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
+        : null)
 
     return {
       ...tour,
       brandingConfig: tour.brandingConfig
-        ? { ...tour.brandingConfig, logoUrl }
+        ? { ...tour.brandingConfig, logoUrl: resolvedLogoUrl }
         : undefined,
       scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
       requiresPassword: false,
@@ -359,6 +361,7 @@ export const update = mutation({
     brandingConfig: v.optional(
       v.object({
         logoStorageId: v.optional(v.id('_storage')),
+        logoUrl: v.optional(v.string()),
         brandColor: v.optional(v.string()),
         showPoweredBy: v.optional(v.boolean()),
       })
@@ -1024,5 +1027,20 @@ export const setTourPassword = action({
         tourId, passwordHash: undefined,
       })
     }
+  },
+})
+
+export const setLogoUrlBySlug = internalMutation({
+  args: { slug: v.string(), logoUrl: v.string() },
+  handler: async (ctx, args) => {
+    const tour = await ctx.db
+      .query('tours')
+      .withIndex('by_slug', (q) => q.eq('slug', args.slug))
+      .unique()
+    if (!tour) throw new Error(`Tour not found: ${args.slug}`)
+    await ctx.db.patch(tour._id, {
+      brandingConfig: { ...(tour.brandingConfig ?? {}), logoUrl: args.logoUrl },
+    })
+    return tour._id
   },
 })
