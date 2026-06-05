@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { query, mutation, action, internalQuery, internalMutation } from './_generated/server'
 import { internal } from './_generated/api'
+import { Id } from './_generated/dataModel'
 
 const TOUR_LIMITS: Record<string, number> = {
   free: 3,
@@ -10,7 +11,6 @@ const TOUR_LIMITS: Record<string, number> = {
   enterprise: -1,
 }
 
-// Helper to get the authenticated user
 async function getAuthUser(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> }; db: any }) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
@@ -54,12 +54,10 @@ export const list = query({
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
       .collect()
 
-    // Filter by status
     if (args.status) {
       tours = tours.filter((t) => t.status === args.status)
     }
 
-    // Filter by search term
     if (args.search) {
       const term = args.search.toLowerCase()
       tours = tours.filter(
@@ -70,14 +68,12 @@ export const list = query({
       )
     }
 
-    // Filter by tags
     if (args.tags && args.tags.length > 0) {
       tours = tours.filter(
         (t) => t.tags && args.tags!.some((tag) => t.tags!.includes(tag))
       )
     }
 
-    // Sort
     switch (args.sortBy) {
       case 'views':
         tours.sort((a, b) => b.viewCount - a.viewCount)
@@ -135,7 +131,6 @@ export const getBySlug = query({
       .unique()
     if (!tour || tour.status !== 'published') return null
 
-    // Check password protection
     if (tour.privacy === 'password_protected') {
       // Return tour without scenes — frontend must verify password first
       return { ...tour, scenes: [], requiresPassword: true }
@@ -167,8 +162,15 @@ export const getBySlug = query({
       })
     )
 
+    const logoUrl = tour.brandingConfig?.logoStorageId
+      ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
+      : null
+
     return {
       ...tour,
+      brandingConfig: tour.brandingConfig
+        ? { ...tour.brandingConfig, logoUrl }
+        : undefined,
       scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
       requiresPassword: false,
     }
@@ -211,8 +213,15 @@ export const getBySlugWithScenes = query({
       })
     )
 
+    const logoUrl = tour.brandingConfig?.logoStorageId
+      ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
+      : null
+
     return {
       ...tour,
+      brandingConfig: tour.brandingConfig
+        ? { ...tour.brandingConfig, logoUrl }
+        : undefined,
       scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
       requiresPassword: false,
     }
@@ -258,7 +267,6 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await getAuthUser(ctx)
 
-    // Enforce plan tour limits
     const limit = TOUR_LIMITS[user.plan] ?? 3
     if (limit !== -1) {
       const existingTours = await ctx.db
@@ -294,7 +302,6 @@ export const create = mutation({
       privacy: 'public',
     })
 
-    // Log activity
     await ctx.runMutation(internal.activity.log, {
       userId: user._id,
       type: 'tour_created',
@@ -383,7 +390,6 @@ export const update = mutation({
 
     await ctx.db.patch(tourId, cleanUpdates)
 
-    // Log activity
     await ctx.runMutation(internal.activity.log, {
       userId: user._id,
       type: 'tour_updated',
@@ -402,7 +408,6 @@ export const publish = mutation({
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
 
-    // Validate tour has scenes
     const scenes = await ctx.db
       .query('scenes')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -411,7 +416,6 @@ export const publish = mutation({
       throw new Error('Cannot publish a tour without scenes')
     }
 
-    // Generate embed code
     const tourUrl = `https://spazeo.io/tour/${tour.slug}`
     const embedCode = `<iframe src="${tourUrl}?embed=true" width="100%" height="600" frameborder="0" allowfullscreen allow="xr-spatial-tracking; gyroscope; accelerometer"></iframe>`
 
@@ -489,7 +493,7 @@ export const bulkPublish = mutation({
 
       const scenes = await ctx.db
         .query('scenes')
-        .withIndex('by_tourId', (q: any) => q.eq('tourId', tourId))
+        .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
         .collect()
       if (scenes.length === 0) continue
 
@@ -507,7 +511,6 @@ export const bulkDelete = mutation({
       const tour = await ctx.db.get(tourId)
       if (!tour || tour.userId !== user._id) continue
 
-      // Cascade delete scenes and hotspots
       const scenes = await ctx.db
         .query('scenes')
         .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
@@ -524,7 +527,6 @@ export const bulkDelete = mutation({
         await ctx.db.delete(scene._id)
       }
 
-      // Delete leads
       const leads = await ctx.db
         .query('leads')
         .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
@@ -533,7 +535,6 @@ export const bulkDelete = mutation({
         await ctx.db.delete(lead._id)
       }
 
-      // Delete analytics
       const analytics = await ctx.db
         .query('analytics')
         .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
@@ -556,7 +557,6 @@ export const duplicate = mutation({
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
 
-    // Enforce plan limits
     const limit = TOUR_LIMITS[user.plan] ?? 3
     if (limit !== -1) {
       const existingTours = await ctx.db
@@ -597,13 +597,12 @@ export const duplicate = mutation({
       seoConfig: tour.seoConfig,
     })
 
-    // Clone scenes and hotspots
     const scenes = await ctx.db
       .query('scenes')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
       .collect()
 
-    const sceneIdMap = new Map<string, string>()
+    const sceneIdMap = new Map<Id<'scenes'>, Id<'scenes'>>()
 
     for (const scene of scenes) {
       const newSceneId = await ctx.db.insert('scenes', {
@@ -619,7 +618,6 @@ export const duplicate = mutation({
       sceneIdMap.set(scene._id, newSceneId)
     }
 
-    // Clone hotspots with updated scene references
     for (const scene of scenes) {
       const hotspots = await ctx.db
         .query('hotspots')
@@ -635,8 +633,8 @@ export const duplicate = mutation({
           : undefined
 
         await ctx.db.insert('hotspots', {
-          sceneId: newSceneId as any,
-          targetSceneId: newTargetSceneId as any,
+          sceneId: newSceneId,
+          targetSceneId: newTargetSceneId,
           type: hotspot.type,
           position: hotspot.position,
           tooltip: hotspot.tooltip,
@@ -646,7 +644,6 @@ export const duplicate = mutation({
       }
     }
 
-    // Log activity
     await ctx.runMutation(internal.activity.log, {
       userId: user._id,
       type: 'tour_duplicated',
@@ -670,7 +667,6 @@ export const updateSlug = mutation({
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
 
-    // Validate uniqueness
     const existing = await ctx.db
       .query('tours')
       .withIndex('by_slug', (q) => q.eq('slug', args.slug))
@@ -756,7 +752,6 @@ export const remove = mutation({
       await ctx.db.delete(scene._id)
     }
 
-    // Delete leads
     const leads = await ctx.db
       .query('leads')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -765,7 +760,6 @@ export const remove = mutation({
       await ctx.db.delete(lead._id)
     }
 
-    // Log activity before deleting the tour
     await ctx.runMutation(internal.activity.log, {
       userId: user._id,
       type: 'tour_deleted',
@@ -901,7 +895,6 @@ export const createFromFloorPlan = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
-    // Generate unique slug
     const base = args.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -909,7 +902,6 @@ export const createFromFloorPlan = mutation({
     const suffix = Math.random().toString(36).slice(2, 7)
     const slug = `${base}-${suffix}`
 
-    // 1. Create the tour
     const tourId = await ctx.db.insert('tours', {
       userId: user._id,
       title: args.title,
@@ -921,7 +913,6 @@ export const createFromFloorPlan = mutation({
       floorPlan3DConfig: args.floorPlan3DConfig,
     })
 
-    // 2. Create one scene representing the floor plan 3D space
     const sceneId = await ctx.db.insert('scenes', {
       tourId,
       title: args.title,
@@ -929,7 +920,6 @@ export const createFromFloorPlan = mutation({
       panoramaType: 'floor_plan',
     })
 
-    // 3. Bulk-insert doorway hotspots at each door position
     for (const door of args.doorPositions) {
       await ctx.db.insert('hotspots', {
         sceneId,
@@ -940,7 +930,6 @@ export const createFromFloorPlan = mutation({
       })
     }
 
-    // 4. Link floor plan back to this tour
     await ctx.db.patch(args.floorPlanId, { tourId })
 
     return { tourId, slug }
@@ -957,18 +946,15 @@ export const getFloorPlanGeometry = query({
     const tour = await ctx.db.get(tourId)
     if (!tour || tour.sourceType !== 'floor_plan' || !tour.floorPlanId) return null
 
-    // Load floor plan geometry
     const floorPlan = await ctx.db.get(tour.floorPlanId)
     if (!floorPlan || !floorPlan.geometry) return null
 
-    // Load the floor_plan scene to get its ID
     const scenes = await ctx.db
       .query('scenes')
       .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
       .collect()
     const scene = scenes.find((s) => s.panoramaType === 'floor_plan')
 
-    // Load doorway hotspots from that scene
     const rawHotspots = scene
       ? await ctx.db
           .query('hotspots')
@@ -984,7 +970,6 @@ export const getFloorPlanGeometry = query({
         tooltip: h.tooltip,
       }))
 
-    // Reconstruct overrides from tour.floorPlan3DConfig or use defaults
     const config = tour.floorPlan3DConfig
     const overrides = {
       globalCeilingHeight: config?.globalCeilingHeight ?? 2.7,
@@ -1035,7 +1020,6 @@ export const setTourPassword = action({
         tourId, passwordHash: hash,
       })
     } else {
-      // Clear password protection
       await ctx.runMutation(internal.tours.patchTourPassword, {
         tourId, passwordHash: undefined,
       })

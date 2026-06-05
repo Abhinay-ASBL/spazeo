@@ -554,12 +554,22 @@ export default function PublicTourViewerPage() {
         }}
       >
         <div className="flex items-center gap-3">
-          <span
-            className="text-base font-bold"
-            style={{ color: '#F5F3EF', fontFamily: 'var(--font-display)' }}
-          >
-            {currentTour.title}
-          </span>
+          {(currentTour as { brandingConfig?: { logoUrl?: string | null } }).brandingConfig?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={(currentTour as { brandingConfig?: { logoUrl?: string | null } }).brandingConfig!.logoUrl!}
+              alt={currentTour.title}
+              className="h-8 w-auto shrink-0"
+              style={{ maxWidth: 160 }}
+            />
+          ) : (
+            <span
+              className="text-base font-bold"
+              style={{ color: '#F5F3EF', fontFamily: 'var(--font-display)' }}
+            >
+              {currentTour.title}
+            </span>
+          )}
           <span
             className="text-[11px] px-2.5 py-1 rounded-full"
             style={{
