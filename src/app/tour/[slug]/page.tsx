@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
-/* eslint-disable @next/next/no-img-element */
+import type { HotspotData } from '@/components/viewer/PanoramaViewer'
 import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -98,7 +98,7 @@ function SceneNav({
   activeId,
   onChange,
 }: {
-  scenes: Array<{ _id: string; title: string; imageUrl?: string | null }>
+  scenes: Array<{ _id: string; title: string }>
   activeId: string | null
   onChange: (id: string) => void
 }) {
@@ -130,7 +130,6 @@ function SceneNav({
 
         {scenes.map((scene) => {
           const isActive = scene._id === activeId
-          const src = proxyUrl(scene.imageUrl)
           return (
             <button
               key={scene._id}
@@ -142,31 +141,13 @@ function SceneNav({
                 height: 52,
                 border: isActive ? '2px solid #D4A017' : '2px solid rgba(255,255,255,0.12)',
                 boxShadow: isActive ? '0 0 0 1px rgba(212,160,23,0.3)' : 'none',
+                backgroundColor: isActive ? 'rgba(212,160,23,0.12)' : '#1B1916',
               }}
             >
-              {src ? (
-                <img
-                  src={src}
-                  alt={scene.title}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div
-                  className="w-full h-full flex items-end justify-start p-1"
-                  style={{ backgroundColor: '#1B1916' }}
-                />
-              )}
-              {/* Always show label overlay */}
-              <div
-                className="absolute inset-x-0 bottom-0 px-1 py-0.5"
-                style={{
-                  background: 'linear-gradient(to top, rgba(10,9,8,0.85), transparent)',
-                }}
-              >
+              <div className="absolute inset-0 flex items-center justify-center px-1">
                 <span
-                  className="text-[9px] font-medium leading-none block truncate"
-                  style={{ color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
+                  className="text-[9px] font-medium leading-tight text-center line-clamp-2"
+                  style={{ color: isActive ? '#D4A017' : '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
                 >
                   {scene.title}
                 </span>
@@ -187,7 +168,6 @@ export default function PublicTourViewerPage() {
   const tourData = useQuery(api.tours.getBySlug, { slug })
   const captureLead = useMutation(api.leads.capture)
 
-  // Resolve splat URL when tour has a splatStorageId (3D viewer)
   const hasSplat = !!(tourData && '_id' in tourData && tourData.splatStorageId)
   const splatUrl = useQuery(
     api.tours.getTourSplatUrl,
@@ -225,7 +205,6 @@ export default function PublicTourViewerPage() {
 
   const verifyPassword = useAction(api.passwordUtils.verifyTourPassword)
 
-  // After password is verified, load full tour data with scenes
   const unlockedTour = useQuery(
     api.tours.getBySlugWithScenes,
     passwordVerified ? { slug } : 'skip'
@@ -251,7 +230,6 @@ export default function PublicTourViewerPage() {
     if (manualRotate) startIdleTimer()
   }, [manualRotate, startIdleTimer])
 
-  // Start idle timer on mount; restart when manualRotate changes; clean up on unmount
   useEffect(() => {
     if (manualRotate) startIdleTimer()
     return () => {
@@ -259,7 +237,6 @@ export default function PublicTourViewerPage() {
     }
   }, [manualRotate, startIdleTimer])
 
-  // Set initial active scene when tour loads
   useEffect(() => {
     if (tour?.scenes && tour.scenes.length > 0 && !activeSceneId) {
       setActiveSceneId(tour.scenes[0]._id)
@@ -299,7 +276,6 @@ export default function PublicTourViewerPage() {
     trackEvent,
   })
 
-  // Track tour view once
   useEffect(() => {
     if (!tourIdForTracking || viewTrackedRef.current) return
     viewTrackedRef.current = true
@@ -312,7 +288,6 @@ export default function PublicTourViewerPage() {
     })
   }, [tourIdForTracking, trackEvent])
 
-  // Track lead form shown when panel opens
   useEffect(() => {
     if (!panelOpen) return
     if (leadFormShownRef.current) return
@@ -320,7 +295,6 @@ export default function PublicTourViewerPage() {
     trackEvent({ event: 'lead_form_shown' })
   }, [panelOpen, trackEvent])
 
-  // Close info panel when scene changes
   useEffect(() => {
     setActiveHotspot(null)
   }, [activeSceneId, setActiveHotspot])
@@ -556,8 +530,8 @@ export default function PublicTourViewerPage() {
         <PanoramaViewer
           imageUrl={proxyUrl(activeScene.imageUrl as string) ?? ''}
           height="100vh"
-          hotspots={activeHotspots as any[]}
-          onHotspotClick={handleHotspotClick as any}
+          hotspots={activeHotspots as HotspotData[]}
+          onHotspotClick={handleHotspotClick as (hotspot: HotspotData) => void}
           autoRotate={isAutoRotating}
           zoomLevel={zoomLevel}
           onViewDirectionReady={(getter) => {
@@ -675,7 +649,7 @@ export default function PublicTourViewerPage() {
 
       {/* ── Scene Navigator (bottom) — panorama only ── */}
       {!splatUrl && !hasFloorPlan && <SceneNav
-        scenes={scenes as any[]}
+        scenes={scenes}
         activeId={activeSceneId}
         onChange={setActiveSceneId}
       />}
