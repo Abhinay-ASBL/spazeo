@@ -6,6 +6,7 @@ import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMap
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { HotspotMarker } from './HotspotMarker'
+import { MasterPlanOverlay, type MasterPlanMapping, type MasterPlanCorner, yawPitchToPosition } from './MasterPlanOverlay'
 import { ImageOff, Loader2 } from 'lucide-react'
 
 /* ── Error Boundary ── */
@@ -88,6 +89,14 @@ interface Props {
   azimuthHalfArc?: number
   /** URLs to preload in the background after the first scene loads */
   preloadUrls?: string[]
+  /** Master plan image mapped onto the panorama sphere */
+  masterPlanUrl?: string | null
+  masterPlanMapping?: MasterPlanMapping | null
+  masterPlanVisible?: boolean
+  /** Show guides while pinning corners */
+  masterPlanEditing?: boolean
+  /** Corners placed so far (1–4) — numbered markers on sphere */
+  masterPlanPinCorners?: MasterPlanCorner[]
 }
 
 /* ── Normalize non-2:1 panoramas to equirectangular 2:1 ──
@@ -176,6 +185,59 @@ function normalizeEquirectangular(img: HTMLImageElement): NormalizeResult | null
 
 /* ── Panorama Sphere ── */
 
+function rayHitOnSphere(event: ThreeEvent<PointerEvent | MouseEvent>, radius = 480) {
+  const O = event.ray.origin
+  const D = event.ray.direction
+  const R = 500
+  const b = O.dot(D)
+  const c = O.dot(O) - R * R
+  const disc = b * b - c
+  if (disc < 0) return null
+  const t = -b + Math.sqrt(disc)
+  const hitX = O.x + D.x * t
+  const hitY = O.y + D.y * t
+  const hitZ = O.z + D.z * t
+  const len = Math.sqrt(hitX * hitX + hitY * hitY + hitZ * hitZ) || 1
+  const k = radius / len
+  return { x: hitX * k, y: hitY * k, z: hitZ * k }
+}
+
+function positionToYawPitch(position: { x: number; y: number; z: number }) {
+  const len = Math.sqrt(position.x ** 2 + position.y ** 2 + position.z ** 2) || 1
+  const nx = position.x / len
+  const ny = position.y / len
+  const nz = position.z / len
+  return {
+    yaw: (Math.atan2(nx, -nz) * 180) / Math.PI,
+    pitch: (Math.asin(Math.max(-1, Math.min(1, ny))) * 180) / Math.PI,
+  }
+}
+
+/** Build a spherical rectangle mapping from two corners (degrees). */
+export function mappingFromCorners(
+  a: { yaw: number; pitch: number },
+  b: { yaw: number; pitch: number },
+  extras?: Partial<MasterPlanMapping>
+): MasterPlanMapping {
+  let dYaw = b.yaw - a.yaw
+  while (dYaw > 180) dYaw -= 360
+  while (dYaw < -180) dYaw += 360
+  const widthDeg = Math.max(2, Math.abs(dYaw))
+  const heightDeg = Math.max(2, Math.abs(b.pitch - a.pitch))
+  let yaw = a.yaw + dYaw / 2
+  while (yaw > 180) yaw -= 360
+  while (yaw < -180) yaw += 360
+  const pitch = (a.pitch + b.pitch) / 2
+  return {
+    yaw,
+    pitch,
+    widthDeg,
+    heightDeg,
+    rotation: extras?.rotation ?? 0,
+    opacity: extras?.opacity ?? 0.9,
+  }
+}
+
 function PanoramaSphere({
   texture,
   onSphereClick,
@@ -189,25 +251,8 @@ function PanoramaSphere({
     (event: ThreeEvent<MouseEvent>) => {
       if (!isEditing || !onSphereClick) return
       event.stopPropagation()
-      // Compute hit point from the world-space ray instead of event.point —
-      // event.point goes through the mesh's negative-scale matrixWorld, which
-      // some Three.js versions handle inconsistently. Ray-sphere math is
-      // unambiguous: solve |O + tD|² = R² for the far intersection (camera
-      // sits inside the sphere).
-      const O = event.ray.origin
-      const D = event.ray.direction
-      const R = 500
-      const b = O.dot(D)
-      const c = O.dot(O) - R * R
-      const disc = b * b - c
-      if (disc < 0) return
-      const t = -b + Math.sqrt(disc)
-      const hitX = O.x + D.x * t
-      const hitY = O.y + D.y * t
-      const hitZ = O.z + D.z * t
-      const len = Math.sqrt(hitX * hitX + hitY * hitY + hitZ * hitZ) || 1
-      const k = 480 / len
-      onSphereClick({ x: hitX * k, y: hitY * k, z: hitZ * k })
+      const hit = rayHitOnSphere(event)
+      if (hit) onSphereClick(hit)
     },
     [isEditing, onSphereClick]
   )
@@ -254,7 +299,9 @@ function CameraController({ zoomLevel = 1 }: { zoomLevel?: number }) {
   const { camera } = useThree()
   useEffect(() => {
     if (camera instanceof PerspectiveCamera) {
-      camera.fov = 65 / zoomLevel
+      // Keep overview useful without extreme fisheye (0.5× → ~95°, not 130°)
+      const fov = zoomLevel <= 0.5 ? 95 : Math.min(100, 65 / zoomLevel)
+      camera.fov = fov
       camera.updateProjectionMatrix()
     }
   }, [camera, zoomLevel])
@@ -276,6 +323,7 @@ function Controls({
   onViewDirectionReady,
   onDragStart,
   onDragEnd,
+  enableRotate = true,
 }: {
   autoRotate?: boolean
   resetTrigger: number
@@ -292,6 +340,7 @@ function Controls({
   ) => void
   onDragStart?: () => void
   onDragEnd?: () => void
+  enableRotate?: boolean
 }) {
   const controlsRef = useRef<OrbitControlsImpl>(null)
   const { camera } = useThree()
@@ -367,13 +416,14 @@ function Controls({
       ref={controlsRef}
       enableZoom={true}
       enablePan={false}
+      enableRotate={enableRotate}
       rotateSpeed={-0.3}
       zoomSpeed={0.5}
       minDistance={0.1}
       maxDistance={5}
       dampingFactor={polarLocked ? 0 : 0.1}
-      enableDamping={!polarLocked}
-      autoRotate={autoRotate}
+      enableDamping={!polarLocked && enableRotate}
+      autoRotate={autoRotate && enableRotate}
       autoRotateSpeed={0.4}
       minPolarAngle={minPolarAngle}
       maxPolarAngle={maxPolarAngle}
@@ -440,13 +490,17 @@ export function PanoramaViewer({
   initialPitch,
   azimuthHalfArc,
   preloadUrls,
+  masterPlanUrl,
+  masterPlanMapping,
+  masterPlanVisible = true,
+  masterPlanEditing = false,
+  masterPlanPinCorners = [],
 }: Props) {
   const [texture, setTexture] = useState<Texture | null>(null)
   const [fadeOpacity, setFadeOpacity] = useState(1)
   const [isLoading, setIsLoading] = useState(!!imageUrl)
   const [resetTrigger, setResetTrigger] = useState(0)
   const [polarLimits, setPolarLimits] = useState({ min: 0, max: Math.PI })
-  // null = not yet probed (SSR/first paint), true/false = client probe result
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -648,7 +702,7 @@ export function PanoramaViewer({
             >
               <CameraController zoomLevel={zoomLevel} />
               <Controls
-                autoRotate={autoRotate && !isEditing}
+                autoRotate={autoRotate && !isEditing && !masterPlanEditing}
                 resetTrigger={resetTrigger}
                 minPolarAngle={polarClampMin !== undefined ? Math.max(polarLimits.min, polarClampMin) : polarLimits.min}
                 maxPolarAngle={polarClampMax !== undefined ? Math.min(polarLimits.max, polarClampMax) : polarLimits.max}
@@ -666,6 +720,15 @@ export function PanoramaViewer({
                   texture={texture}
                   onSphereClick={onSphereClick}
                   isEditing={isEditing}
+                />
+              )}
+
+              {masterPlanUrl && masterPlanMapping && (
+                <MasterPlanOverlay
+                  imageUrl={masterPlanUrl}
+                  mapping={masterPlanMapping}
+                  visible={masterPlanVisible}
+                  showGuides={false}
                 />
               )}
 
@@ -700,7 +763,7 @@ export function PanoramaViewer({
       )}
 
       {/* Editing indicator */}
-      {isEditing && !isLoading && (
+      {isEditing && !isLoading && !masterPlanEditing && (
         <div
           className="absolute top-3 left-3 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5"
           style={{
@@ -712,6 +775,20 @@ export function PanoramaViewer({
         >
           <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#2DD4BF' }} />
           Click to place hotspot
+        </div>
+      )}
+      {masterPlanEditing && !isLoading && (
+        <div
+          className="absolute top-3 left-3 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 z-20"
+          style={{
+            backgroundColor: 'rgba(212,160,23,0.18)',
+            color: '#D4A017',
+            border: '1px solid rgba(212,160,23,0.35)',
+            fontFamily: 'var(--font-dmsans)',
+          }}
+        >
+          <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#D4A017' }} />
+          Click corners 1→4 on the panorama (TL, TR, BR, BL)
         </div>
       )}
     </div>

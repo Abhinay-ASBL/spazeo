@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { query, mutation } from './_generated/server'
+import { query, mutation, internalMutation } from './_generated/server'
 import { internal } from './_generated/api'
 
 // Helper to get the authenticated user
@@ -251,6 +251,19 @@ export const create = mutation({
     })
 
     return buildingId
+  },
+})
+
+export const setNameBySlug = internalMutation({
+  args: { slug: v.string(), name: v.string() },
+  handler: async (ctx, args) => {
+    const building = await ctx.db
+      .query('buildings')
+      .withIndex('by_slug', (q) => q.eq('slug', args.slug))
+      .unique()
+    if (!building) throw new Error(`Building not found: ${args.slug}`)
+    await ctx.db.patch(building._id, { name: args.name })
+    return building._id
   },
 })
 

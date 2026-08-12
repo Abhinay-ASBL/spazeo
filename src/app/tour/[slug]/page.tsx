@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { HotspotData } from '@/components/viewer/PanoramaViewer'
+import { isMasterPlanMapped, type MasterPlanMapping } from '@/components/viewer/MasterPlanOverlay'
 import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -17,6 +18,7 @@ import {
   Plus,
   RotateCw,
   Lock,
+  Map,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AnimatePresence } from 'framer-motion'
@@ -98,11 +100,12 @@ function SceneNav({
   activeId,
   onChange,
 }: {
-  scenes: Array<{ _id: string; title: string }>
+  scenes: Array<{ _id: string; title: string; imageUrl?: string | null }>
   activeId: string | null
   onChange: (id: string) => void
 }) {
   if (scenes.length <= 1) return null
+  // eslint-disable-next-line @next/next/no-img-element
   return (
     <div className="absolute bottom-0 left-0 right-0 z-10" style={{ padding: '0 16px 16px' }}>
       <div
@@ -115,17 +118,13 @@ function SceneNav({
           scrollbarWidth: 'none',
         }}
       >
-        {/* Powered by — inside the nav bar, left side */}
+        {/* Powered by */}
         <div
           className="flex-shrink-0 flex items-center gap-1 mr-2 pr-3"
           style={{ borderRight: '1px solid rgba(212,160,23,0.1)' }}
         >
-          <span className="text-[9px] leading-none" style={{ color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}>
-            Powered by
-          </span>
-          <span className="text-[9px] font-bold leading-none" style={{ color: '#D4A017', fontFamily: 'var(--font-display)' }}>
-            Spazeo
-          </span>
+          <span className="text-[9px] leading-none" style={{ color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}>Powered by</span>
+          <span className="text-[9px] font-bold leading-none" style={{ color: '#D4A017', fontFamily: 'var(--font-display)' }}>Spazeo</span>
         </div>
 
         {scenes.map((scene) => {
@@ -141,13 +140,23 @@ function SceneNav({
                 height: 52,
                 border: isActive ? '2px solid #D4A017' : '2px solid rgba(255,255,255,0.12)',
                 boxShadow: isActive ? '0 0 0 1px rgba(212,160,23,0.3)' : 'none',
-                backgroundColor: isActive ? 'rgba(212,160,23,0.12)' : '#1B1916',
+                backgroundColor: '#1B1916',
               }}
             >
-              <div className="absolute inset-0 flex items-center justify-center px-1">
+              {scene.imageUrl && (
+                <img
+                  src={scene.imageUrl}
+                  alt=""
+                  loading="lazy"
+                  fetchPriority="low"
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ opacity: isActive ? 0.7 : 0.45 }}
+                />
+              )}
+              <div className="absolute inset-0 flex items-center justify-center px-1" style={{ background: 'linear-gradient(to top, rgba(10,9,8,0.7) 0%, rgba(10,9,8,0.2) 100%)' }}>
                 <span
-                  className="text-[9px] font-medium leading-tight text-center line-clamp-2"
-                  style={{ color: isActive ? '#D4A017' : '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
+                  className="text-[9px] font-semibold leading-tight text-center line-clamp-2"
+                  style={{ color: isActive ? '#D4A017' : '#F5F3EF', fontFamily: 'var(--font-dmsans)', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}
                 >
                   {scene.title}
                 </span>
@@ -188,6 +197,8 @@ export default function PublicTourViewerPage() {
   const [manualRotate, setManualRotate] = useState(true)
   const [idleActive, setIdleActive] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
+  /** When mapping exists, plan is ground-pinned by default (ASBL Legacy style) */
+  const [masterPlanVisible, setMasterPlanVisible] = useState(true)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [password, setPassword] = useState('')
@@ -496,6 +507,23 @@ export default function PublicTourViewerPage() {
   // At this point tour is guaranteed non-null (tourData was checked above)
   const currentTour = tour!
   const scenes = currentTour.scenes ?? []
+  const masterPlanUrl =
+    typeof currentTour === 'object' &&
+    currentTour &&
+    'masterPlanUrl' in currentTour &&
+    typeof (currentTour as { masterPlanUrl?: string | null }).masterPlanUrl === 'string'
+      ? (currentTour as { masterPlanUrl: string }).masterPlanUrl
+      : null
+  const masterPlanMapping =
+    typeof currentTour === 'object' &&
+    currentTour &&
+    'masterPlanMapping' in currentTour &&
+    (currentTour as { masterPlanMapping?: MasterPlanMapping | null }).masterPlanMapping
+      ? (currentTour as { masterPlanMapping: MasterPlanMapping }).masterPlanMapping
+      : null
+  const hasMasterPlanMapping = isMasterPlanMapped(masterPlanMapping)
+  // Visible by default on the plot; Map button can hide temporarily
+  const showMasterPlan = !!masterPlanUrl && hasMasterPlanMapping && masterPlanVisible
 
   return (
     <div
@@ -543,6 +571,9 @@ export default function PublicTourViewerPage() {
             .filter((s) => s._id !== activeSceneId && s.imageUrl)
             .map((s) => proxyUrl(s.imageUrl as string))
             .filter((u): u is string => !!u)}
+          masterPlanUrl={proxyUrl(masterPlanUrl) ?? masterPlanUrl}
+          masterPlanMapping={masterPlanMapping}
+          masterPlanVisible={showMasterPlan}
         />
       ) : (
         <div className="flex h-full items-center justify-center">
@@ -629,9 +660,19 @@ export default function PublicTourViewerPage() {
           >
             <Minus size={16} strokeWidth={1.5} />
           </button>
-          <span className="text-xs min-w-[32px] text-center tabular-nums" style={{ color: '#A8A29E' }}>
-            {zoomLevel.toFixed(1)}x
-          </span>
+          <button
+            type="button"
+            onClick={() => setZoomLevel(0.5)}
+            aria-label="Zoom to 0.5x overview"
+            className="px-2 h-8 rounded-full text-[11px] font-semibold tabular-nums"
+            style={{
+              color: zoomLevel === 0.5 ? '#0A0908' : '#A8A29E',
+              backgroundColor: zoomLevel === 0.5 ? '#2DD4BF' : 'transparent',
+              fontFamily: 'var(--font-dmsans)',
+            }}
+          >
+            0.5x
+          </button>
           <button
             onClick={() => setZoomLevel((z) => Math.min(3, z + 0.5))}
             aria-label="Zoom in"
@@ -658,6 +699,21 @@ export default function PublicTourViewerPage() {
           >
             <RotateCw size={16} strokeWidth={1.5} />
           </button>
+          {masterPlanUrl && hasMasterPlanMapping && (
+            <>
+              <div className="h-4 w-px" style={{ backgroundColor: '#6B6560' }} />
+              <button
+                onClick={() => setMasterPlanVisible((v) => !v)}
+                aria-label={showMasterPlan ? 'Hide master plan' : 'Show master plan'}
+                aria-pressed={showMasterPlan}
+                className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ color: showMasterPlan ? '#D4A017' : '#A8A29E' }}
+                title="Master Plan"
+              >
+                <Map size={16} strokeWidth={1.5} />
+              </button>
+            </>
+          )}
         </div>
       </div>}
 

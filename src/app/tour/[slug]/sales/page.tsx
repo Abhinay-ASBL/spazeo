@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import type { HotspotData } from '@/components/viewer/PanoramaViewer'
 import { useQuery, useMutation } from 'convex/react'
 import { useUser } from '@clerk/nextjs'
 import { api } from '../../../../../convex/_generated/api'
@@ -59,26 +60,21 @@ export default function SalesModePage() {
   const videoModalTitle = useViewerStore((s) => s.videoModalTitle)
   const closeVideoModal = useViewerStore((s) => s.closeVideoModal)
 
-  // Queries
   const tourData = useQuery(api.tours.getBySlugWithScenes, { slug })
   const findCustomer = useQuery(
     api.customers.findByPhone,
     phoneDigits.length >= 7 ? { phone: phoneDigits } : 'skip'
   )
 
-  // Mutations
   const createCustomer = useMutation(api.customers.create)
   const updateCustomer = useMutation(api.customers.update)
   const createSalesSession = useMutation(api.salesSessions.create)
   const endSalesSession = useMutation(api.salesSessions.end)
 
-  // Derived state
   const tourId = tourData && '_id' in tourData ? (tourData._id as Id<'tours'>) : null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scenes = useMemo(() => (tourData as any)?.scenes ?? [], [tourData])
-  const activeScene = scenes.find((s: { _id: string }) => s._id === activeSceneId) ?? scenes[0] ?? null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const activeHotspots = (activeScene as any)?.hotspots ?? []
+  const scenes = useMemo(() => (tourData as { scenes?: Array<{ _id: string; title: string; imageUrl?: string | null; order?: number }> })?.scenes ?? [], [tourData])
+  const activeScene = scenes.find((s) => s._id === activeSceneId) ?? scenes[0] ?? null
+  const activeHotspots: HotspotData[] = (activeScene as (typeof activeScene & { hotspots?: HotspotData[] }) | null)?.hotspots ?? []
   const activeHotspot = activeHotspotId
     ? (activeHotspots.find((h: { _id: string }) => h._id === activeHotspotId) ?? null)
     : null
@@ -101,7 +97,6 @@ export default function SalesModePage() {
     trackEvent,
   })
 
-  // Set initial scene when tour loads
   useEffect(() => {
     if (scenes.length > 0 && !activeSceneId) {
       setActiveSceneId(scenes[0]._id)
@@ -249,7 +244,6 @@ export default function SalesModePage() {
     [setActiveHotspot, trackEvent, activeSceneId]
   )
 
-  // Close info panel when scene changes
   useEffect(() => {
     setActiveHotspot(null)
   }, [activeSceneId, setActiveHotspot])
@@ -340,10 +334,8 @@ export default function SalesModePage() {
         <PanoramaViewer
           imageUrl={proxyUrl(activeScene.imageUrl as string) ?? ''}
           height="100vh"
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          hotspots={activeHotspots as any[]}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          onHotspotClick={handleHotspotClick as any}
+          hotspots={activeHotspots}
+          onHotspotClick={handleHotspotClick as (hotspot: HotspotData) => void}
           autoRotate={false}
           zoomLevel={1}
           onViewDirectionReady={(getter) => {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, Component } from 'react'
 import type { ReactNode } from 'react'
 import dynamic from 'next/dynamic'
-import { useQuery, useMutation } from 'convex/react'
+import { useQuery, useMutation, useConvexAuth } from 'convex/react'
 import { useAuth } from '@clerk/nextjs'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { api } from '../../../convex/_generated/api'
@@ -64,12 +64,36 @@ const Sidebar = dynamic(
   { ssr: false }
 )
 
+function WorkspaceLoading({ message = 'Loading your workspace...' }: { message?: string }) {
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: '#0A0908' }}
+    >
+      <div className="flex flex-col items-center gap-3">
+        <Loader2
+          size={32}
+          className="animate-spin"
+          style={{ color: '#D4A017' }}
+        />
+        <p
+          className="text-sm"
+          style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
+        >
+          {message}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function DashboardLayoutInner({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const { isSignedIn } = useAuth()
+  const { isLoaded: isClerkLoaded, isSignedIn } = useAuth()
+  const { isLoading: isConvexAuthLoading, isAuthenticated } = useConvexAuth()
   const user = useQuery(api.users.getCurrent)
   const ensureUser = useMutation(api.users.ensureUser)
   const ensuredRef = useRef(false)
@@ -78,36 +102,29 @@ function DashboardLayoutInner({
 
   // Auto-create Convex user record when signed in via Clerk but not yet in DB
   useEffect(() => {
-    if (isSignedIn && user === null && !ensuredRef.current) {
+    if (isSignedIn && isAuthenticated && user === null && !ensuredRef.current) {
       ensuredRef.current = true
       ensureUser().catch(() => {
         ensuredRef.current = false
       })
     }
-  }, [isSignedIn, user, ensureUser])
+  }, [isSignedIn, isAuthenticated, user, ensureUser])
+
+  // Wait for Clerk first — ConvexProviderWithClerk won't connect until then
+  if (!isClerkLoaded || isConvexAuthLoading) {
+    return <WorkspaceLoading />
+  }
+
+  // Auth finished but Convex never authenticated (token/backend issue)
+  if (isSignedIn && !isAuthenticated) {
+    return (
+      <WorkspaceLoading message="Connecting to workspace… If this persists, refresh the page." />
+    )
+  }
 
   // Show loading spinner only while Convex query is in-flight
-  if (user === undefined) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: '#0A0908' }}
-      >
-        <div className="flex flex-col items-center gap-3">
-          <Loader2
-            size={32}
-            className="animate-spin"
-            style={{ color: '#D4A017' }}
-          />
-          <p
-            className="text-sm"
-            style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
-          >
-            Loading your workspace...
-          </p>
-        </div>
-      </div>
-    )
+  if (isAuthenticated && user === undefined) {
+    return <WorkspaceLoading />
   }
 
   return (

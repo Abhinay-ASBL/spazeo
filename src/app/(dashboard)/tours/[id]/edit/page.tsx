@@ -1,10 +1,19 @@
 'use client'
 
-import { useState, useCallback, useRef, useMemo, Suspense, useEffect } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 /* eslint-disable @next/next/no-img-element */
+import type { HotspotData } from '@/components/viewer/PanoramaViewer'
+import {
+  CORNER_LABELS,
+  DEFAULT_AERIAL_CORNERS,
+  isMasterPlanMapped,
+  normalizeMasterPlanRotation,
+  positionToMasterPlanYawPitch,
+  type MasterPlanMapping,
+} from '@/components/viewer/MasterPlanOverlay'
 import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -26,7 +35,6 @@ import {
   Play,
   ExternalLink,
   Settings,
-  Layers,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
@@ -48,9 +56,14 @@ import {
   Pencil,
   Check,
   CopyPlus,
+  Map,
+  RotateCcw,
+  RotateCw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { CaptureUpload } from '@/components/tour/CaptureUpload'
+import { MasterPlanMappingPanel } from '@/components/tour/MasterPlanMappingPanel'
+import { MasterPlanSettingsSection } from '@/components/tour/MasterPlanSettingsSection'
 
 /* ── Lazy-load PanoramaViewer (Three.js — client only) ── */
 const PanoramaViewer = dynamic(
@@ -123,7 +136,6 @@ export default function TourEditorPage() {
   const scenes = useQuery(api.scenes.listByTour, { tourId })
   const hotspotsByTour = useQuery(api.hotspots.listByTour, { tourId })
 
-  // Resolve splat URL for 3D splat tours (enables furniture placement)
   const hasSplat = !!(tour && tour.splatStorageId)
   const splatUrl = useQuery(
     api.tours.getTourSplatUrl,
@@ -142,6 +154,36 @@ export default function TourEditorPage() {
   const removeHotspot = useMutation(api.hotspots.remove)
   const copyHotspotsToAllScenes = useMutation(api.hotspots.copyToAllScenes)
   const setTourPassword = useAction(api.tours.setTourPassword)
+  const setMasterPlan = useMutation(api.tours.setMasterPlan)
+  const setMasterPlanMapping = useMutation(api.tours.setMasterPlanMapping)
+  const masterPlanData = useQuery(api.tours.getMasterPlan, { tourId })
+  const masterPlanUrl = masterPlanData?.url ?? null
+  const [masterPlanUploading, setMasterPlanUploading] = useState(false)
+  const [editorZoom, setEditorZoom] = useState(1)
+  const [mappingMasterPlan, setMappingMasterPlan] = useState(false)
+  const [pinCorners, setPinCorners] = useState<Array<{ yaw: number; pitch: number }>>([])
+  const [localMapping, setLocalMapping] = useState<
+    (MasterPlanMapping & { sceneId?: Id<'scenes'> }) | null
+  >(null)
+  const [savingMapping, setSavingMapping] = useState(false)
+  const defaultMappingAppliedRef = useRef(false)
+
+  /** Active mapping: local edits win, then saved server mapping — always shown when valid */
+  const resolvedMasterPlanMapping = useMemo(() => {
+    const server =
+      masterPlanData?.mapping && isMasterPlanMapped(masterPlanData.mapping)
+        ? masterPlanData.mapping
+        : null
+    if (localMapping && isMasterPlanMapped(localMapping)) return localMapping
+    if (localMapping && server) {
+      return {
+        ...server,
+        ...localMapping,
+        corners: localMapping.corners ?? server.corners,
+      }
+    }
+    return server
+  }, [localMapping, masterPlanData?.mapping])
 
   // AI analysis disabled
 
@@ -233,7 +275,6 @@ export default function TourEditorPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Set initial values when tour loads
   const tourTitle = tour?.title ?? ''
   const tourDescription = tour?.description ?? ''
 
@@ -261,7 +302,6 @@ export default function TourEditorPage() {
     return url
   }, [])
 
-  // Get hotspots for active scene
   const activeSceneHotspots = useMemo(() => {
     if (!activeScene || !hotspotsByTour) return []
     return hotspotsByTour.filter((h) => h.sceneId === activeScene._id)
@@ -281,7 +321,6 @@ export default function TourEditorPage() {
     })
   }, [activeSceneHotspots, editingHotspotId, editPosition, editFields.markerStyle, editFields.lineHeight])
 
-  // Sync description when active scene changes
   useEffect(() => {
     if (activeScene?.description) {
       setSceneDescription(activeScene.description)
@@ -292,7 +331,6 @@ export default function TourEditorPage() {
 
   // AI analysis disabled in v1
 
-  // Initialize tour settings when tour loads
   if (tour && !settingsInitialized) {
     setTourSettings({
       autoRotate: tour.settings?.autoRotate ?? false,
@@ -319,6 +357,172 @@ export default function TourEditorPage() {
     },
     [tourSettings, updateTour, tourId]
   )
+
+  /* ── Master plan upload / remove ── */
+  const handleMasterPlanUpload = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please choose an image file')
+        return
+      }
+      setMasterPlanUploading(true)
+      try {
+        const uploadUrl = await generateUploadUrl()
+        const result = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'image/jpeg' },
+          body: file,
+        })
+        if (!result.ok) throw new Error('Upload failed')
+        const { storageId } = (await result.json()) as { storageId: Id<'_storage'> }
+        await setMasterPlan({ tourId, storageId })
+        const defaultMapping = {
+          corners: DEFAULT_AERIAL_CORNERS,
+          opacity: 0.9,
+          rotation: 0,
+          sceneId: activeSceneId ?? undefined,
+        }
+        setLocalMapping(defaultMapping)
+        setPinCorners(DEFAULT_AERIAL_CORNERS)
+        await setMasterPlanMapping({ tourId, mapping: defaultMapping })
+        toast.success('Master plan placed on the plot — use Master Plan to adjust corners')
+      } catch (err) {
+        console.error(err)
+        toast.error(err instanceof Error ? err.message : 'Failed to upload master plan')
+      } finally {
+        setMasterPlanUploading(false)
+      }
+    },
+    [generateUploadUrl, setMasterPlan, setMasterPlanMapping, tourId, activeSceneId]
+  )
+
+  const handleMasterPlanSample = useCallback(async () => {
+    setMasterPlanUploading(true)
+    try {
+      const res = await fetch('/master-plans/asbl-legacy-master-plan.jpeg')
+      if (!res.ok) throw new Error('Could not load sample master plan')
+      const blob = await res.blob()
+      const uploadUrl = await generateUploadUrl()
+      const result = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
+        body: blob,
+      })
+      if (!result.ok) throw new Error('Upload failed')
+      const { storageId } = (await result.json()) as { storageId: Id<'_storage'> }
+      await setMasterPlan({ tourId, storageId })
+      const defaultMapping = {
+        corners: DEFAULT_AERIAL_CORNERS,
+        opacity: 0.9,
+        rotation: 0,
+        sceneId: activeSceneId ?? undefined,
+      }
+      setLocalMapping(defaultMapping)
+      setPinCorners(DEFAULT_AERIAL_CORNERS)
+      await setMasterPlanMapping({ tourId, mapping: defaultMapping })
+      toast.success('Sample master plan placed on the plot')
+    } catch (err) {
+      console.error(err)
+      toast.error(err instanceof Error ? err.message : 'Failed to use sample plan')
+    } finally {
+      setMasterPlanUploading(false)
+    }
+  }, [generateUploadUrl, setMasterPlan, setMasterPlanMapping, tourId, activeSceneId])
+
+  const handleMasterPlanRemove = useCallback(async () => {
+    setMasterPlanUploading(true)
+    try {
+      await setMasterPlan({ tourId, storageId: null })
+      setLocalMapping(null)
+      setPinCorners([])
+      setMappingMasterPlan(false)
+      setEditorZoom(1)
+      toast.success('Master plan removed')
+    } catch {
+      toast.error('Failed to remove master plan')
+    } finally {
+      setMasterPlanUploading(false)
+    }
+  }, [setMasterPlan, tourId])
+
+  const pickMasterPlanFile = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/jpeg,image/png,image/webp'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (file) void handleMasterPlanUpload(file)
+    }
+    input.click()
+  }, [handleMasterPlanUpload])
+
+  // Sync mapping from server when loaded / changed (don't overwrite while pinning)
+  useEffect(() => {
+    if (!masterPlanData) return
+    if (mappingMasterPlan) return
+    if (masterPlanData.mapping) {
+      const m = masterPlanData.mapping
+      setLocalMapping({
+        corners: m.corners,
+        yaw: m.yaw,
+        pitch: m.pitch,
+        widthDeg: m.widthDeg,
+        heightDeg: m.heightDeg,
+        rotation: m.rotation,
+        opacity: m.opacity ?? 0.92,
+        sceneId: m.sceneId,
+      })
+      setPinCorners(m.corners ?? [])
+    } else if (!masterPlanData.url) {
+      setLocalMapping(null)
+      setPinCorners([])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only rehydrate from server payload
+  }, [masterPlanData?.url, masterPlanData?.mapping, mappingMasterPlan])
+
+  // Existing uploads without mapping: place default on the plot once
+  useEffect(() => {
+    if (defaultMappingAppliedRef.current || !masterPlanUrl) return
+    if (masterPlanData?.mapping && isMasterPlanMapped(masterPlanData.mapping)) return
+    defaultMappingAppliedRef.current = true
+    const defaultMapping = {
+      corners: DEFAULT_AERIAL_CORNERS,
+      opacity: 0.9,
+      rotation: 0,
+      sceneId: activeSceneId ?? undefined,
+    }
+    setLocalMapping(defaultMapping)
+    setPinCorners(DEFAULT_AERIAL_CORNERS)
+    void setMasterPlanMapping({ tourId, mapping: defaultMapping }).catch(() => {
+      /* show locally even if save fails */
+    })
+  }, [masterPlanUrl, masterPlanData?.mapping, activeSceneId, setMasterPlanMapping, tourId])
+
+  const handleSaveMasterPlanMapping = useCallback(async () => {
+    const mapping = localMapping ?? resolvedMasterPlanMapping
+    if (!mapping) return
+    if (!isMasterPlanMapped(mapping)) {
+      toast.error('Place all 4 corners on the panorama first')
+      return
+    }
+    setSavingMapping(true)
+    try {
+      await setMasterPlanMapping({
+        tourId,
+        mapping: {
+          ...mapping,
+          sceneId: activeSceneId ?? mapping.sceneId,
+        },
+      })
+      toast.success('Master plan mapping saved')
+      setMappingMasterPlan(false)
+      setEditorZoom(1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save mapping')
+    } finally {
+      setSavingMapping(false)
+    }
+  }, [localMapping, resolvedMasterPlanMapping, setMasterPlanMapping, tourId, activeSceneId])
 
   /* ── Save tour description from settings ── */
   const handleSaveTourDescription = useCallback(
@@ -514,14 +718,93 @@ export default function TourEditorPage() {
     [descriptionSaveTimeoutId, handleSaveDescription]
   )
 
-  /* ── Sphere Click → place hotspot ── */
+  /* ── Sphere Click → place hotspot or pin master-plan corner ── */
   const handleSphereClick = useCallback(
     (position: { x: number; y: number; z: number }) => {
+      if (mappingMasterPlan) {
+        if (pinCorners.length >= 4) return
+        const yp = positionToMasterPlanYawPitch(position)
+        const next = [...pinCorners, yp]
+        setPinCorners(next)
+        if (next.length === 4) {
+          setLocalMapping((m) => ({
+            corners: next,
+            opacity: m?.opacity ?? 0.9,
+            rotation: m?.rotation ?? 0,
+            sceneId: activeSceneId ?? m?.sceneId,
+          }))
+          toast.success('All 4 corners placed')
+        } else {
+          toast.success(`Corner ${next.length}: ${CORNER_LABELS[next.length - 1]}`)
+        }
+        return
+      }
       if (!isPlacingHotspot) return
       setPendingPosition(position)
     },
-    [isPlacingHotspot]
+    [isPlacingHotspot, mappingMasterPlan, activeSceneId, pinCorners]
   )
+
+  const resetMasterPlanCorners = useCallback(() => {
+    setPinCorners([])
+    setLocalMapping((m) =>
+      m
+        ? {
+            opacity: m.opacity ?? 0.9,
+            rotation: m.rotation ?? 0,
+            sceneId: m.sceneId,
+          }
+        : null
+    )
+  }, [])
+
+  const patchMasterPlanLocal = useCallback(
+    (patch: Partial<MasterPlanMapping>) => {
+      setLocalMapping((m) => {
+        const base = m ?? resolvedMasterPlanMapping ?? {}
+        return {
+          ...base,
+          corners:
+            base.corners ?? (pinCorners.length === 4 ? pinCorners : undefined),
+          opacity: base.opacity ?? 0.9,
+          rotation: base.rotation ?? 0,
+          sceneId: base.sceneId ?? activeSceneId ?? undefined,
+          ...patch,
+        }
+      })
+    },
+    [resolvedMasterPlanMapping, pinCorners, activeSceneId]
+  )
+
+  const nudgeMasterPlanRotation = useCallback(
+    (delta: number) => {
+      const current =
+        localMapping?.rotation ?? resolvedMasterPlanMapping?.rotation ?? 0
+      patchMasterPlanLocal({
+        rotation: normalizeMasterPlanRotation(current + delta),
+      })
+    },
+    [localMapping?.rotation, resolvedMasterPlanMapping?.rotation, patchMasterPlanLocal]
+  )
+
+  const masterPlanRotation =
+    localMapping?.rotation ?? resolvedMasterPlanMapping?.rotation ?? 0
+  const masterPlanOpacity =
+    localMapping?.opacity ?? resolvedMasterPlanMapping?.opacity ?? 0.9
+  const activeMasterPlanMapping = localMapping ?? resolvedMasterPlanMapping
+
+  const startMasterPlanMapping = useCallback(() => {
+    if (!masterPlanUrl) {
+      toast.error('Upload a master plan image first')
+      return
+    }
+    setIsPlacingHotspot(false)
+    setPendingPosition(null)
+    resetMasterPlanCorners()
+    setEditorZoom(0.5)
+    setMappingMasterPlan(true)
+    toast.success('Click corner 1 — top-left of the plot on the panorama')
+  }, [masterPlanUrl, resetMasterPlanCorners])
 
   /* ── D-pad position nudge (edit only) ── */
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -610,8 +893,14 @@ export default function TourEditorPage() {
       setHotspotLineHeight(32)
       setIsPlacingHotspot(false)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to add hotspot'
-      toast.error(msg)
+      const raw = err instanceof Error ? err.message : 'Failed to add hotspot'
+      const isBackendDown =
+        /fetch|network|failed to fetch|502|bad gateway|websocket|disconnected|offline/i.test(raw)
+      toast.error(
+        isBackendDown
+          ? 'Backend unreachable — hotspot not saved. Retry when connection returns.'
+          : raw
+      )
     } finally {
       setIsCreatingHotspot(false)
     }
@@ -1114,12 +1403,18 @@ export default function TourEditorPage() {
             <PanoramaViewer
               imageUrl={proxyImageUrl(activeScene.imageUrl) ?? activeScene.imageUrl}
               height="100%"
-              hotspots={viewerHotspots as any[]}
-              onHotspotClick={handleHotspotClick as any}
+              hotspots={viewerHotspots as HotspotData[]}
+              onHotspotClick={handleHotspotClick as (hotspot: HotspotData) => void}
               onSphereClick={handleSphereClick}
-              isEditing={isPlacingHotspot}
+              isEditing={isPlacingHotspot || mappingMasterPlan}
               previewPosition={pendingPosition}
-              autoRotate={tourSettings.autoRotate && previewMode}
+              autoRotate={tourSettings.autoRotate && previewMode && !mappingMasterPlan}
+              zoomLevel={editorZoom}
+              masterPlanUrl={proxyImageUrl(masterPlanUrl) ?? masterPlanUrl}
+              masterPlanMapping={resolvedMasterPlanMapping}
+              masterPlanVisible={!!masterPlanUrl && !!resolvedMasterPlanMapping}
+              masterPlanEditing={mappingMasterPlan}
+              masterPlanPinCorners={mappingMasterPlan ? pinCorners : []}
             />
           ) : (
             /* Empty state — big upload area */
@@ -1207,6 +1502,68 @@ export default function TourEditorPage() {
             </div>
           )}
 
+          {/* Zoom HUD — master plan mapping */}
+          {activeScene && !splatUrl && (mappingMasterPlan || masterPlanUrl) && (
+            <div
+              className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-2 py-1.5 rounded-xl"
+              style={{
+                backgroundColor: 'rgba(10,9,8,0.88)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(212,160,23,0.25)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setEditorZoom(0.5)}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                style={{
+                  backgroundColor: editorZoom === 0.5 ? '#2DD4BF' : 'transparent',
+                  color: editorZoom === 0.5 ? '#0A0908' : '#A8A29E',
+                  fontFamily: 'var(--font-dmsans)',
+                }}
+              >
+                0.5×
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditorZoom(1)}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                style={{
+                  backgroundColor: editorZoom === 1 ? '#D4A017' : 'transparent',
+                  color: editorZoom === 1 ? '#0A0908' : '#A8A29E',
+                  fontFamily: 'var(--font-dmsans)',
+                }}
+              >
+                1×
+              </button>
+              {resolvedMasterPlanMapping && (
+                <>
+                  <div className="w-px h-4 flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                  <button
+                    type="button"
+                    onClick={() => nudgeMasterPlanRotation(-90)}
+                    className="p-1.5 rounded-md transition-colors"
+                    style={{ color: '#A8A29E' }}
+                    title="Rotate master plan −90°"
+                    aria-label="Rotate master plan counter-clockwise 90 degrees"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => nudgeMasterPlanRotation(90)}
+                    className="p-1.5 rounded-md transition-colors"
+                    style={{ color: '#A8A29E' }}
+                    title="Rotate master plan +90°"
+                    aria-label="Rotate master plan clockwise 90 degrees"
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Hotspot toolbar — centered bottom */}
           {activeScene && !previewMode && (
             <div
@@ -1232,6 +1589,7 @@ export default function TourEditorPage() {
                   <button
                     key={ht.value}
                     onClick={() => {
+                      setMappingMasterPlan(false)
                       setHotspotType(ht.value)
                       setIsPlacingHotspot(true)
                       setPendingPosition(null)
@@ -1252,20 +1610,83 @@ export default function TourEditorPage() {
                   </button>
                 )
               })}
-              {isPlacingHotspot && (
+              <div className="w-px h-4 flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
+              <button
+                type="button"
+                onClick={() => {
+                  if (mappingMasterPlan) {
+                    setMappingMasterPlan(false)
+                    setEditorZoom(1)
+                    return
+                  }
+                  if (!masterPlanUrl) {
+                    pickMasterPlanFile()
+                    toast('Upload a master plan, then map it on the 360° view')
+                    return
+                  }
+                  startMasterPlanMapping()
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all"
+                style={{
+                  backgroundColor: mappingMasterPlan ? 'rgba(45,212,191,0.2)' : 'transparent',
+                  border: mappingMasterPlan ? '1px solid rgba(45,212,191,0.5)' : '1px solid transparent',
+                  color: mappingMasterPlan ? '#2DD4BF' : '#A8A29E',
+                  boxShadow: mappingMasterPlan ? '0 0 8px rgba(45,212,191,0.25)' : 'none',
+                }}
+                title={
+                  mappingMasterPlan
+                    ? 'Stop master plan mapping'
+                    : masterPlanUrl
+                      ? 'Map master plan onto the 360° view'
+                      : 'Upload master plan image'
+                }
+              >
+                <Map size={13} />
+                <span className="text-[11px] font-semibold" style={{ fontFamily: 'var(--font-dmsans)' }}>
+                  {mappingMasterPlan ? 'Mapping…' : 'Master Plan'}
+                </span>
+              </button>
+              {(isPlacingHotspot || mappingMasterPlan) && (
                 <>
                   <div className="w-px h-4 flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
                   <button
-                    onClick={() => { setIsPlacingHotspot(false); setPendingPosition(null) }}
+                    onClick={() => {
+                      setIsPlacingHotspot(false)
+                      setPendingPosition(null)
+                      setMappingMasterPlan(false)
+                      setEditorZoom(1)
+                    }}
                     className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
                     style={{ color: '#F87171', fontSize: '11px', fontFamily: 'var(--font-dmsans)', fontWeight: 600 }}
-                    title="Cancel placement"
+                    title="Cancel"
                   >
                     <X size={11} /> Cancel
                   </button>
                 </>
               )}
             </div>
+          )}
+
+          {/* Master plan mapping panel */}
+          {mappingMasterPlan && !pendingPosition && masterPlanUrl && (
+            <MasterPlanMappingPanel
+              masterPlanUrl={masterPlanUrl}
+              masterPlanRotation={masterPlanRotation}
+              pinCorners={pinCorners}
+              editorZoom={editorZoom}
+              localOpacity={masterPlanOpacity}
+              activeMapping={activeMasterPlanMapping}
+              savingMapping={savingMapping}
+              onClose={() => {
+                setMappingMasterPlan(false)
+                setEditorZoom(1)
+              }}
+              onSetZoom={setEditorZoom}
+              onResetCorners={resetMasterPlanCorners}
+              onPatch={patchMasterPlanLocal}
+              onNudgeRotation={nudgeMasterPlanRotation}
+              onSave={() => void handleSaveMasterPlanMapping()}
+            />
           )}
 
           {/* Hotspot placement dialog */}
@@ -2560,6 +2981,29 @@ export default function TourEditorPage() {
                 </button>
               </div>
 
+              <MasterPlanSettingsSection
+                masterPlanUrl={masterPlanUrl}
+                masterPlanUploading={masterPlanUploading}
+                masterPlanRotation={masterPlanRotation}
+                mappingMasterPlan={mappingMasterPlan}
+                editorZoom={editorZoom}
+                savingMapping={savingMapping}
+                activeMapping={activeMasterPlanMapping}
+                localOpacity={masterPlanOpacity}
+                onPickFile={pickMasterPlanFile}
+                onUseSample={() => void handleMasterPlanSample()}
+                onRemove={() => void handleMasterPlanRemove()}
+                onStartMapping={startMasterPlanMapping}
+                onStopMapping={() => {
+                  setMappingMasterPlan(false)
+                  setEditorZoom(1)
+                }}
+                onSetZoom={setEditorZoom}
+                onPatch={patchMasterPlanLocal}
+                onNudgeRotation={nudgeMasterPlanRotation}
+                onSave={() => void handleSaveMasterPlanMapping()}
+              />
+
               {/* Divider */}
               <div style={{ borderTop: '1px solid rgba(212,160,23,0.12)', margin: '8px 0' }} />
 
@@ -3128,6 +3572,28 @@ export default function TourEditorPage() {
                       </button>
                     </div>
 
+                    <MasterPlanSettingsSection
+                      masterPlanUrl={masterPlanUrl}
+                      masterPlanUploading={masterPlanUploading}
+                      masterPlanRotation={masterPlanRotation}
+                      mappingMasterPlan={mappingMasterPlan}
+                      editorZoom={editorZoom}
+                      savingMapping={savingMapping}
+                      activeMapping={activeMasterPlanMapping}
+                      localOpacity={masterPlanOpacity}
+                      onPickFile={pickMasterPlanFile}
+                      onUseSample={() => void handleMasterPlanSample()}
+                      onRemove={() => void handleMasterPlanRemove()}
+                      onStartMapping={startMasterPlanMapping}
+                      onStopMapping={() => {
+                        setMappingMasterPlan(false)
+                        setEditorZoom(1)
+                      }}
+                      onSetZoom={setEditorZoom}
+                      onPatch={patchMasterPlanLocal}
+                      onNudgeRotation={nudgeMasterPlanRotation}
+                      onSave={() => void handleSaveMasterPlanMapping()}
+                    />
                     {/* Embed Code */}
                     <div style={{ borderTop: '1px solid rgba(212,160,23,0.12)', paddingTop: 16 }}>
                       {tour?.status === 'published' && tour?.embedCode ? (

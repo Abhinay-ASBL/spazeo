@@ -33,6 +33,8 @@ const securityHeaders = [
 ]
 
 const nextConfig: NextConfig = {
+  // Allow both localhost and 127.0.0.1 in dev (HMR / _next resources)
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
   turbopack: {
     root: path.join(__dirname),
   },
@@ -64,6 +66,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'convexasbl.duckdns.org',
+      },
+      {
+        protocol: 'https',
         hostname: 'img.clerk.com',
       },
       {
@@ -77,6 +83,11 @@ const nextConfig: NextConfig = {
       {
         protocol: 'http',
         hostname: '127.0.0.1',
+        port: '3210',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
         port: '3210',
       },
     ],

@@ -46,8 +46,10 @@ interface HotspotData {
   ctaLabel?: string
   ctaUrl?: string
   accentColor?: string
-  markerStyle?: 'ring' | 'arrow' | 'dot' | 'label'
+  markerStyle?: 'ring' | 'arrow' | 'dot' | 'label' | 'sticky'
   lineHeight?: number
+  size?: number
+  readOnly?: boolean
 }
 
 interface Props {
@@ -312,6 +314,37 @@ export function HotspotMarker({ hotspot, onClick, isSelected }: Props) {
 
   // Visibility toggle — return null to skip rendering hidden hotspots
   if (hotspot.visible === false) return null
+
+  /* ── Sticky label — dark glass pill on sphere (balcony direction labels) ── */
+  if (hotspot.markerStyle === 'sticky') {
+    const text = hotspot.title || hotspot.tooltip || ''
+    const fontSize = typeof hotspot.size === 'number' ? hotspot.size : 12
+    return (
+      <Html
+        position={[hotspot.position.x, hotspot.position.y, hotspot.position.z]}
+        center
+        zIndexRange={[10, 0]}
+      >
+        <div
+          className="pointer-events-none select-none whitespace-nowrap rounded-full px-3 py-1.5"
+          style={{
+            background: 'rgba(10,9,8,0.72)',
+            border: '1px solid rgba(212,160,23,0.45)',
+            color: '#D4A017',
+            fontSize,
+            fontWeight: 600,
+            fontFamily: 'var(--font-jakarta)',
+            letterSpacing: '0.02em',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          }}
+        >
+          {text}
+        </div>
+      </Html>
+    )
+  }
 
   /* ── Label style OR info type — pill anchored at click point ── */
   if (hotspot.markerStyle === 'label' || hotspot.type === 'info') {

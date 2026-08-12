@@ -110,7 +110,76 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
+    // Idempotent: bulk clear / double-click can race past a gone id
+    const doc = await ctx.db.get(args.hotspotId)
+    if (!doc) return
     await ctx.db.delete(args.hotspotId)
+  },
+})
+
+/** CLI bulk insert — no Clerk JWT (deploy admin only). */
+export const bulkCreateAdmin = mutation({
+  args: {
+    sceneId: v.id('scenes'),
+    clearExisting: v.optional(v.boolean()),
+    hotspots: v.array(
+      v.object({
+        type: v.union(
+          v.literal('navigation'),
+          v.literal('info'),
+          v.literal('media'),
+          v.literal('link'),
+        ),
+        position: v.object({ x: v.number(), y: v.number(), z: v.number() }),
+        title: v.optional(v.string()),
+        tooltip: v.optional(v.string()),
+        description: v.optional(v.string()),
+        content: v.optional(v.string()),
+        markerStyle: v.optional(
+          v.union(
+            v.literal('ring'),
+            v.literal('arrow'),
+            v.literal('dot'),
+            v.literal('label'),
+          ),
+        ),
+        iconName: v.optional(v.string()),
+        accentColor: v.optional(v.string()),
+        visible: v.optional(v.boolean()),
+        lineHeight: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    if (args.clearExisting) {
+      const existing = await ctx.db
+        .query('hotspots')
+        .withIndex('by_sceneId', (q) => q.eq('sceneId', args.sceneId))
+        .collect()
+      for (const h of existing) {
+        await ctx.db.delete(h._id)
+      }
+    }
+
+    const ids = []
+    for (const h of args.hotspots) {
+      const id = await ctx.db.insert('hotspots', {
+        sceneId: args.sceneId,
+        type: h.type,
+        position: h.position,
+        title: h.title,
+        tooltip: h.tooltip,
+        description: h.description,
+        content: h.content,
+        markerStyle: h.markerStyle,
+        iconName: h.iconName,
+        accentColor: h.accentColor,
+        visible: h.visible ?? true,
+        lineHeight: h.lineHeight,
+      })
+      ids.push(id)
+    }
+    return { count: ids.length, ids }
   },
 })
 

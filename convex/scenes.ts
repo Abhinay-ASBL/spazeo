@@ -229,6 +229,38 @@ export const replaceImage = mutation({
   },
 })
 
+/** CLI/admin re-upload (e.g. panorama recompress). No Clerk JWT — use with deploy admin key only. */
+export const replaceImageAdmin = mutation({
+  args: {
+    sceneId: v.id('scenes'),
+    newImageStorageId: v.id('_storage'),
+  },
+  handler: async (ctx, args) => {
+    const scene = await ctx.db.get(args.sceneId)
+    if (!scene) throw new Error('Scene not found')
+
+    if (scene.imageStorageId !== undefined && scene.imageStorageId !== args.newImageStorageId) {
+      await ctx.storage.delete(scene.imageStorageId)
+    }
+    if (scene.stagedImageStorageId !== undefined) {
+      await ctx.storage.delete(scene.stagedImageStorageId)
+    }
+
+    await ctx.db.patch(args.sceneId, {
+      imageStorageId: args.newImageStorageId,
+      stagedImageStorageId: undefined,
+    })
+  },
+})
+
+/** CLI upload URL (pair with replaceImageAdmin). */
+export const generateUploadUrlAdmin = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl()
+  },
+})
+
 export const remove = mutation({
   args: { sceneId: v.id('scenes') },
   handler: async (ctx, args) => {

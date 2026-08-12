@@ -167,11 +167,17 @@ export const getBySlug = query({
         ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
         : null)
 
+    const masterPlanUrl = tour.masterPlanStorageId
+      ? await ctx.storage.getUrl(tour.masterPlanStorageId)
+      : null
+
     return {
       ...tour,
       brandingConfig: tour.brandingConfig
         ? { ...tour.brandingConfig, logoUrl: resolvedLogoUrl }
         : undefined,
+      masterPlanUrl,
+      masterPlanMapping: tour.masterPlanMapping ?? null,
       scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
       requiresPassword: false,
     }
@@ -219,11 +225,17 @@ export const getBySlugWithScenes = query({
         ? await ctx.storage.getUrl(tour.brandingConfig.logoStorageId)
         : null)
 
+    const masterPlanUrl = tour.masterPlanStorageId
+      ? await ctx.storage.getUrl(tour.masterPlanStorageId)
+      : null
+
     return {
       ...tour,
       brandingConfig: tour.brandingConfig
         ? { ...tour.brandingConfig, logoUrl: resolvedLogoUrl }
         : undefined,
+      masterPlanUrl,
+      masterPlanMapping: tour.masterPlanMapping ?? null,
       scenes: scenesWithHotspots.sort((a, b) => a.order - b.order),
       requiresPassword: false,
     }
@@ -777,6 +789,128 @@ export const generateUploadUrl = mutation(async (ctx) => {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
   return await ctx.storage.generateUploadUrl()
+})
+
+
+/** Attach or clear a site master plan image for a tour. */
+export const setMasterPlan = mutation({
+  args: {
+    tourId: v.id('tours'),
+    storageId: v.union(v.id('_storage'), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx)
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) throw new Error('Tour not found')
+    if (tour.userId !== user._id) throw new Error('Not authorized')
+
+    if (args.storageId === null) {
+      await ctx.db.patch(args.tourId, {
+        masterPlanStorageId: undefined,
+        masterPlanMapping: undefined,
+      })
+    } else {
+      await ctx.db.patch(args.tourId, {
+        masterPlanStorageId: args.storageId,
+      })
+    }
+
+    await ctx.runMutation(internal.activity.log, {
+      userId: user._id,
+      type: 'tour_updated',
+      tourId: args.tourId,
+      message: args.storageId
+        ? `Added master plan to "${tour.title}"`
+        : `Removed master plan from "${tour.title}"`,
+    })
+
+    return args.tourId
+  },
+})
+
+/** Save where the master plan sits on the 360 panorama. */
+export const setMasterPlanMapping = mutation({
+  args: {
+    tourId: v.id('tours'),
+    mapping: v.union(
+      v.null(),
+      v.object({
+        sceneId: v.optional(v.id('scenes')),
+        corners: v.optional(
+          v.array(
+            v.object({
+              yaw: v.number(),
+              pitch: v.number(),
+            })
+          )
+        ),
+        yaw: v.optional(v.number()),
+        pitch: v.optional(v.number()),
+        widthDeg: v.optional(v.number()),
+        heightDeg: v.optional(v.number()),
+        rotation: v.optional(v.number()),
+        opacity: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx)
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) throw new Error('Tour not found')
+    if (tour.userId !== user._id) throw new Error('Not authorized')
+    if (!tour.masterPlanStorageId && args.mapping !== null) {
+      throw new Error('Upload a master plan image first')
+    }
+
+    await ctx.db.patch(args.tourId, {
+      masterPlanMapping: args.mapping === null ? undefined : args.mapping,
+    })
+
+    await ctx.runMutation(internal.activity.log, {
+      userId: user._id,
+      type: 'tour_updated',
+      tourId: args.tourId,
+      message:
+        args.mapping === null
+          ? `Cleared master plan mapping on "${tour.title}"`
+          : `Updated master plan mapping on "${tour.title}"`,
+    })
+
+    return args.tourId
+  },
+})
+
+/** Resolve master plan URL + mapping for dashboard / editor. */
+export const getMasterPlan = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || !tour.masterPlanStorageId) return null
+
+    const url = await ctx.storage.getUrl(tour.masterPlanStorageId)
+    return {
+      url,
+      mapping: tour.masterPlanMapping ?? null,
+      storageId: tour.masterPlanStorageId,
+    }
+  },
+})
+
+/** Resolve master plan URL for dashboard preview. */
+export const getMasterPlanUrl = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || !tour.masterPlanStorageId) return null
+
+    return await ctx.storage.getUrl(tour.masterPlanStorageId)
+  },
 })
 
 // --- 3D Reconstruction: link splat to tour ---
