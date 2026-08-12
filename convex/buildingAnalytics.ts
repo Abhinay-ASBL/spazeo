@@ -48,18 +48,16 @@ export const getByBuilding = query({
     const building = await ctx.db.get(args.buildingId)
     if (!building || building.userId !== user._id) return []
 
-    let events = await ctx.db
+    const events = await ctx.db
       .query('buildingAnalytics')
-      .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
+      .withIndex('by_buildingId_timestamp', (q) =>
+        q
+          .eq('buildingId', args.buildingId)
+          .gte('timestamp', args.startDate ?? -Infinity)
+          .lte('timestamp', args.endDate ?? Infinity)
+      )
       .order('desc')
       .collect()
-
-    if (args.startDate) {
-      events = events.filter((e) => e.timestamp >= args.startDate!)
-    }
-    if (args.endDate) {
-      events = events.filter((e) => e.timestamp <= args.endDate!)
-    }
 
     return events
   },

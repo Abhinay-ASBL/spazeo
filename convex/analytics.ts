@@ -41,21 +41,17 @@ export const getByTour = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let events = await ctx.db
+    const query = ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .withIndex('by_tourId_timestamp', (q) =>
+        q
+          .eq('tourId', args.tourId)
+          .gte('timestamp', args.startDate ?? -Infinity)
+          .lte('timestamp', args.endDate ?? Infinity)
+      )
       .order('desc')
-      .collect()
 
-    if (args.startDate) {
-      events = events.filter((e) => e.timestamp >= args.startDate!)
-    }
-    if (args.endDate) {
-      events = events.filter((e) => e.timestamp <= args.endDate!)
-    }
-    if (args.limit) {
-      events = events.slice(0, args.limit)
-    }
+    const events = args.limit ? await query.take(args.limit) : await query.collect()
 
     return events
   },
@@ -120,15 +116,12 @@ export const getViewsOverTime = query({
   handler: async (ctx, args) => {
     const events = await ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .withIndex('by_tourId_timestamp', (q) =>
+        q.eq('tourId', args.tourId).gte('timestamp', args.startDate).lte('timestamp', args.endDate)
+      )
       .collect()
 
-    const filtered = events.filter(
-      (e) =>
-        e.event === 'tour_view' &&
-        e.timestamp >= args.startDate &&
-        e.timestamp <= args.endDate
-    )
+    const filtered = events.filter((e) => e.event === 'tour_view')
 
     // Group by day
     const grouped: Record<string, number> = {}
@@ -362,12 +355,12 @@ export const getDashboardStats = query({
     for (const tour of tours) {
       const events = await ctx.db
         .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+        .withIndex('by_tourId_timestamp', (q) =>
+          q.eq('tourId', tour._id).gte('timestamp', oneWeekAgo)
+        )
         .collect()
 
-      viewsThisWeek += events.filter(
-        (e) => e.event === 'tour_view' && e.timestamp >= oneWeekAgo
-      ).length
+      viewsThisWeek += events.filter((e) => e.event === 'tour_view').length
 
       const leads = await ctx.db
         .query('leads')
@@ -654,20 +647,16 @@ export const getEventsByTourInternal = internalQuery({
     endDate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let events = await ctx.db
+    return await ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .withIndex('by_tourId_timestamp', (q) =>
+        q
+          .eq('tourId', args.tourId)
+          .gte('timestamp', args.startDate ?? -Infinity)
+          .lte('timestamp', args.endDate ?? Infinity)
+      )
       .order('desc')
       .collect()
-
-    if (args.startDate) {
-      events = events.filter((e) => e.timestamp >= args.startDate!)
-    }
-    if (args.endDate) {
-      events = events.filter((e) => e.timestamp <= args.endDate!)
-    }
-
-    return events
   },
 })
 
@@ -787,14 +776,12 @@ export const getTourPerformance = query({
     const results = []
 
     for (const tour of tours) {
-      const events = await ctx.db
+      const periodEvents = await ctx.db
         .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+        .withIndex('by_tourId_timestamp', (q) =>
+          q.eq('tourId', tour._id).gte('timestamp', periodStart || -Infinity)
+        )
         .collect()
-
-      const periodEvents = periodStart
-        ? events.filter((e) => e.timestamp >= periodStart)
-        : events
 
       const views = periodEvents.filter((e) => e.event === 'tour_view').length
       const uniqueSessions = new Set(

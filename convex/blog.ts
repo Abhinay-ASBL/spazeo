@@ -19,7 +19,7 @@ export const list = query({
     } else {
       posts = await ctx.db
         .query('blogPosts')
-        .filter((q) => q.eq(q.field('status'), 'published'))
+        .withIndex('by_status', (q) => q.eq('status', 'published'))
         .collect()
     }
 

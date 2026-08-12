@@ -68,18 +68,16 @@ export const list = query({
 
     const pageSize = args.limit ?? 20
 
-    let activities = await ctx.db
+    const items = await ctx.db
       .query('activityLog')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
+      .withIndex('by_userId_timestamp', (q) =>
+        args.cursor
+          ? q.eq('userId', user._id).lt('timestamp', args.cursor)
+          : q.eq('userId', user._id)
+      )
       .order('desc')
-      .collect()
+      .take(pageSize)
 
-    // Apply cursor (timestamp-based)
-    if (args.cursor) {
-      activities = activities.filter((a) => a.timestamp < args.cursor!)
-    }
-
-    const items = activities.slice(0, pageSize)
     const nextCursor = items.length === pageSize ? items[items.length - 1].timestamp : null
 
     return { items, nextCursor }

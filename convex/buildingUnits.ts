@@ -40,12 +40,12 @@ export const listByFloor = query({
   handler: async (ctx, args) => {
     const units = await ctx.db
       .query('buildingUnits')
-      .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
+      .withIndex('by_buildingId_floor', (q) =>
+        q.eq('buildingId', args.buildingId).eq('floor', args.floor)
+      )
       .collect()
 
-    return units
-      .filter((u) => u.floor === args.floor)
-      .sort((a, b) => a.unitNumber.localeCompare(b.unitNumber))
+    return units.sort((a, b) => a.unitNumber.localeCompare(b.unitNumber))
   },
 })
 

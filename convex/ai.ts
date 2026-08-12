@@ -35,11 +35,13 @@ export const listJobs = query({
       .unique()
     if (!user) return []
 
+    // ponytail: capped rather than a compound index per filter combo — a user's
+    // recent 500 jobs is plenty for this list view; raise the cap if that's ever wrong.
     let jobs = await ctx.db
       .query('aiJobs')
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
       .order('desc')
-      .collect()
+      .take(500)
 
     if (args.type) {
       jobs = jobs.filter((j) => j.type === args.type)

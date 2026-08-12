@@ -39,15 +39,12 @@ async function countMonthlyJobs(
 
   const jobs = await db
     .query('reconstructionJobs')
-    .withIndex('by_userId', (q: any) => q.eq('userId', userId))
+    .withIndex('by_userId', (q: any) =>
+      q.eq('userId', userId).gte('_creationTime', startOfMonth)
+    )
     .collect()
 
-  return jobs.filter(
-    (j: any) =>
-      j._creationTime >= startOfMonth &&
-      j.status !== 'failed' &&
-      j.status !== 'cancelled'
-  ).length
+  return jobs.filter((j: any) => j.status !== 'failed' && j.status !== 'cancelled').length
 }
 
 // --- Internal Queries ---
@@ -71,19 +68,25 @@ export const getStaleJobs = internalQuery({
   handler: async (ctx) => {
     const THIRTY_MINUTES_MS = 30 * 60 * 1000
     const cutoff = Date.now() - THIRTY_MINUTES_MS
-    const activeStatuses = ['queued', 'extracting_frames', 'reconstructing', 'compressing']
+    const activeStatuses = [
+      'queued',
+      'extracting_frames',
+      'reconstructing',
+      'compressing',
+    ] as const
 
-    const allActive = await ctx.db
-      .query('reconstructionJobs')
-      .withIndex('by_status')
-      .collect()
-
-    return allActive.filter(
-      (j) =>
-        activeStatuses.includes(j.status) &&
-        j.startedAt !== undefined &&
-        j.startedAt < cutoff
+    const byStatus = await Promise.all(
+      activeStatuses.map((status) =>
+        ctx.db
+          .query('reconstructionJobs')
+          .withIndex('by_status', (q) => q.eq('status', status))
+          .collect()
+      )
     )
+
+    return byStatus
+      .flat()
+      .filter((j) => j.startedAt !== undefined && j.startedAt < cutoff)
   },
 })
 
@@ -94,10 +97,10 @@ export const getStaleJobs = internalQuery({
 export const findByRunpodJobId = internalQuery({
   args: { runpodJobId: v.string() },
   handler: async (ctx, args) => {
-    const allJobs = await ctx.db
+    return await ctx.db
       .query('reconstructionJobs')
-      .collect()
-    return allJobs.find((j) => j.runpodJobId === args.runpodJobId) ?? null
+      .withIndex('by_runpodJobId', (q) => q.eq('runpodJobId', args.runpodJobId))
+      .unique()
   },
 })
 
@@ -212,10 +215,10 @@ export const complete = internalMutation({
   },
   handler: async (ctx, args) => {
     // Find job by runpodJobId
-    const allJobs = await ctx.db
+    const job = await ctx.db
       .query('reconstructionJobs')
-      .collect()
-    const job = allJobs.find((j: any) => j.runpodJobId === args.runpodJobId)
+      .withIndex('by_runpodJobId', (q) => q.eq('runpodJobId', args.runpodJobId))
+      .unique()
     if (!job) throw new Error(`No reconstruction job found for runpodJobId: ${args.runpodJobId}`)
 
     await ctx.db.patch(job._id, {
@@ -253,10 +256,10 @@ export const fail = internalMutation({
     error: v.string(),
   },
   handler: async (ctx, args) => {
-    const allJobs = await ctx.db
+    const job = await ctx.db
       .query('reconstructionJobs')
-      .collect()
-    const job = allJobs.find((j: any) => j.runpodJobId === args.runpodJobId)
+      .withIndex('by_runpodJobId', (q) => q.eq('runpodJobId', args.runpodJobId))
+      .unique()
     if (!job) throw new Error(`No reconstruction job found for runpodJobId: ${args.runpodJobId}`)
 
     await ctx.db.patch(job._id, {

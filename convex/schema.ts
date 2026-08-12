@@ -143,6 +143,31 @@ export default defineSchema({
       )
     ),
     floorPlanId: v.optional(v.id('floorPlanDetails')),
+    // Master plan overlay — site/floor plan image mapped onto exterior corner views
+    masterPlanStorageId: v.optional(v.id('_storage')),
+    masterPlanMapping: v.optional(
+      v.object({
+        /** Optional scene this mapping was authored against */
+        sceneId: v.optional(v.id('scenes')),
+        /** Four corners on the panorama (TL, TR, BR, BL) — preferred */
+        corners: v.optional(
+          v.array(
+            v.object({
+              yaw: v.number(),
+              pitch: v.number(),
+            })
+          )
+        ),
+        /** Legacy rect mapping (fallback when corners absent) */
+        yaw: v.optional(v.number()),
+        pitch: v.optional(v.number()),
+        widthDeg: v.optional(v.number()),
+        heightDeg: v.optional(v.number()),
+        rotation: v.optional(v.number()),
+        /** 0–1 overlay opacity */
+        opacity: v.optional(v.number()),
+      })
+    ),
     floorPlan3DConfig: v.optional(
       v.object({
         globalCeilingHeight: v.number(),
@@ -295,7 +320,8 @@ export default defineSchema({
     .index('by_tourId', ['tourId'])
     .index('by_event', ['event'])
     .index('by_timestamp', ['timestamp'])
-    .index('by_tourId_timestamp', ['tourId', 'timestamp']),
+    .index('by_tourId_timestamp', ['tourId', 'timestamp'])
+    .index('by_sessionId', ['sessionId']),
 
   dailyAnalytics: defineTable({
     tourId: v.id('tours'),
@@ -363,7 +389,9 @@ export default defineSchema({
     tourId: v.optional(v.id('tours')),
     message: v.string(),
     timestamp: v.number(),
-  }).index('by_userId', ['userId']),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_timestamp', ['userId', 'timestamp']),
 
   subscriptions: defineTable({
     userId: v.id('users'),
@@ -549,7 +577,8 @@ export default defineSchema({
   })
     .index('by_buildingId', ['buildingId'])
     .index('by_floor', ['floor'])
-    .index('by_tourId', ['tourId']),
+    .index('by_tourId', ['tourId'])
+    .index('by_buildingId_floor', ['buildingId', 'floor']),
 
   conversionJobs: defineTable({
     buildingId: v.id('buildings'),
@@ -585,7 +614,8 @@ export default defineSchema({
     timestamp: v.number(),
   })
     .index('by_buildingId', ['buildingId'])
-    .index('by_event', ['event']),
+    .index('by_event', ['event'])
+    .index('by_buildingId_timestamp', ['buildingId', 'timestamp']),
 
   // --- Phase 2: 3D Reconstruction Job Queue ---
 
@@ -620,7 +650,8 @@ export default defineSchema({
   })
     .index('by_tourId', ['tourId'])
     .index('by_userId', ['userId'])
-    .index('by_status', ['status']),
+    .index('by_status', ['status'])
+    .index('by_runpodJobId', ['runpodJobId']),
 
   // --- Phase 3: Furniture Catalog, Placement, Room Sharing ---
 
