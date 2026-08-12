@@ -404,14 +404,12 @@ export const rollupDaily = internalMutation({
       .collect()
 
     for (const tour of tours) {
-      const events = await ctx.db
+      const dayEvents = await ctx.db
         .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+        .withIndex('by_tourId_timestamp', (q) =>
+          q.eq('tourId', tour._id).gte('timestamp', startOfDay).lt('timestamp', endOfDay)
+        )
         .collect()
-
-      const dayEvents = events.filter(
-        (e) => e.timestamp >= startOfDay && e.timestamp < endOfDay
-      )
 
       if (dayEvents.length === 0) continue
 
@@ -425,7 +423,8 @@ export const rollupDaily = internalMutation({
           ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
           : 0
 
-      // Leads count
+      // Leads count — bounded to yesterday's tours only, `leads` has no timestamp
+      // index so this stays scoped per-tour rather than a full-table scan.
       const leads = await ctx.db
         .query('leads')
         .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
@@ -515,7 +514,8 @@ export const getDashboardOverview = query({
     const totalTours = tours.length
     const publishedTours = tours.filter((t) => t.status === 'published').length
 
-    // Collect all analytics events for user's tours
+    // Bounded scan: only events since prevPeriodStart (indexed range), not full history.
+    // totalViews comes from the denormalized tour.viewCount instead of a full scan.
     let allEvents: Array<{ event: string; timestamp: number; duration?: number; sessionId: string }> = []
     let totalLeads = 0
     let currentLeads = 0
@@ -524,7 +524,9 @@ export const getDashboardOverview = query({
     for (const tour of tours) {
       const events = await ctx.db
         .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+        .withIndex('by_tourId_timestamp', (q) =>
+          q.eq('tourId', tour._id).gte('timestamp', prevPeriodStart)
+        )
         .collect()
       allEvents = allEvents.concat(events)
 
@@ -545,9 +547,10 @@ export const getDashboardOverview = query({
     const prevViews = viewEvents.filter(
       (e) => e.timestamp >= prevPeriodStart && e.timestamp < periodStart
     ).length
-    const totalViews = viewEvents.length
+    // All-time total comes from the denormalized counter, not the (now window-bounded) events.
+    const totalViews = tours.reduce((sum, t) => sum + t.viewCount, 0)
 
-    // Viewing hours (from duration field, in seconds)
+    // Viewing hours (from duration field, in seconds) — bounded to the 2x-period window
     const allDurations = allEvents
       .filter((e) => e.duration && e.duration > 0)
       .map((e) => e.duration!)
@@ -555,7 +558,7 @@ export const getDashboardOverview = query({
     const totalViewingHours = Math.floor(totalViewingSeconds / 3600)
     const totalViewingMinutes = Math.floor((totalViewingSeconds % 3600) / 60)
 
-    // Unique visitors — distinct sessionIds across all view events
+    // Unique visitors — distinct sessionIds within the 2x-period window
     const totalUniqueVisitors = new Set(viewEvents.map((e) => e.sessionId)).size
 
     // Avg scene time — average duration in seconds across all events with a duration
