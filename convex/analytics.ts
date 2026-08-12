@@ -879,16 +879,26 @@ export const trackBatch = mutation({
 })
 
 export const getBySession = query({
-  args: { sessionId: v.string(), tourId: v.optional(v.id('tours')) },
+  args: { sessionId: v.string(), tourId: v.id('tours') },
   handler: async (ctx, args) => {
-    const all = args.tourId
-      ? await ctx.db
-          .query('analytics')
-          .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId!))
-          .collect()
-      : await ctx.db.query('analytics').collect()
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return []
+
+    const all = await ctx.db
+      .query('analytics')
+      .withIndex('by_sessionId', (q) => q.eq('sessionId', args.sessionId))
+      .collect()
     return all
-      .filter((e) => e.sessionId === args.sessionId)
+      .filter((e) => e.tourId === args.tourId)
       .sort((a, b) => a.timestamp - b.timestamp)
   },
 })

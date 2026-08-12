@@ -1,5 +1,15 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+
+async function getAuthUser(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return null
+  return await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+}
 
 export const create = mutation({
   args: {
@@ -41,11 +51,14 @@ export const end = mutation({
     customerName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) throw new Error('Not authenticated')
+    const user = await getAuthUser(ctx)
+    if (!user) throw new Error('Not authenticated')
 
     const session = await ctx.db.get(args.salesSessionId)
     if (!session) throw new Error('Session not found')
+
+    const tour = await ctx.db.get(session.tourId)
+    if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
 
     await ctx.db.patch(args.salesSessionId, {
       endedAt: Date.now(),
@@ -99,8 +112,8 @@ export const getByTour = query({
 export const getByCustomer = query({
   args: { customerId: v.id('customers') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) return []
+    const user = await getAuthUser(ctx)
+    if (!user) return []
 
     const sessions = await ctx.db
       .query('salesSessions')
@@ -110,10 +123,11 @@ export const getByCustomer = query({
     const enriched = []
     for (const s of sessions) {
       const tour = await ctx.db.get(s.tourId)
+      if (!tour || tour.userId !== user._id) continue
       enriched.push({
         ...s,
-        tourTitle: tour?.title ?? 'Unknown',
-        tourSlug: tour?.slug ?? '',
+        tourTitle: tour.title,
+        tourSlug: tour.slug,
       })
     }
 
@@ -124,12 +138,18 @@ export const getByCustomer = query({
 export const getBySessionId = query({
   args: { sessionId: v.string() },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) return null
+    const user = await getAuthUser(ctx)
+    if (!user) return null
 
-    return await ctx.db
+    const session = await ctx.db
       .query('salesSessions')
       .withIndex('by_sessionId', (q) => q.eq('sessionId', args.sessionId))
       .unique()
+    if (!session) return null
+
+    const tour = await ctx.db.get(session.tourId)
+    if (!tour || tour.userId !== user._id) return null
+
+    return session
   },
 })
