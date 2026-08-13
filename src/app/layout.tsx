@@ -48,7 +48,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${jakarta.variable} ${dmSans.variable}`}>
+    <html lang="en" className={`${jakarta.variable} ${dmSans.variable}`} suppressHydrationWarning>
       <body className="antialiased font-body">
         <ConvexClientProvider>
           <PostHogProvider>

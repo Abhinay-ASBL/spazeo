@@ -14,7 +14,7 @@ const isProtectedRoute = createRouteMatcher([
   '/settings(.*)',
   '/billing(.*)',
   '/onboarding(.*)',
-  '/tour/.*/sales(.*)',
+  '/tour/(.*)/sales(.*)',
 ])
 
 // When Clerk is properly configured, use Clerk middleware for route protection
