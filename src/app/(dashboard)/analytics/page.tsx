@@ -7,20 +7,21 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { SessionsTable } from '@/components/analytics/SessionsTable'
 import { AttentionHeatmap } from '@/components/analytics/AttentionHeatmap'
 import {
-  Eye,
-  Users,
-  UserPlus,
-  Clock,
+  AnalyticsTotals,
+  TourPeopleReach,
+} from '@/components/analytics/AnalyticsTotals'
+import {
   Calendar,
   Download,
   Search,
-  TrendingUp,
-  TrendingDown,
   Monitor,
   Smartphone,
   Tablet,
   Loader2,
   BarChart3,
+  QrCode,
+  Sun,
+  Eye,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -50,30 +51,6 @@ function formatDuration(seconds: number): string {
   return `${m}m ${s}s`
 }
 
-function trendBadge(value: number) {
-  if (value === 0) return null
-  const positive = value > 0
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 3,
-        fontSize: 11,
-        fontWeight: 600,
-        padding: '2px 7px',
-        borderRadius: 9999,
-        color: positive ? '#34D399' : '#F87171',
-        backgroundColor: positive ? 'rgba(52,211,153,0.13)' : 'rgba(248,113,113,0.13)',
-      }}
-    >
-      {positive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-      {positive ? '+' : ''}
-      {value}%
-    </span>
-  )
-}
-
 // ─── Page ──────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
@@ -91,6 +68,18 @@ export default function AnalyticsPage() {
     api.scenes.listByTour,
     selectedTourId ? { tourId: selectedTourId } : 'skip'
   )
+  const visitorStats = useQuery(
+    api.analytics.getUniqueVisitorStats,
+    selectedTourId ? { tourId: selectedTourId } : 'skip'
+  )
+  const variantEngagement = useQuery(
+    api.analytics.getVariantEngagement,
+    selectedTourId ? { tourId: selectedTourId } : 'skip'
+  )
+  const qrAttribution = useQuery(
+    api.analytics.getQrAttribution,
+    selectedTourId ? { tourId: selectedTourId } : 'skip'
+  )
 
   const isLoading = overview === undefined || tourPerformance === undefined
 
@@ -98,9 +87,6 @@ export default function AnalyticsPage() {
   const filteredTours = (tourPerformance ?? []).filter((t) =>
     t.title.toLowerCase().includes(tourSearch.toLowerCase())
   )
-
-  // Compute device breakdown from tour performance (approximate from overview data)
-  // We use the overview stats for the main cards
 
   if (isLoading) {
     return (
@@ -139,32 +125,7 @@ export default function AnalyticsPage() {
     )
   }
 
-  const stats = [
-    {
-      label: 'Total Views',
-      value: formatNumber(overview.totalViews),
-      trend: overview.trends.views,
-      icon: Eye,
-    },
-    {
-      label: 'Unique Visitors',
-      value: formatNumber(overview.totalUniqueVisitors),
-      trend: 0,
-      icon: Users,
-    },
-    {
-      label: 'Avg. Scene Time',
-      value: formatDuration(overview.avgSceneTime),
-      trend: 0,
-      icon: Clock,
-    },
-    {
-      label: 'Total Leads',
-      value: formatNumber(overview.totalLeads),
-      trend: overview.trends.leads,
-      icon: UserPlus,
-    },
-  ]
+  const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? '30D'
 
   // Build a simple bar chart from tour data
   const topToursForChart = filteredTours.slice(0, 7)
@@ -197,7 +158,7 @@ export default function AnalyticsPage() {
             Analytics
           </h1>
           <p style={{ fontSize: 14, color: '#A8A29E', margin: '6px 0 0 0' }}>
-            Track your tour performance and viewer engagement
+            Devices, estimated people, and known contacts — not a single unique-visitor count.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -276,51 +237,22 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
-        style={{ gap: 16, marginBottom: 24 }}
-      >
-        {stats.map((stat) => {
-          const Icon = stat.icon
-          return (
-            <div
-              key={stat.label}
-              style={{
-                backgroundColor: '#1B1916',
-                border: '1px solid rgba(212,160,23,0.12)',
-                borderRadius: 12,
-                padding: '20px 24px',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13, color: '#A8A29E' }}>{stat.label}</span>
-                  {trendBadge(stat.trend)}
-                </div>
-                <Icon size={18} style={{ color: '#6B6560' }} />
-              </div>
-              <div
-                style={{
-                  fontSize: 28,
-                  fontWeight: 700,
-                  color: '#F5F3EF',
-                  fontFamily: 'var(--font-display)',
-                }}
-              >
-                {stat.value}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <AnalyticsTotals
+        periodLabel={periodLabel as '7D' | '30D' | '90D' | 'All'}
+        devices={overview.uniqueDevices ?? 0}
+        estimated={overview.uniqueVisitorsEstimated ?? 0}
+        knownContacts={overview.knownContacts ?? 0}
+        hasVisitorIds={overview.hasVisitorIds ?? false}
+        periodViews={overview.periodViews ?? 0}
+        periodSessions={overview.periodSessions ?? 0}
+        periodLeads={overview.periodLeads ?? 0}
+        viewsTrend={overview.trends.views}
+        leadsTrend={overview.trends.leads}
+        avgSceneTime={overview.avgSceneTime}
+        conversionRate={overview.conversionRate}
+        allTimeViews={overview.totalViews}
+        allTimeLeads={overview.totalLeads}
+      />
 
       {/* Charts Row */}
       <div className="flex flex-col lg:flex-row" style={{ gap: 16, marginBottom: 24 }}>
@@ -600,7 +532,7 @@ export default function AnalyticsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
             <thead>
               <tr>
-                {['Tour Name', 'Status', 'Views', 'Unique Visitors', 'Leads', 'Avg. Duration'].map(
+                {['Tour Name', 'Status', 'Views', 'Sessions', 'Leads', 'Avg. Duration'].map(
                   (header) => (
                     <th
                       key={header}
@@ -691,6 +623,193 @@ export default function AnalyticsPage() {
       {/* Visitor Sessions & Attention Heatmap — shown when a tour is selected */}
       {selectedTourId && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 32, marginTop: 32 }}>
+          {/* Identity for the selected tour */}
+          {visitorStats && (
+            <TourPeopleReach
+              devices={visitorStats.uniqueDevices}
+              estimated={visitorStats.uniqueVisitorsEstimated}
+              knownContacts={visitorStats.uniqueVisitorsVerified}
+              returning={visitorStats.returningVisitors}
+              hasVisitorIds={visitorStats.hasVisitorIds}
+            />
+          )}
+
+          {/* Variant engagement */}
+          {variantEngagement && (
+            <div>
+              <h2
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: '#F5F3EF',
+                  fontFamily: 'var(--font-jakarta)',
+                  marginBottom: 12,
+                }}
+              >
+                Variant engagement
+              </h2>
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                style={{ gap: 16 }}
+              >
+                <div
+                  style={{
+                    backgroundColor: '#1B1916',
+                    border: '1px solid rgba(212,160,23,0.12)',
+                    borderRadius: 12,
+                    padding: '16px 20px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: '#6B6560' }}>Switch rate</span>
+                    <Sun size={16} style={{ color: '#D4A017' }} />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 700,
+                      color: '#F5F3EF',
+                      fontFamily: 'var(--font-jakarta)',
+                    }}
+                  >
+                    {variantEngagement.switchRate}%
+                  </div>
+                  <p style={{ fontSize: 11, color: '#6B6560', margin: '4px 0 0' }}>
+                    {variantEngagement.switchSessions} of {variantEngagement.viewSessions}{' '}
+                    sessions switched
+                  </p>
+                </div>
+                {Object.entries(variantEngagement.dwellByTimeOfDay).map(([tod, bucket]) => (
+                  <div
+                    key={tod}
+                    style={{
+                      backgroundColor: '#1B1916',
+                      border: '1px solid rgba(212,160,23,0.12)',
+                      borderRadius: 12,
+                      padding: '16px 20px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: '#6B6560',
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {tod} dwell
+                    </span>
+                    <div
+                      style={{
+                        fontSize: 24,
+                        fontWeight: 700,
+                        color: '#F5F3EF',
+                        fontFamily: 'var(--font-jakarta)',
+                        marginTop: 8,
+                      }}
+                    >
+                      {formatDuration(bucket.avgDurationSec)}
+                    </div>
+                    <p style={{ fontSize: 11, color: '#6B6560', margin: '4px 0 0' }}>
+                      {bucket.events} views
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* QR placement attribution */}
+          {qrAttribution && qrAttribution.placements.length > 0 && (
+            <div>
+              <h2
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: '#F5F3EF',
+                  fontFamily: 'var(--font-jakarta)',
+                  marginBottom: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <QrCode size={16} style={{ color: '#D4A017' }} />
+                QR placement
+              </h2>
+              <div
+                style={{
+                  backgroundColor: '#1B1916',
+                  border: '1px solid rgba(212,160,23,0.12)',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(212,160,23,0.08)' }}>
+                        {['Placement (qr)', 'Micromarket', 'Campaign', 'Scans', 'Leads', 'Lead rate', 'Verified'].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              style={{
+                                textAlign: 'left',
+                                padding: '12px 16px',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: '#6B6560',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                              }}
+                            >
+                              {h}
+                            </th>
+                          )
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {qrAttribution.placements.map((row) => (
+                        <tr
+                          key={`${row.qr}|${row.mm}|${row.camp}`}
+                          style={{ borderBottom: '1px solid rgba(212,160,23,0.06)' }}
+                        >
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#F5F3EF' }}>
+                            {row.qr}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#A8A29E' }}>
+                            {row.mm}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#A8A29E' }}>
+                            {row.camp}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#A8A29E' }}>
+                            {row.scans}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#A8A29E' }}>
+                            {row.leads}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#2DD4BF' }}>
+                            {row.leadRate}%
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#D4A017' }}>
+                            {row.verifiedLeads}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div>
             <h2
               style={{

@@ -1,6 +1,74 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation, action, internalQuery } from './_generated/server'
+import {
+  query,
+  mutation,
+  internalMutation,
+  action,
+  internalQuery,
+  type QueryCtx,
+} from './_generated/server'
 import { internal } from './_generated/api'
+import { consumeRateLimit, purgeStaleRateLimits } from './rateLimit'
+import type { Doc, Id } from './_generated/dataModel'
+
+const MAX_BATCH_EVENTS = 50
+
+function summarizeVisitorDocs(
+  docs: Array<Doc<'visitors'> | null>,
+  sessionUniques: number
+) {
+  const live = docs.filter(
+    (d): d is Doc<'visitors'> => d != null && d.mergedInto === undefined
+  )
+  if (live.length === 0) {
+    return {
+      uniqueVisitorsEstimated: 0,
+      uniqueVisitorsVerified: 0,
+      uniqueVisitorsIdentified: 0,
+      uniqueDevices: 0,
+      returningVisitors: 0,
+      hasVisitorIds: false,
+      sessionUniques,
+    }
+  }
+  const estimated = live.filter((v) => v.confidence >= 70).length
+  const knownContacts = live.filter((v) => v.phoneHash != null).length
+  const returningVisitors = live.filter((v) => v.totalSessions > 1).length
+  return {
+    uniqueVisitorsEstimated: estimated,
+    uniqueVisitorsVerified: knownContacts,
+    uniqueVisitorsIdentified: knownContacts,
+    uniqueDevices: 0,
+    returningVisitors,
+    hasVisitorIds: true,
+    sessionUniques,
+  }
+}
+
+async function countDistinctDeviceIds(
+  ctx: QueryCtx,
+  visitorIds: Id<'visitors'>[]
+): Promise<number> {
+  const values = new Set<string>()
+  for (const visitorId of visitorIds) {
+    const rows = await ctx.db
+      .query('visitorIdentities')
+      .withIndex('by_visitorId', (q) => q.eq('visitorId', visitorId))
+      .collect()
+    for (const row of rows) {
+      if (row.kind === 'device') values.add(row.value)
+    }
+  }
+  return values.size
+}
+
+const timeOfDayValidator = v.union(
+  v.literal('morning'),
+  v.literal('afternoon'),
+  v.literal('evening'),
+  v.literal('sunset'),
+  v.literal('night')
+)
 
 export const track = mutation({
   args: {
@@ -15,8 +83,20 @@ export const track = mutation({
     country: v.optional(v.string()),
     city: v.optional(v.string()),
     duration: v.optional(v.number()),
+    visitorId: v.optional(v.id('visitors')),
+    variantKey: v.optional(v.string()),
+    timeOfDay: v.optional(timeOfDayValidator),
   },
   handler: async (ctx, args) => {
+    await consumeRateLimit(ctx, `analytics:session:${args.sessionId}`, {
+      windowMs: 60_000,
+      max: 120,
+    })
+    await consumeRateLimit(ctx, `analytics:tour:${args.tourId}`, {
+      windowMs: 60_000,
+      max: 2000,
+    })
+
     await ctx.db.insert('analytics', {
       ...args,
       timestamp: Date.now(),
@@ -538,6 +618,35 @@ export const rollupDaily = internalMutation({
         }
       }
 
+      // Best-effort identity rollups when visitorId is present on events
+      const visitorIds = [
+        ...new Set(
+          dayEvents
+            .map((e) => e.visitorId)
+            .filter((id): id is NonNullable<typeof id> => id != null)
+        ),
+      ]
+      let uniqueVisitorsVerified = 0
+      let uniqueDevices = 0
+      let returningVisitors = 0
+      if (visitorIds.length > 0) {
+        const visitorDocs = await Promise.all(visitorIds.map((id) => ctx.db.get(id)))
+        const present = visitorDocs.filter(
+          (doc): doc is NonNullable<typeof doc> =>
+            doc != null && doc.mergedInto === undefined
+        )
+        uniqueVisitorsVerified = present.filter((v) => v.phoneHash != null).length
+        // ponytail: device floor ≈ distinct visitor rows at device+ tier
+        uniqueDevices = present.filter(
+          (v) =>
+            v.identityTier === 'device' ||
+            v.identityTier === 'fingerprint' ||
+            v.identityTier === 'identified' ||
+            v.identityTier === 'verified'
+        ).length
+        returningVisitors = present.filter((v) => v.totalSessions > 1).length
+      }
+
       // Check if daily analytics already exists for this date
       const existing = await ctx.db
         .query('dailyAnalytics')
@@ -554,6 +663,9 @@ export const rollupDaily = internalMutation({
         sceneViews,
         deviceBreakdown,
         topCountries: countryMap,
+        uniqueVisitorsVerified,
+        uniqueDevices,
+        returningVisitors,
       }
 
       if (existing) {
@@ -594,7 +706,13 @@ export const getDashboardOverview = query({
 
     // Bounded scan: only events since prevPeriodStart (indexed range), not full history.
     // totalViews comes from the denormalized tour.viewCount instead of a full scan.
-    let allEvents: Array<{ event: string; timestamp: number; duration?: number; sessionId: string }> = []
+    let allEvents: Array<{
+      event: string
+      timestamp: number
+      duration?: number
+      sessionId: string
+      visitorId?: Id<'visitors'>
+    }> = []
     let totalLeads = 0
     let currentLeads = 0
     let prevLeads = 0
@@ -636,21 +754,39 @@ export const getDashboardOverview = query({
     const totalViewingHours = Math.floor(totalViewingSeconds / 3600)
     const totalViewingMinutes = Math.floor((totalViewingSeconds % 3600) / 60)
 
-    // Unique visitors — distinct sessionIds within the 2x-period window
-    const totalUniqueVisitors = new Set(viewEvents.map((e) => e.sessionId)).size
+    // Sessions in the selected period (not people — see identity rollup below)
+    const periodViewEvents = viewEvents.filter((e) => e.timestamp >= periodStart)
+    const periodSessions = new Set(periodViewEvents.map((e) => e.sessionId)).size
+    const totalUniqueVisitors = periodSessions
 
-    // Avg scene time — average duration in seconds across all events with a duration
-    const durationEvents = allEvents
-      .filter((e) => e.duration && e.duration > 0)
-      .map((e) => e.duration!)
-    const avgSceneTime =
-      durationEvents.length > 0
-        ? Math.round(durationEvents.reduce((sum, d) => sum + d, 0) / durationEvents.length)
-        : 0
+    const periodEvents = allEvents.filter((e) => e.timestamp >= periodStart)
+    const visitorIds = [
+      ...new Set(
+        periodEvents
+          .map((e) => e.visitorId)
+          .filter((id): id is Id<'visitors'> => id != null)
+      ),
+    ]
+    const visitorDocs =
+      visitorIds.length > 0
+        ? await Promise.all(visitorIds.map((id) => ctx.db.get(id)))
+        : []
+    const people = summarizeVisitorDocs(visitorDocs, periodSessions)
+    const liveVisitorIds = visitorDocs
+      .filter((d): d is Doc<'visitors'> => d != null && d.mergedInto === undefined)
+      .map((d) => d._id)
+    const uniqueDevices = await countDistinctDeviceIds(ctx, liveVisitorIds)
 
+    // Avg scene time in the selected period
     const currentDurations = allEvents
       .filter((e) => e.duration && e.duration > 0 && e.timestamp >= periodStart)
       .map((e) => e.duration!)
+    const avgSceneTime =
+      currentDurations.length > 0
+        ? Math.round(
+            currentDurations.reduce((sum, d) => sum + d, 0) / currentDurations.length
+          )
+        : 0
     const currentViewingSeconds = currentDurations.reduce((sum, d) => sum + d, 0)
     const prevDurations = allEvents
       .filter(
@@ -703,6 +839,9 @@ export const getDashboardOverview = query({
       totalTours,
       publishedTours,
       totalViews,
+      periodViews: currentViews,
+      periodSessions,
+      periodLeads: currentLeads,
       totalLeads,
       totalUniqueVisitors,
       avgSceneTime,
@@ -712,6 +851,11 @@ export const getDashboardOverview = query({
       topTour,
       plan: user.plan,
       aiCreditsUsed: user.aiCreditsUsed ?? 0,
+      uniqueDevices,
+      uniqueVisitorsEstimated: people.uniqueVisitorsEstimated,
+      knownContacts: people.uniqueVisitorsIdentified,
+      returningVisitors: people.returningVisitors,
+      hasVisitorIds: people.hasVisitorIds,
       trends: {
         tours: calcTrend(currentTours, prevTours),
         views: calcTrend(currentViews, prevViews),
@@ -719,7 +863,8 @@ export const getDashboardOverview = query({
         viewingTime: calcTrend(currentViewingSeconds, prevViewingSeconds),
         aiJobs: calcTrend(currentAiJobs, prevAiJobs),
       },
-      conversionRate: totalViews > 0 ? Math.round((totalLeads / totalViews) * 100) : 0,
+      conversionRate:
+        currentViews > 0 ? Math.round((currentLeads / currentViews) * 100) : 0,
     }
   },
 })
@@ -819,6 +964,8 @@ export const exportCsv = action({
       'Event',
       'Session ID',
       'Scene ID',
+      'Variant Key',
+      'Time of Day',
       'Device Type',
       'Country',
       'City',
@@ -830,6 +977,8 @@ export const exportCsv = action({
       event.event,
       event.sessionId,
       event.sceneId ?? '',
+      event.variantKey ?? '',
+      event.timeOfDay ?? '',
       event.deviceType ?? '',
       event.country ?? '',
       event.city ?? '',
@@ -924,6 +1073,7 @@ export const trackBatch = mutation({
     ),
     country: v.optional(v.string()),
     city: v.optional(v.string()),
+    visitorId: v.optional(v.id('visitors')),
     events: v.array(
       v.object({
         event: v.string(),
@@ -931,10 +1081,27 @@ export const trackBatch = mutation({
         duration: v.optional(v.number()),
         metadata: v.optional(v.any()),
         timestamp: v.optional(v.number()),
+        variantKey: v.optional(v.string()),
+        timeOfDay: v.optional(timeOfDayValidator),
       })
     ),
   },
   handler: async (ctx, args) => {
+    if (args.events.length === 0) return
+    if (args.events.length > MAX_BATCH_EVENTS) {
+      throw new Error(`Batch too large (max ${MAX_BATCH_EVENTS} events)`)
+    }
+    await consumeRateLimit(ctx, `analytics:session:${args.sessionId}`, {
+      windowMs: 60_000,
+      max: 120,
+      cost: args.events.length,
+    })
+    await consumeRateLimit(ctx, `analytics:tour:${args.tourId}`, {
+      windowMs: 60_000,
+      max: 2000,
+      cost: args.events.length,
+    })
+
     const now = Date.now()
     let tourViewEmitted = false
     for (const e of args.events) {
@@ -948,6 +1115,9 @@ export const trackBatch = mutation({
         deviceType: args.deviceType,
         country: args.country,
         city: args.city,
+        visitorId: args.visitorId,
+        variantKey: e.variantKey,
+        timeOfDay: e.timeOfDay,
         timestamp: e.timestamp ?? now,
       })
       if (e.event === 'tour_view') tourViewEmitted = true
@@ -958,6 +1128,13 @@ export const trackBatch = mutation({
         await ctx.db.patch(args.tourId, { viewCount: tour.viewCount + 1 })
       }
     }
+  },
+})
+
+export const purgeRateLimitBuckets = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    return await purgeStaleRateLimits(ctx)
   },
 })
 
@@ -1138,5 +1315,222 @@ export const getHotspotClickCounts = query({
       counts[m.hotspotId] = (counts[m.hotspotId] ?? 0) + 1
     }
     return counts
+  },
+})
+
+// ── Phase 4–5: visitor identity, variants, QR attribution ─────
+
+/** Estimated (confidence >= 70) vs phone-anchored known contacts. */
+export const getUniqueVisitorStats = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return null
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return null
+
+    const events = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+
+    const views = events.filter((e) => e.event === 'tour_view')
+    const sessionUniques = new Set(views.map((e) => e.sessionId)).size
+
+    const visitorIds = [
+      ...new Set(
+        events
+          .map((e) => e.visitorId)
+          .filter((id): id is NonNullable<typeof id> => id != null)
+      ),
+    ]
+
+    const docs =
+      visitorIds.length > 0
+        ? await Promise.all(visitorIds.map((id) => ctx.db.get(id)))
+        : []
+
+    const summary = summarizeVisitorDocs(docs, sessionUniques)
+    const liveIds = docs
+      .filter((d): d is Doc<'visitors'> => d != null && d.mergedInto === undefined)
+      .map((d) => d._id)
+    const uniqueDevices = await countDistinctDeviceIds(ctx, liveIds)
+    return { ...summary, uniqueDevices }
+  },
+})
+
+/** Switch rate + dwell by timeOfDay from variant_* events. */
+export const getVariantEngagement = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return null
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return null
+
+    const events = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+
+    const viewSessions = new Set(
+      events.filter((e) => e.event === 'tour_view').map((e) => e.sessionId)
+    )
+    const switchSessions = new Set(
+      events.filter((e) => e.event === 'variant_switch').map((e) => e.sessionId)
+    )
+    const switchRate =
+      viewSessions.size > 0
+        ? Math.round((switchSessions.size / viewSessions.size) * 1000) / 10
+        : 0
+
+    const dwellByTod: Record<
+      string,
+      { events: number; totalDurationSec: number; avgDurationSec: number }
+    > = {}
+    for (const e of events) {
+      if (e.event !== 'variant_dwell' && e.event !== 'variant_view') continue
+      const tod =
+        e.timeOfDay ??
+        (e.metadata as { timeOfDay?: string } | undefined)?.timeOfDay ??
+        'unknown'
+      if (!dwellByTod[tod]) {
+        dwellByTod[tod] = { events: 0, totalDurationSec: 0, avgDurationSec: 0 }
+      }
+      dwellByTod[tod].events += 1
+      if (typeof e.duration === 'number') {
+        dwellByTod[tod].totalDurationSec += e.duration
+      }
+    }
+    for (const bucket of Object.values(dwellByTod)) {
+      bucket.avgDurationSec =
+        bucket.events > 0
+          ? Math.round(bucket.totalDurationSec / bucket.events)
+          : 0
+    }
+
+    const switchCount = events.filter((e) => e.event === 'variant_switch').length
+    const viewCount = events.filter((e) => e.event === 'variant_view').length
+
+    if (switchCount === 0 && viewCount === 0 && Object.keys(dwellByTod).length === 0) {
+      return null
+    }
+
+    return {
+      switchRate,
+      switchSessions: switchSessions.size,
+      viewSessions: viewSessions.size,
+      switchCount,
+      viewCount,
+      dwellByTimeOfDay: dwellByTod,
+    }
+  },
+})
+
+/** QR placement report — group tour_view / leads by metadata.qr / mm / camp. */
+export const getQrAttribution = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return null
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return null
+
+    const events = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+
+    const leads = await ctx.db
+      .query('leads')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+
+    type Row = {
+      qr: string
+      mm: string
+      camp: string
+      scans: number
+      leads: number
+      verifiedLeads: number
+      leadRate: number
+    }
+    const byKey = new Map<string, Row>()
+
+    const keyOf = (qr?: string, mm?: string, camp?: string) =>
+      `${qr || '—'}|${mm || '—'}|${camp || '—'}`
+
+    for (const e of events) {
+      if (e.event !== 'tour_view') continue
+      const m = (e.metadata ?? {}) as Record<string, unknown>
+      const qr = typeof m.qr === 'string' ? m.qr : undefined
+      const mm = typeof m.mm === 'string' ? m.mm : undefined
+      const camp = typeof m.camp === 'string' ? m.camp : undefined
+      if (!qr && !mm && !camp && m.src !== 'qr') continue
+      const k = keyOf(qr, mm, camp)
+      const row = byKey.get(k) ?? {
+        qr: qr || '—',
+        mm: mm || '—',
+        camp: camp || '—',
+        scans: 0,
+        leads: 0,
+        verifiedLeads: 0,
+        leadRate: 0,
+      }
+      row.scans += 1
+      byKey.set(k, row)
+    }
+
+    for (const lead of leads) {
+      const mm = lead.micromarket
+      if (!mm) continue
+      let matched = false
+      for (const row of byKey.values()) {
+        if (row.mm === mm) {
+          row.leads += 1
+          if (lead.phoneVerified) row.verifiedLeads += 1
+          matched = true
+        }
+      }
+      if (!matched) {
+        const k = keyOf(undefined, mm, undefined)
+        const row = byKey.get(k) ?? {
+          qr: '—',
+          mm,
+          camp: '—',
+          scans: 0,
+          leads: 0,
+          verifiedLeads: 0,
+          leadRate: 0,
+        }
+        row.leads += 1
+        if (lead.phoneVerified) row.verifiedLeads += 1
+        byKey.set(k, row)
+      }
+    }
+
+    const placements = [...byKey.values()]
+      .map((r) => ({
+        ...r,
+        leadRate: r.scans > 0 ? Math.round((r.leads / r.scans) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.scans - a.scans)
+
+    return { placements, totalScans: placements.reduce((s, p) => s + p.scans, 0) }
   },
 })
