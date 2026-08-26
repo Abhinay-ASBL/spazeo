@@ -246,6 +246,7 @@ export default function AnalyticsPage() {
         periodSessions={overview.periodSessions ?? 0}
         periodLeads={overview.periodLeads ?? 0}
         viewsTrend={overview.trends.views}
+        sessionsTrend={overview.trends.sessions ?? 0}
         leadsTrend={overview.trends.leads}
         avgSceneTime={overview.avgSceneTime}
         conversionRate={overview.conversionRate}

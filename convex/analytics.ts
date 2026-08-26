@@ -779,6 +779,11 @@ export const getDashboardOverview = query({
     // Sessions in the selected period (not people — see identity rollup below)
     const periodViewEvents = viewEvents.filter((e) => e.timestamp >= periodStart)
     const periodSessions = new Set(periodViewEvents.map((e) => e.sessionId)).size
+    const prevSessions = new Set(
+      viewEvents
+        .filter((e) => e.timestamp >= prevPeriodStart && e.timestamp < periodStart)
+        .map((e) => e.sessionId)
+    ).size
     const totalUniqueVisitors = periodSessions
 
     const periodEvents = allEvents.filter((e) => e.timestamp >= periodStart)
@@ -879,16 +884,19 @@ export const getDashboardOverview = query({
       returningVisitors: people.returningVisitors,
       hasVisitorIds: people.hasVisitorIds,
       trends: isAll
-        ? { tours: 0, views: 0, leads: 0, viewingTime: 0, aiJobs: 0 }
+        ? { tours: 0, views: 0, sessions: 0, leads: 0, viewingTime: 0, aiJobs: 0 }
         : {
             tours: calcTrend(currentTours, prevTours),
             views: calcTrend(currentViews, prevViews),
+            sessions: calcTrend(periodSessions, prevSessions),
             leads: calcTrend(currentLeads, prevLeads),
             viewingTime: calcTrend(currentViewingSeconds, prevViewingSeconds),
             aiJobs: calcTrend(currentAiJobs, prevAiJobs),
           },
       conversionRate:
-        currentViews > 0 ? Math.round((currentLeads / currentViews) * 100) : 0,
+        currentViews > 0
+          ? Math.round((currentLeads / currentViews) * 1000) / 10
+          : 0,
     }
   },
 })
