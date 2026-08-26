@@ -72,6 +72,15 @@ export const getByFloorPlan = query({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
 
+    const floorPlan = await ctx.db.get(args.floorPlanId)
+    if (!floorPlan) return null
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || user._id !== floorPlan.userId) return null
+
     const jobs = await ctx.db
       .query('floorPlanJobs')
       .withIndex('by_floorPlanId', (q) => q.eq('floorPlanId', args.floorPlanId))

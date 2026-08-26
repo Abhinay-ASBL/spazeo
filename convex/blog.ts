@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import { requireAdmin } from './authHelpers'
 
 export const list = query({
   args: {
@@ -60,6 +61,8 @@ export const create = mutation({
     status: v.optional(v.union(v.literal('draft'), v.literal('published'), v.literal('archived'))),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx)
+
     return await ctx.db.insert('blogPosts', {
       ...args,
       tags: args.tags ?? [],

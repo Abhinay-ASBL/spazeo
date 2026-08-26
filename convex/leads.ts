@@ -5,6 +5,16 @@ import { internal } from './_generated/api'
 export const listByTour = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const tour = await ctx.db.get(args.tourId)
+    if (!user || !tour || tour.userId !== user._id) return []
+
     return await ctx.db
       .query('leads')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -106,15 +116,24 @@ function applyFilters(
 export const getDetail = query({
   args: { leadId: v.id('leads') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+
     const lead = await ctx.db.get(args.leadId)
     if (!lead) return null
 
     const tour = await ctx.db.get(lead.tourId)
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || !tour || tour.userId !== user._id) return null
+
     return {
       ...lead,
-      tourTitle: tour?.title ?? 'Unknown Tour',
-      tourSlug: tour?.slug,
+      tourTitle: tour.title,
+      tourSlug: tour.slug,
     }
   },
 })
@@ -246,6 +265,15 @@ export const updateStatus = mutation({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const lead = await ctx.db.get(args.leadId)
+    if (!lead) throw new Error('Lead not found')
+    const tour = await ctx.db.get(lead.tourId)
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || !tour || tour.userId !== user._id) throw new Error('Not authorized')
+
     await ctx.db.patch(args.leadId, { status: args.status })
   },
 })
@@ -261,6 +289,12 @@ export const addNote = mutation({
 
     const lead = await ctx.db.get(args.leadId)
     if (!lead) throw new Error('Lead not found')
+    const tour = await ctx.db.get(lead.tourId)
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || !tour || tour.userId !== user._id) throw new Error('Not authorized')
 
     const notes = lead.notes ?? []
     notes.push({ text: args.text, createdAt: Date.now() })
@@ -274,6 +308,16 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
+
+    const lead = await ctx.db.get(args.leadId)
+    if (!lead) throw new Error('Lead not found')
+    const tour = await ctx.db.get(lead.tourId)
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || !tour || tour.userId !== user._id) throw new Error('Not authorized')
+
     await ctx.db.delete(args.leadId)
   },
 })

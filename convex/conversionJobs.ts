@@ -10,9 +10,23 @@ const internal = _internal as any
 
 // --- Queries ---
 
+async function requireBuildingOwner(ctx: any, buildingId: any) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return null
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .unique()
+  const building = await ctx.db.get(buildingId)
+  if (!user || !building || building.userId !== user._id) return null
+  return user
+}
+
 export const listByBuilding = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await requireBuildingOwner(ctx, args.buildingId))) return []
+
     return await ctx.db
       .query('conversionJobs')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -24,13 +38,18 @@ export const listByBuilding = query({
 export const getById = query({
   args: { jobId: v.id('conversionJobs') },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.jobId)
+    const job = await ctx.db.get(args.jobId)
+    if (!job) return null
+    if (!(await requireBuildingOwner(ctx, job.buildingId))) return null
+    return job
   },
 })
 
 export const getLatest = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await requireBuildingOwner(ctx, args.buildingId))) return null
+
     return await ctx.db
       .query('conversionJobs')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -48,8 +67,7 @@ export const create = mutation({
     inputFormat: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    if (!(await requireBuildingOwner(ctx, args.buildingId))) throw new Error('Forbidden')
 
     return await ctx.db.insert('conversionJobs', {
       buildingId: args.buildingId,
@@ -129,11 +147,9 @@ export const fail = internalMutation({
 export const retry = mutation({
   args: { jobId: v.id('conversionJobs') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
-
     const job = await ctx.db.get(args.jobId)
     if (!job) throw new Error('Conversion job not found')
+    if (!(await requireBuildingOwner(ctx, job.buildingId))) throw new Error('Forbidden')
 
     await ctx.db.patch(args.jobId, {
       status: 'pending',

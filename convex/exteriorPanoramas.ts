@@ -1,9 +1,46 @@
 import { v } from 'convex/values'
 import { query, mutation, internalMutation } from './_generated/server'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
+
+/** Throws unless the caller owns this building. */
+async function requireBuildingOwner(ctx: QueryCtx | MutationCtx, buildingId: Id<'buildings'>) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) throw new Error('Not authenticated')
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) throw new Error('Not authenticated')
+
+  const building = await ctx.db.get(buildingId)
+  if (!building || building.userId !== user._id) throw new Error('Not authorized')
+
+  return { user, building }
+}
+
+/** Published buildings are publicly viewable; drafts only by their owner. */
+async function requireBuildingViewable(ctx: QueryCtx | MutationCtx, buildingId: Id<'buildings'>) {
+  const building = await ctx.db.get(buildingId)
+  if (!building) return null
+  if (building.status === 'published') return building
+
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return null
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user || building.userId !== user._id) return null
+  return building
+}
 
 export const listByBuilding = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await requireBuildingViewable(ctx, args.buildingId))) return []
+
     const panoramas = await ctx.db
       .query('exteriorPanoramas')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -24,6 +61,9 @@ export const listByBuilding = query({
 export const getByViewPosition = query({
   args: { viewPositionId: v.id('viewPositions') },
   handler: async (ctx, args) => {
+    const viewPosition = await ctx.db.get(args.viewPositionId)
+    if (!viewPosition || !(await requireBuildingViewable(ctx, viewPosition.buildingId))) return []
+
     const panoramas = await ctx.db
       .query('exteriorPanoramas')
       .withIndex('by_viewPositionId', (q) =>
@@ -47,7 +87,7 @@ export const getById = query({
   args: { panoramaId: v.id('exteriorPanoramas') },
   handler: async (ctx, args) => {
     const panorama = await ctx.db.get(args.panoramaId)
-    if (!panorama) return null
+    if (!panorama || !(await requireBuildingViewable(ctx, panorama.buildingId))) return null
 
     return {
       ...panorama,
@@ -97,11 +137,9 @@ export const create = internalMutation({
 export const remove = mutation({
   args: { panoramaId: v.id('exteriorPanoramas') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
-
     const panorama = await ctx.db.get(args.panoramaId)
     if (!panorama) throw new Error('Panorama not found')
+    await requireBuildingOwner(ctx, panorama.buildingId)
 
     await ctx.storage.delete(panorama.imageStorageId)
     if (panorama.thumbnailStorageId) {
@@ -139,8 +177,7 @@ export const savePanorama = mutation({
     environmentUsed: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireBuildingOwner(ctx, args.buildingId)
 
     return await ctx.db.insert('exteriorPanoramas', {
       viewPositionId: args.viewPositionId,

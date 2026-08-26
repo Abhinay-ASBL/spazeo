@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { mutation } from './_generated/server'
+import { requireAdmin } from './authHelpers'
 
 const TOWER_SPECS: Record<string, Record<string, { bhk: '1BHK' | '2BHK' | '3BHK' | '4BHK' | 'penthouse'; area: number; facing: 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW' }>> = {
   A: {
@@ -43,6 +44,8 @@ const TOWER_SPECS: Record<string, Record<string, { bhk: '1BHK' | '2BHK' | '3BHK'
 export const seedASBLUnits = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx)
+
     let building = await ctx.db
       .query('buildings')
       .withIndex('by_slug', (q) => q.eq('slug', 'asbl-legacy-towers'))

@@ -1,5 +1,14 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation } from './_generated/server'
+import { query, mutation, internalMutation, internalQuery } from './_generated/server'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
+
+export const getByIdInternal = internalQuery({
+  args: { floorPlanId: v.id('floorPlanDetails') },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.floorPlanId)
+  },
+})
 
 export const create = mutation({
   args: {
@@ -50,11 +59,29 @@ export const getById = query({
   },
 })
 
+async function requireProjectOwner(
+  ctx: QueryCtx | MutationCtx,
+  projectId: Id<'floorPlanProjects'>
+) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return null
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) return null
+
+  const project = await ctx.db.get(projectId)
+  if (!project || project.userId !== user._id) return null
+
+  return user
+}
+
 export const listByProject = query({
   args: { projectId: v.id('floorPlanProjects') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) return []
+    if (!(await requireProjectOwner(ctx, args.projectId))) return []
 
     const floorPlans = await ctx.db
       .query('floorPlanDetails')
@@ -68,8 +95,7 @@ export const listByProject = query({
 export const listByProjectWithUrls = query({
   args: { projectId: v.id('floorPlanProjects') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) return []
+    if (!(await requireProjectOwner(ctx, args.projectId))) return []
 
     const floorPlans = await ctx.db
       .query('floorPlanDetails')

@@ -1,5 +1,25 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
+
+/** Throws unless the caller owns this furnished room. */
+async function requireRoomOwner(ctx: QueryCtx | MutationCtx, roomId: Id<'furnishedRooms'>) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) throw new Error('Not authenticated')
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) throw new Error('Not authenticated')
+
+  const room = await ctx.db.get(roomId)
+  if (!room) throw new Error('Furnished room not found')
+  if (room.userId !== user._id) throw new Error('Not authorized')
+
+  return { user, room }
+}
 
 export const create = mutation({
   args: {
@@ -117,6 +137,15 @@ export const getByTourId = query({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) throw new Error('Not authenticated')
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+
     const rooms = await ctx.db
       .query('furnishedRooms')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -140,12 +169,7 @@ export const savePlacements = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
-
-    // Verify room exists
-    const room = await ctx.db.get(args.furnishedRoomId)
-    if (!room) throw new Error('Furnished room not found')
+    await requireRoomOwner(ctx, args.furnishedRoomId)
 
     // Delete existing placements
     const existing = await ctx.db
@@ -175,8 +199,7 @@ export const savePlacements = mutation({
 export const deleteRoom = mutation({
   args: { furnishedRoomId: v.id('furnishedRooms') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireRoomOwner(ctx, args.furnishedRoomId)
 
     // Delete all placements for this room
     const placements = await ctx.db

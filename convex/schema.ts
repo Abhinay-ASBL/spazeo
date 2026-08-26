@@ -482,6 +482,8 @@ export default defineSchema({
     viewCount: v.number(),
     publishedAt: v.optional(v.number()),
     embedCode: v.optional(v.string()),
+    /** Master-plan drawing overlay for the geo-map view — a GeoJSON FeatureCollection (points + polygons), stringified. */
+    masterPlanGeoJson: v.optional(v.string()),
   })
     .index('by_userId', ['userId'])
     .index('by_slug', ['slug'])

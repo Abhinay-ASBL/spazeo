@@ -2,6 +2,7 @@ import { httpRouter } from 'convex/server'
 import { httpAction } from './_generated/server'
 import { internal, api } from './_generated/api'
 import Stripe from 'stripe'
+import { Webhook } from 'svix'
 
 const http = httpRouter()
 
@@ -278,7 +279,31 @@ http.route({
   path: '/clerk-webhook',
   method: 'POST',
   handler: httpAction(async (ctx, request) => {
-    const body = await request.json()
+    const webhookSecret = process.env.CLERK_WEBHOOK_SECRET
+    if (!webhookSecret) {
+      console.error('CLERK_WEBHOOK_SECRET is not configured')
+      return new Response('Webhook secret not configured', { status: 500 })
+    }
+
+    const svixId = request.headers.get('svix-id')
+    const svixTimestamp = request.headers.get('svix-timestamp')
+    const svixSignature = request.headers.get('svix-signature')
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return new Response('Missing svix headers', { status: 400 })
+    }
+
+    const payload = await request.text()
+    let body: any
+    try {
+      body = new Webhook(webhookSecret).verify(payload, {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': svixSignature,
+      })
+    } catch (err) {
+      console.error('Clerk webhook signature verification failed:', err)
+      return new Response('Invalid signature', { status: 400 })
+    }
 
     // Clerk sends the event type in the body
     const eventType = body.type
@@ -520,7 +545,11 @@ http.route({
     const secret = url.searchParams.get('secret')
     const expectedSecret = process.env.RUNPOD_WEBHOOK_SECRET
 
-    if (expectedSecret && secret !== expectedSecret) {
+    if (!expectedSecret) {
+      console.error('RUNPOD_WEBHOOK_SECRET is not configured')
+      return new Response('Webhook secret not configured', { status: 500 })
+    }
+    if (secret !== expectedSecret) {
       console.error('GPU callback: invalid webhook secret')
       return new Response('Unauthorized', { status: 401 })
     }

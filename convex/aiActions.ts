@@ -104,6 +104,12 @@ export const analyzeScene = action({
     })
     if (!user) throw new Error('User not found')
 
+    const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+      tourId: args.tourId,
+      userId: user._id,
+    })
+    if (!tour) throw new Error('Forbidden')
+
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
 
@@ -325,6 +331,12 @@ export const stageScene = action({
     })
     if (!user) throw new Error('User not found')
 
+    const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+      tourId: args.tourId,
+      userId: user._id,
+    })
+    if (!tour) throw new Error('Forbidden')
+
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
 
@@ -513,6 +525,12 @@ export const enhanceImage = action({
     })
     if (!user) throw new Error('User not found')
 
+    const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+      tourId: args.tourId,
+      userId: user._id,
+    })
+    if (!tour) throw new Error('Forbidden')
+
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
 
@@ -687,6 +705,12 @@ export const generateDescription = action({
     })
     if (!user) throw new Error('User not found')
 
+    const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+      tourId: args.tourId,
+      userId: user._id,
+    })
+    if (!tour) throw new Error('Forbidden')
+
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
 
@@ -857,6 +881,12 @@ export const generateSceneDescription = action({
       clerkId: identity.subject,
     })
     if (!user) throw new Error('User not found')
+
+    const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+      tourId: args.tourId,
+      userId: user._id,
+    })
+    if (!tour) throw new Error('Forbidden')
 
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')

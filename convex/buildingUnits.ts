@@ -17,9 +17,26 @@ const statusValidator = v.union(
 
 // --- Queries ---
 
+/** Published buildings are publicly viewable; drafts only by their owner. */
+async function isBuildingViewable(ctx: any, buildingId: any) {
+  const building = await ctx.db.get(buildingId)
+  if (!building) return false
+  if (building.status === 'published') return true
+
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return false
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .unique()
+  return !!user && building.userId === user._id
+}
+
 export const listByBuilding = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await isBuildingViewable(ctx, args.buildingId))) return []
+
     const units = await ctx.db
       .query('buildingUnits')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -38,6 +55,8 @@ export const listByFloor = query({
     floor: v.number(),
   },
   handler: async (ctx, args) => {
+    if (!(await isBuildingViewable(ctx, args.buildingId))) return []
+
     const units = await ctx.db
       .query('buildingUnits')
       .withIndex('by_buildingId_floor', (q) =>
@@ -53,7 +72,7 @@ export const getById = query({
   args: { unitId: v.id('buildingUnits') },
   handler: async (ctx, args) => {
     const unit = await ctx.db.get(args.unitId)
-    if (!unit) return null
+    if (!unit || !(await isBuildingViewable(ctx, unit.buildingId))) return null
 
     let tourTitle: string | undefined
     let tourSlug: string | undefined
@@ -73,6 +92,10 @@ export const getById = query({
 export const getStats = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await isBuildingViewable(ctx, args.buildingId))) {
+      return { total: 0, available: 0, sold: 0, reserved: 0 }
+    }
+
     const units = await ctx.db
       .query('buildingUnits')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -107,6 +130,13 @@ export const create = mutation({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const building = await ctx.db.get(args.buildingId)
+    if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
+
     return await ctx.db.insert('buildingUnits', {
       buildingId: args.buildingId,
       blockId: args.blockId,
@@ -134,8 +164,7 @@ export const update = mutation({
     balconyViewPositionIds: v.optional(v.array(v.id('viewPositions'))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireUnitOwner(ctx, args.unitId)
 
     const { unitId, ...updates } = args
     const cleanUpdates = Object.fromEntries(
@@ -146,11 +175,23 @@ export const update = mutation({
   },
 })
 
+async function requireUnitOwner(ctx: any, unitId: any) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) throw new Error('Not authenticated')
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .unique()
+  const unit = await ctx.db.get(unitId)
+  const building = unit ? await ctx.db.get(unit.buildingId) : null
+  if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
+}
+
 export const remove = mutation({
   args: { unitId: v.id('buildingUnits') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireUnitOwner(ctx, args.unitId)
 
     await ctx.db.delete(args.unitId)
   },
@@ -162,8 +203,7 @@ export const linkTour = mutation({
     tourId: v.id('tours'),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireUnitOwner(ctx, args.unitId)
 
     await ctx.db.patch(args.unitId, { tourId: args.tourId })
   },
@@ -172,8 +212,7 @@ export const linkTour = mutation({
 export const unlinkTour = mutation({
   args: { unitId: v.id('buildingUnits') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireUnitOwner(ctx, args.unitId)
 
     await ctx.db.patch(args.unitId, { tourId: undefined })
   },
@@ -185,8 +224,7 @@ export const updateStatus = mutation({
     status: statusValidator,
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireUnitOwner(ctx, args.unitId)
 
     await ctx.db.patch(args.unitId, { status: args.status })
   },
@@ -210,6 +248,18 @@ export const bulkCreate = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) throw new Error('Forbidden')
+
+    const buildingIds = [...new Set(args.units.map((u) => u.buildingId))]
+    for (const id of buildingIds) {
+      const building = await ctx.db.get(id)
+      if (!building || building.userId !== user._id) throw new Error('Forbidden')
+    }
 
     const ids = []
     for (const unit of args.units) {

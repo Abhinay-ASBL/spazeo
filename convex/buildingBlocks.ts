@@ -3,9 +3,26 @@ import { query, mutation } from './_generated/server'
 
 // === Queries ===
 
+/** Published buildings are publicly viewable; drafts only by their owner. */
+async function isBuildingViewable(ctx: any, buildingId: any) {
+  const building = await ctx.db.get(buildingId)
+  if (!building) return false
+  if (building.status === 'published') return true
+
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return false
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .unique()
+  return !!user && building.userId === user._id
+}
+
 export const listByBuilding = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await isBuildingViewable(ctx, args.buildingId))) return []
+
     const blocks = await ctx.db
       .query('buildingBlocks')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -36,6 +53,13 @@ export const create = mutation({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const building = await ctx.db.get(args.buildingId)
+    if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
+
     return await ctx.db.insert('buildingBlocks', {
       buildingId: args.buildingId,
       blockNumber: args.blockNumber,
@@ -65,6 +89,15 @@ export const update = mutation({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const block = await ctx.db.get(args.blockId)
+    if (!block) throw new Error('Block not found')
+    const building = await ctx.db.get(block.buildingId)
+    if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
+
     const { blockId, ...fields } = args
     const patch: Record<string, unknown> = {}
 
@@ -83,8 +116,14 @@ export const remove = mutation({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
     const block = await ctx.db.get(args.blockId)
     if (!block) throw new Error('Block not found')
+    const owningBuilding = await ctx.db.get(block.buildingId)
+    if (!user || !owningBuilding || owningBuilding.userId !== user._id) throw new Error('Forbidden')
 
     // 1. Collect all viewPositions for this block (across all floors)
     const viewPositions = await ctx.db
@@ -144,6 +183,13 @@ export const bulkCreate = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const building = await ctx.db.get(args.buildingId)
+    if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
 
     const ids = []
     for (const block of args.blocks) {

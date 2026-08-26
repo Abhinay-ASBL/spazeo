@@ -92,6 +92,11 @@ export const extractFloorPlan = action({
     })
     if (!user) throw new Error('User not found')
 
+    const floorPlan = await ctx.runQuery(internal.floorPlanDetails.getByIdInternal, {
+      floorPlanId: args.floorPlanId,
+    })
+    if (!floorPlan || floorPlan.userId !== user._id) throw new Error('Not authorized')
+
     // 1. Check plan limits
     const used = user.floorPlanExtractionsUsed ?? 0
     const limit = EXTRACTION_LIMITS[user.plan] ?? 3

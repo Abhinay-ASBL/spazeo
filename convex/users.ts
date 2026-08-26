@@ -1,18 +1,9 @@
 import { v } from 'convex/values'
 import { query, mutation, action, internalMutation, internalQuery } from './_generated/server'
 import { internal } from './_generated/api'
+import { requireAdmin } from './authHelpers'
 
 export const getByClerkIdInternal = internalQuery({
-  args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query('users')
-      .withIndex('by_clerkId', (q) => q.eq('clerkId', args.clerkId))
-      .unique()
-  },
-})
-
-export const getByClerkId = query({
   args: { clerkId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
@@ -822,20 +813,14 @@ export const incrementFloorPlanExtractions = internalMutation({
   },
 })
 
-// Reset floor plan extraction counter (called by monthly cron or admin)
+// Reset a specific user's floor plan extraction counter — admin only, not self-service
+// (a normal user resetting their own counter would bypass their plan's monthly limit).
 export const resetFloorPlanExtractions = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+  args: { userId: v.id('users') },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx)
 
-    const user = await ctx.db
-      .query('users')
-      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
-      .unique()
-    if (!user) throw new Error('User not found')
-
-    await ctx.db.patch(user._id, { floorPlanExtractionsUsed: 0 })
+    await ctx.db.patch(args.userId, { floorPlanExtractionsUsed: 0 })
   },
 })
 

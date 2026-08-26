@@ -1,9 +1,59 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
+import { requireAdmin } from './authHelpers'
+
+/** Throws unless the caller owns the tour that this scene belongs to. */
+async function requireSceneOwner(ctx: QueryCtx | MutationCtx, sceneId: Id<'scenes'>) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) throw new Error('Not authenticated')
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) throw new Error('Not authenticated')
+
+  const scene = await ctx.db.get(sceneId)
+  if (!scene) throw new Error('Scene not found')
+
+  const tour = await ctx.db.get(scene.tourId)
+  if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+
+  return { user, scene, tour }
+}
+
+/** Throws unless the caller owns this tour. */
+async function requireTourOwner(ctx: QueryCtx | MutationCtx, tourId: Id<'tours'>) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) throw new Error('Not authenticated')
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) throw new Error('Not authenticated')
+
+  const tour = await ctx.db.get(tourId)
+  if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+
+  return { user, tour }
+}
 
 export const listByScene = query({
   args: { sceneId: v.id('scenes') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const scene = await ctx.db.get(args.sceneId)
+    const tour = scene ? await ctx.db.get(scene.tourId) : null
+    if (!user || !tour || tour.userId !== user._id) return []
+
     const hotspots = await ctx.db
       .query('hotspots')
       .withIndex('by_sceneId', (q) => q.eq('sceneId', args.sceneId))
@@ -18,6 +68,15 @@ export const listByScene = query({
 export const listByTour = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const tour = await ctx.db.get(args.tourId)
+    if (!user || !tour || tour.userId !== user._id) return []
+
     const scenes = await ctx.db
       .query('scenes')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -65,8 +124,7 @@ export const create = mutation({
     lineHeight: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireSceneOwner(ctx, args.sceneId)
     return await ctx.db.insert('hotspots', args)
   },
 })
@@ -94,8 +152,9 @@ export const update = mutation({
     lineHeight: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    const doc = await ctx.db.get(args.hotspotId)
+    if (!doc) throw new Error('Hotspot not found')
+    await requireSceneOwner(ctx, doc.sceneId)
 
     const { hotspotId, ...updates } = args
     const cleanUpdates = Object.fromEntries(
@@ -108,11 +167,10 @@ export const update = mutation({
 export const remove = mutation({
   args: { hotspotId: v.id('hotspots') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
     // Idempotent: bulk clear / double-click can race past a gone id
     const doc = await ctx.db.get(args.hotspotId)
     if (!doc) return
+    await requireSceneOwner(ctx, doc.sceneId)
     await ctx.db.delete(args.hotspotId)
   },
 })
@@ -151,6 +209,7 @@ export const bulkCreateAdmin = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx)
     if (args.clearExisting) {
       const existing = await ctx.db
         .query('hotspots')
@@ -189,8 +248,12 @@ export const copyToAllScenes = mutation({
     tourId: v.id('tours'),
   },
   handler: async (ctx, { sourceSceneId, tourId }) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireTourOwner(ctx, tourId)
+
+    const sourceScene = await ctx.db.get(sourceSceneId)
+    if (!sourceScene || sourceScene.tourId !== tourId) {
+      throw new Error('Source scene does not belong to this tour')
+    }
 
     const sourceHotspots = await ctx.db
       .query('hotspots')
@@ -232,8 +295,7 @@ export const insertDoorwayHotspots = mutation({
     ),
   },
   handler: async (ctx, { sceneId, doors }) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireSceneOwner(ctx, sceneId)
 
     for (const door of doors) {
       await ctx.db.insert('hotspots', {

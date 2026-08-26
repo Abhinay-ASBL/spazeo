@@ -1,9 +1,44 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import type { QueryCtx, MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
+
+async function requireBuildingOwner(ctx: QueryCtx | MutationCtx, buildingId: Id<'buildings'>) {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) throw new Error('Not authenticated')
+
+  const building = await ctx.db.get(buildingId)
+  if (!building) throw new Error('Building not found')
+
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user || building.userId !== user._id) throw new Error('Not authorized')
+
+  return user
+}
+
+/** Published buildings are publicly viewable; drafts only by their owner. */
+async function isBuildingViewable(ctx: QueryCtx, buildingId: Id<'buildings'>) {
+  const building = await ctx.db.get(buildingId)
+  if (!building) return false
+  if (building.status === 'published') return true
+
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return false
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  return !!user && building.userId === user._id
+}
 
 export const listByBuilding = query({
   args: { buildingId: v.id('buildings') },
   handler: async (ctx, args) => {
+    if (!(await isBuildingViewable(ctx, args.buildingId))) return []
+
     return await ctx.db
       .query('viewPositions')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
@@ -17,6 +52,9 @@ export const listByBlockAndFloor = query({
     floor: v.number(),
   },
   handler: async (ctx, args) => {
+    const block = await ctx.db.get(args.blockId)
+    if (!block || !(await isBuildingViewable(ctx, block.buildingId))) return []
+
     return await ctx.db
       .query('viewPositions')
       .withIndex('by_blockId_floor', (q) =>
@@ -29,7 +67,9 @@ export const listByBlockAndFloor = query({
 export const getById = query({
   args: { positionId: v.id('viewPositions') },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.positionId)
+    const position = await ctx.db.get(args.positionId)
+    if (!position || !(await isBuildingViewable(ctx, position.buildingId))) return null
+    return position
   },
 })
 
@@ -60,8 +100,7 @@ export const create = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireBuildingOwner(ctx, args.buildingId)
 
     return await ctx.db.insert('viewPositions', {
       buildingId: args.buildingId,
@@ -95,11 +134,9 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
-
     const existing = await ctx.db.get(args.positionId)
     if (!existing) throw new Error('View position not found')
+    await requireBuildingOwner(ctx, existing.buildingId)
 
     const updates: Record<string, unknown> = {}
     if (args.coordinates) updates.coordinates = args.coordinates
@@ -112,11 +149,9 @@ export const update = mutation({
 export const remove = mutation({
   args: { positionId: v.id('viewPositions') },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
-
     const existing = await ctx.db.get(args.positionId)
     if (!existing) throw new Error('View position not found')
+    await requireBuildingOwner(ctx, existing.buildingId)
 
     // Delete all exterior panoramas linked to this position
     const panoramas = await ctx.db
@@ -145,8 +180,9 @@ export const cloneToFloors = mutation({
     blockId: v.id('buildingBlocks'),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    const block = await ctx.db.get(args.blockId)
+    if (!block) throw new Error('Block not found')
+    await requireBuildingOwner(ctx, block.buildingId)
 
     const sourcePositions = await ctx.db
       .query('viewPositions')
@@ -214,8 +250,10 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    const buildingIds = new Set(args.positions.map((p) => p.buildingId))
+    for (const buildingId of buildingIds) {
+      await requireBuildingOwner(ctx, buildingId)
+    }
 
     const ids = []
     for (const position of args.positions) {

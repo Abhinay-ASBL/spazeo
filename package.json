@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.38.2",
+    "@google/model-viewer": "^4.3.1",
     "@photo-sphere-viewer/autorotate-plugin": "^5.14.1",
     "@photo-sphere-viewer/core": "^5.14.1",
     "@photo-sphere-viewer/markers-plugin": "^5.14.1",
@@ -27,6 +28,7 @@
     "framer-motion": "^12.34.3",
     "konva": "^10.2.0",
     "lucide-react": "^0.575.0",
+    "maplibre-gl": "^6.3.0",
     "next": "^16.1.6",
     "nipplejs": "^0.10.2",
     "pdfjs-dist": "^4.8.69",
@@ -37,9 +39,11 @@
     "react-konva": "^19.2.3",
     "react-pdf": "^9.2.1",
     "stripe": "^20.3.1",
+    "svix": "^2.1.0",
     "tailwind-merge": "^3.5.0",
+    "terra-draw": "^1.32.3",
+    "terra-draw-maplibre-gl-adapter": "^1.4.1",
     "three": "^0.183.1",
-    "use-image": "^1.1.4",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

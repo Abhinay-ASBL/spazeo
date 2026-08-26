@@ -41,6 +41,16 @@ export const getByTour = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+    const owningTour = await ctx.db.get(args.tourId)
+    if (!owningTour || owningTour.userId !== user._id) return []
+
     const query = ctx.db
       .query('analytics')
       .withIndex('by_tourId_timestamp', (q) =>
@@ -114,6 +124,16 @@ export const getViewsOverTime = query({
     granularity: v.optional(v.union(v.literal('day'), v.literal('week'))),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return []
+
     const events = await ctx.db
       .query('analytics')
       .withIndex('by_tourId_timestamp', (q) =>
@@ -149,6 +169,16 @@ function getWeekKey(date: Date): string {
 export const getSceneHeatmap = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return []
+
     const events = await ctx.db
       .query('analytics')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -184,6 +214,16 @@ export const getSceneHeatmap = query({
 export const getDeviceBreakdown = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return { desktop: 0, mobile: 0, tablet: 0, total: 0 }
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return { desktop: 0, mobile: 0, tablet: 0, total: 0 }
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return { desktop: 0, mobile: 0, tablet: 0, total: 0 }
+
     const events = await ctx.db
       .query('analytics')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -216,6 +256,16 @@ export const getDeviceBreakdown = query({
 export const getGeography = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return { topCountries: [], topCities: [] }
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return { topCountries: [], topCities: [] }
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return { topCountries: [], topCities: [] }
+
     const events = await ctx.db
       .query('analytics')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -251,6 +301,23 @@ export const getGeography = query({
 export const getEngagementMetrics = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    const empty = {
+      totalSessions: 0,
+      totalSceneViews: 0,
+      avgScenesViewed: 0,
+      avgTimePerScene: 0,
+      bounceRate: 0,
+    }
+    if (!identity) return empty
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return empty
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return empty
+
     const events = await ctx.db
       .query('analytics')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -309,6 +376,24 @@ export const getEngagementMetrics = query({
 export const getLeadFunnel = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    const empty = {
+      views: 0,
+      formShown: 0,
+      formSubmitted: 0,
+      viewToFormRate: 0,
+      formConversionRate: 0,
+      overallConversionRate: 0,
+    }
+    if (!identity) return empty
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return empty
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return empty
+
     const events = await ctx.db
       .query('analytics')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -697,8 +782,19 @@ export const exportCsv = action({
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) throw new Error('Not authenticated')
 
+    const caller = await ctx.runQuery(internal.users.getByClerkIdInternal, {
+      clerkId: identity.subject,
+    })
+    if (!caller) throw new Error('User not found')
+
     let events: any[]
     if (args.tourId) {
+      const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
+        tourId: args.tourId,
+        userId: caller._id,
+      })
+      if (!tour) throw new Error('Forbidden')
+
       events = await ctx.runQuery(internal.analytics.getEventsByTourInternal, {
         tourId: args.tourId,
         startDate: args.startDate,

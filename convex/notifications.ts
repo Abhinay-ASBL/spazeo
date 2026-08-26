@@ -57,6 +57,12 @@ export const markRead = mutation({
     const notification = await ctx.db.get(args.notificationId)
     if (!notification) throw new Error('Notification not found')
 
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || notification.userId !== user._id) throw new Error('Not authorized')
+
     await ctx.db.patch(args.notificationId, { read: true })
   },
 })

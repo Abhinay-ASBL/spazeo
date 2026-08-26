@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { query, mutation, action } from './_generated/server'
 import { api } from './_generated/api'
+import { requireAdmin } from './authHelpers'
 
 export const list = query({
   args: {
@@ -166,8 +167,7 @@ export const seed = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    await requireAdmin(ctx)
 
     const insertedIds = []
     for (const item of args.items) {
@@ -183,6 +183,8 @@ export const seed = mutation({
 export const seedCatalog = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx)
+
     // Check if catalog already has items
     const existing = await ctx.db.query('furnitureItems').first()
     if (existing) {
@@ -280,6 +282,8 @@ export const setGlbStorageId = mutation({
     glbStorageId: v.id('_storage'),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx)
+
     const item = await ctx.db.get(args.itemId)
     if (!item) throw new Error('Furniture item not found')
 
@@ -292,6 +296,9 @@ export const setGlbStorageId = mutation({
 export const uploadTestGlbs = action({
   args: {},
   handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) throw new Error('Not authenticated')
+
     const testGlbs = ['cube.glb', 'cylinder.glb', 'sphere.glb']
 
     // Get all furniture items to find first 3 without GLBs

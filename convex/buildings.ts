@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { query, mutation, internalMutation } from './_generated/server'
 import { internal } from './_generated/api'
+import { requireAdminKey } from './authHelpers'
 
 // Helper to get the authenticated user
 async function getAuthUser(ctx: {
@@ -74,6 +75,18 @@ export const getById = query({
   handler: async (ctx, args) => {
     const building = await ctx.db.get(args.buildingId)
     if (!building) return null
+
+    // Published buildings are publicly viewable; drafts only by their owner.
+    if (building.status !== 'published') {
+      const identity = await ctx.auth.getUserIdentity().catch(() => null)
+      const user = identity
+        ? await ctx.db
+            .query('users')
+            .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+            .unique()
+        : null
+      if (!user || building.userId !== user._id) return null
+    }
 
     let modelUrl: string | null = null
     let optimizedModelUrl: string | null = null
@@ -297,10 +310,11 @@ export const update = mutation({
     thumbnailStorageId: v.optional(v.id('_storage')),
   },
   handler: async (ctx, args) => {
-    await getAuthUser(ctx)
+    const user = await getAuthUser(ctx)
 
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('Building not found')
+    if (building.userId !== user._id) throw new Error('Not authorized')
 
     const { buildingId, ...updates } = args
     const cleanUpdates = Object.fromEntries(
@@ -484,13 +498,83 @@ export const setModelStorageId = mutation({
     modelStorageId: v.id('_storage'),
   },
   handler: async (ctx, args) => {
-    await getAuthUser(ctx)
+    const user = await getAuthUser(ctx)
+
+    const building = await ctx.db.get(args.buildingId)
+    if (!building) throw new Error('Building not found')
+    if (building.userId !== user._id) throw new Error('Not authorized')
+
+    if (
+      building.modelStorageId &&
+      building.modelStorageId !== args.modelStorageId
+    ) {
+      await ctx.storage.delete(building.modelStorageId)
+    }
+    if (building.optimizedModelStorageId) {
+      await ctx.storage.delete(building.optimizedModelStorageId)
+    }
+
+    await ctx.db.patch(args.buildingId, {
+      modelStorageId: args.modelStorageId,
+      optimizedModelStorageId: undefined,
+    })
+  },
+})
+
+/** CLI upload URL (pair with setModelStorageIdAdmin). No Clerk JWT — gated by deploy admin key. */
+export const generateUploadUrlAdmin = mutation({
+  args: { adminKey: v.string() },
+  handler: async (ctx, args) => {
+    requireAdminKey(args.adminKey)
+    return await ctx.storage.generateUploadUrl()
+  },
+})
+
+/** CLI model replace — no Clerk JWT; use with deploy admin key only. */
+export const setModelStorageIdAdmin = mutation({
+  args: {
+    buildingId: v.id('buildings'),
+    modelStorageId: v.id('_storage'),
+    adminKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireAdminKey(args.adminKey)
 
     const building = await ctx.db.get(args.buildingId)
     if (!building) throw new Error('Building not found')
 
+    if (
+      building.modelStorageId &&
+      building.modelStorageId !== args.modelStorageId
+    ) {
+      await ctx.storage.delete(building.modelStorageId)
+    }
+    if (building.optimizedModelStorageId) {
+      await ctx.storage.delete(building.optimizedModelStorageId)
+    }
+
     await ctx.db.patch(args.buildingId, {
       modelStorageId: args.modelStorageId,
+      optimizedModelStorageId: undefined,
+    })
+  },
+})
+
+
+export const setMasterPlanGeoJson = mutation({
+  args: {
+    buildingId: v.id('buildings'),
+    geoJson: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx)
+
+    const building = await ctx.db.get(args.buildingId)
+    if (!building) throw new Error('Building not found')
+    if (building.userId !== user._id) throw new Error('Not authorized')
+
+    await ctx.db.patch(args.buildingId, {
+      masterPlanGeoJson: args.geoJson,
     })
   },
 })

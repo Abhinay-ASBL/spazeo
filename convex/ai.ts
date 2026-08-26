@@ -60,6 +60,18 @@ export const listJobs = query({
 export const getJobsByTour = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user) return []
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) return []
+
     return await ctx.db
       .query('aiJobs')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))

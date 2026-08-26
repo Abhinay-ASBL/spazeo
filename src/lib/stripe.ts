@@ -10,10 +10,3 @@ export function getStripe(): Stripe {
   }
   return _stripe
 }
-
-// Lazy proxy so module evaluation doesn't crash at build time without STRIPE_SECRET_KEY
-export const stripe = new Proxy({} as Stripe, {
-  get(_target, prop) {
-    return getStripe()[prop as keyof Stripe]
-  },
-})

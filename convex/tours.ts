@@ -97,8 +97,17 @@ export const list = query({
 export const getById = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return null
+
     const tour = await ctx.db.get(args.tourId)
     if (!tour) return null
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    if (!user || tour.userId !== user._id) return null
 
     const scenes = await ctx.db
       .query('scenes')
@@ -391,6 +400,7 @@ export const update = mutation({
 
     const tour = await ctx.db.get(args.tourId)
     if (!tour) throw new Error('Tour not found')
+    if (tour.userId !== user._id) throw new Error('Not authorized')
 
     const { tourId, password: _ignoredPassword, ...updates } = args
     // NOTE: `password` is accepted in args for backward compat but is intentionally
@@ -886,9 +896,13 @@ export const getMasterPlan = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
 
     const tour = await ctx.db.get(args.tourId)
-    if (!tour || !tour.masterPlanStorageId) return null
+    if (!tour || !user || tour.userId !== user._id || !tour.masterPlanStorageId) return null
 
     const url = await ctx.storage.getUrl(tour.masterPlanStorageId)
     return {
@@ -905,9 +919,13 @@ export const getMasterPlanUrl = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
 
     const tour = await ctx.db.get(args.tourId)
-    if (!tour || !tour.masterPlanStorageId) return null
+    if (!tour || !user || tour.userId !== user._id || !tour.masterPlanStorageId) return null
 
     return await ctx.storage.getUrl(tour.masterPlanStorageId)
   },
