@@ -13,6 +13,29 @@ import type { Doc, Id } from './_generated/dataModel'
 
 const MAX_BATCH_EVENTS = 50
 
+const periodArg = v.optional(
+  v.union(v.literal('7d'), v.literal('30d'), v.literal('90d'), v.literal('all'))
+)
+
+function periodWindow(period: '7d' | '30d' | '90d' | 'all' | undefined): {
+  periodStart: number
+  prevPeriodStart: number
+  isAll: boolean
+} {
+  const isAll = period === 'all'
+  if (isAll) {
+    return { periodStart: 0, prevPeriodStart: 0, isAll: true }
+  }
+  const periodDays = period === '7d' ? 7 : period === '90d' ? 90 : 30
+  const now = Date.now()
+  const periodStart = now - periodDays * 24 * 60 * 60 * 1000
+  return {
+    periodStart,
+    prevPeriodStart: periodStart - periodDays * 24 * 60 * 60 * 1000,
+    isAll: false,
+  }
+}
+
 function summarizeVisitorDocs(
   docs: Array<Doc<'visitors'> | null>,
   sessionUniques: number
@@ -25,6 +48,7 @@ function summarizeVisitorDocs(
       uniqueVisitorsEstimated: 0,
       uniqueVisitorsVerified: 0,
       uniqueVisitorsIdentified: 0,
+      knownContacts: 0,
       uniqueDevices: 0,
       returningVisitors: 0,
       hasVisitorIds: false,
@@ -38,6 +62,7 @@ function summarizeVisitorDocs(
     uniqueVisitorsEstimated: estimated,
     uniqueVisitorsVerified: knownContacts,
     uniqueVisitorsIdentified: knownContacts,
+    knownContacts,
     uniqueDevices: 0,
     returningVisitors,
     hasVisitorIds: true,
@@ -679,7 +704,7 @@ export const rollupDaily = internalMutation({
 
 export const getDashboardOverview = query({
   args: {
-    period: v.optional(v.union(v.literal('7d'), v.literal('30d'), v.literal('90d'))),
+    period: periodArg,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
@@ -691,10 +716,7 @@ export const getDashboardOverview = query({
       .unique()
     if (!user) return null
 
-    const periodDays = args.period === '7d' ? 7 : args.period === '90d' ? 90 : 30
-    const now = Date.now()
-    const periodStart = now - periodDays * 24 * 60 * 60 * 1000
-    const prevPeriodStart = periodStart - periodDays * 24 * 60 * 60 * 1000
+    const { periodStart, prevPeriodStart, isAll } = periodWindow(args.period)
 
     const tours = await ctx.db
       .query('tours')
@@ -853,16 +875,18 @@ export const getDashboardOverview = query({
       aiCreditsUsed: user.aiCreditsUsed ?? 0,
       uniqueDevices,
       uniqueVisitorsEstimated: people.uniqueVisitorsEstimated,
-      knownContacts: people.uniqueVisitorsIdentified,
+      knownContacts: people.knownContacts,
       returningVisitors: people.returningVisitors,
       hasVisitorIds: people.hasVisitorIds,
-      trends: {
-        tours: calcTrend(currentTours, prevTours),
-        views: calcTrend(currentViews, prevViews),
-        leads: calcTrend(currentLeads, prevLeads),
-        viewingTime: calcTrend(currentViewingSeconds, prevViewingSeconds),
-        aiJobs: calcTrend(currentAiJobs, prevAiJobs),
-      },
+      trends: isAll
+        ? { tours: 0, views: 0, leads: 0, viewingTime: 0, aiJobs: 0 }
+        : {
+            tours: calcTrend(currentTours, prevTours),
+            views: calcTrend(currentViews, prevViews),
+            leads: calcTrend(currentLeads, prevLeads),
+            viewingTime: calcTrend(currentViewingSeconds, prevViewingSeconds),
+            aiJobs: calcTrend(currentAiJobs, prevAiJobs),
+          },
       conversionRate:
         currentViews > 0 ? Math.round((currentLeads / currentViews) * 100) : 0,
     }
@@ -997,7 +1021,7 @@ export const exportCsv = action({
 
 export const getTourPerformance = query({
   args: {
-    period: v.optional(v.union(v.literal('7d'), v.literal('30d'), v.literal('90d'), v.literal('all'))),
+    period: periodArg,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
@@ -1009,9 +1033,7 @@ export const getTourPerformance = query({
       .unique()
     if (!user) return []
 
-    const periodDays =
-      args.period === '7d' ? 7 : args.period === '90d' ? 90 : args.period === 'all' ? null : 30
-    const periodStart = periodDays ? Date.now() - periodDays * 24 * 60 * 60 * 1000 : 0
+    const { periodStart, isAll } = periodWindow(args.period)
 
     const tours = await ctx.db
       .query('tours')
@@ -1024,7 +1046,7 @@ export const getTourPerformance = query({
       const periodEvents = await ctx.db
         .query('analytics')
         .withIndex('by_tourId_timestamp', (q) =>
-          q.eq('tourId', tour._id).gte('timestamp', periodStart || -Infinity)
+          q.eq('tourId', tour._id).gte('timestamp', periodStart)
         )
         .collect()
 
@@ -1043,9 +1065,9 @@ export const getTourPerformance = query({
         .query('leads')
         .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
         .collect()
-      const periodLeads = periodStart
-        ? leads.filter((l) => l._creationTime >= periodStart)
-        : leads
+      const periodLeads = isAll
+        ? leads
+        : leads.filter((l) => l._creationTime >= periodStart)
 
       results.push({
         tourId: tour._id,
@@ -1322,7 +1344,10 @@ export const getHotspotClickCounts = query({
 
 /** Estimated (confidence >= 70) vs phone-anchored known contacts. */
 export const getUniqueVisitorStats = query({
-  args: { tourId: v.id('tours') },
+  args: {
+    tourId: v.id('tours'),
+    period: periodArg,
+  },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
@@ -1334,9 +1359,12 @@ export const getUniqueVisitorStats = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return null
 
+    const { periodStart } = periodWindow(args.period)
     const events = await ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .withIndex('by_tourId_timestamp', (q) =>
+        q.eq('tourId', args.tourId).gte('timestamp', periodStart)
+      )
       .collect()
 
     const views = events.filter((e) => e.event === 'tour_view')
@@ -1366,7 +1394,7 @@ export const getUniqueVisitorStats = query({
 
 /** Switch rate + dwell by timeOfDay from variant_* events. */
 export const getVariantEngagement = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), period: periodArg },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
@@ -1378,9 +1406,12 @@ export const getVariantEngagement = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return null
 
+    const { periodStart } = periodWindow(args.period)
     const events = await ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .withIndex('by_tourId_timestamp', (q) =>
+        q.eq('tourId', args.tourId).gte('timestamp', periodStart)
+      )
       .collect()
 
     const viewSessions = new Set(
@@ -1439,7 +1470,7 @@ export const getVariantEngagement = query({
 
 /** QR placement report — group tour_view / leads by metadata.qr / mm / camp. */
 export const getQrAttribution = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), period: periodArg },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
@@ -1451,15 +1482,21 @@ export const getQrAttribution = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return null
 
+    const { periodStart, isAll } = periodWindow(args.period)
     const events = await ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .withIndex('by_tourId_timestamp', (q) =>
+        q.eq('tourId', args.tourId).gte('timestamp', periodStart)
+      )
       .collect()
 
-    const leads = await ctx.db
+    const allLeads = await ctx.db
       .query('leads')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
       .collect()
+    const leads = isAll
+      ? allLeads
+      : allLeads.filter((l) => l._creationTime >= periodStart)
 
     type Row = {
       qr: string
@@ -1467,7 +1504,7 @@ export const getQrAttribution = query({
       camp: string
       scans: number
       leads: number
-      verifiedLeads: number
+      leadsWithPhone: number
       leadRate: number
     }
     const byKey = new Map<string, Row>()
@@ -1489,7 +1526,7 @@ export const getQrAttribution = query({
         camp: camp || '—',
         scans: 0,
         leads: 0,
-        verifiedLeads: 0,
+        leadsWithPhone: 0,
         leadRate: 0,
       }
       row.scans += 1
@@ -1503,7 +1540,7 @@ export const getQrAttribution = query({
       for (const row of byKey.values()) {
         if (row.mm === mm) {
           row.leads += 1
-          if (lead.phoneVerified) row.verifiedLeads += 1
+          if (lead.phoneNormalized || lead.phone) row.leadsWithPhone += 1
           matched = true
         }
       }
@@ -1515,11 +1552,11 @@ export const getQrAttribution = query({
           camp: '—',
           scans: 0,
           leads: 0,
-          verifiedLeads: 0,
+          leadsWithPhone: 0,
           leadRate: 0,
         }
         row.leads += 1
-        if (lead.phoneVerified) row.verifiedLeads += 1
+        if (lead.phoneNormalized || lead.phone) row.leadsWithPhone += 1
         byKey.set(k, row)
       }
     }

@@ -10,6 +10,7 @@ import {
   AnalyticsTotals,
   TourPeopleReach,
 } from '@/components/analytics/AnalyticsTotals'
+import { AnalyticsMetricGlossary } from '@/components/analytics/AnalyticsMetricGlossary'
 import {
   Calendar,
   Download,
@@ -60,9 +61,7 @@ export default function AnalyticsPage() {
   const [selectedTourId, setSelectedTourId] = useState<Id<'tours'> | null>(null)
   const exportCsv = useAction(api.analytics.exportCsv)
 
-  // getDashboardOverview only accepts 7d/30d/90d — pass undefined for 'all' (defaults to 30d overview)
-  const overviewPeriod = period === 'all' ? undefined : period
-  const overview = useQuery(api.analytics.getDashboardOverview, { period: overviewPeriod })
+  const overview = useQuery(api.analytics.getDashboardOverview, { period })
   const tourPerformance = useQuery(api.analytics.getTourPerformance, { period })
   const selectedTourScenes = useQuery(
     api.scenes.listByTour,
@@ -70,15 +69,15 @@ export default function AnalyticsPage() {
   )
   const visitorStats = useQuery(
     api.analytics.getUniqueVisitorStats,
-    selectedTourId ? { tourId: selectedTourId } : 'skip'
+    selectedTourId ? { tourId: selectedTourId, period } : 'skip'
   )
   const variantEngagement = useQuery(
     api.analytics.getVariantEngagement,
-    selectedTourId ? { tourId: selectedTourId } : 'skip'
+    selectedTourId ? { tourId: selectedTourId, period } : 'skip'
   )
   const qrAttribution = useQuery(
     api.analytics.getQrAttribution,
-    selectedTourId ? { tourId: selectedTourId } : 'skip'
+    selectedTourId ? { tourId: selectedTourId, period } : 'skip'
   )
 
   const isLoading = overview === undefined || tourPerformance === undefined
@@ -253,6 +252,8 @@ export default function AnalyticsPage() {
         allTimeViews={overview.totalViews}
         allTimeLeads={overview.totalLeads}
       />
+
+      <AnalyticsMetricGlossary />
 
       {/* Charts Row */}
       <div className="flex flex-col lg:flex-row" style={{ gap: 16, marginBottom: 24 }}>
@@ -628,7 +629,7 @@ export default function AnalyticsPage() {
             <TourPeopleReach
               devices={visitorStats.uniqueDevices}
               estimated={visitorStats.uniqueVisitorsEstimated}
-              knownContacts={visitorStats.uniqueVisitorsVerified}
+              knownContacts={visitorStats.knownContacts}
               returning={visitorStats.returningVisitors}
               hasVisitorIds={visitorStats.hasVisitorIds}
             />
@@ -754,7 +755,7 @@ export default function AnalyticsPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid rgba(212,160,23,0.08)' }}>
-                        {['Placement (qr)', 'Micromarket', 'Campaign', 'Scans', 'Leads', 'Lead rate', 'Verified'].map(
+                        {['Placement (qr)', 'Micromarket', 'Campaign', 'Scans', 'Leads', 'Lead rate', 'With phone'].map(
                           (h) => (
                             <th
                               key={h}
@@ -799,7 +800,7 @@ export default function AnalyticsPage() {
                             {row.leadRate}%
                           </td>
                           <td style={{ padding: '12px 16px', fontSize: 13, color: '#D4A017' }}>
-                            {row.verifiedLeads}
+                            {row.leadsWithPhone}
                           </td>
                         </tr>
                       ))}
