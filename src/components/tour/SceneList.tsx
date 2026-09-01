@@ -3,7 +3,8 @@
 import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { GripVertical, Image, Trash2 } from 'lucide-react'
+import Image from 'next/image'
+import { GripVertical, Image as ImageIcon, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -20,7 +21,7 @@ interface SceneListProps {
   tourId: Id<'tours'>
 }
 
-export function SceneList({ scenes, tourId }: SceneListProps) {
+export function SceneList({ scenes }: SceneListProps) {
   const removeScene = useMutation(api.scenes.remove)
 
   const handleDelete = async (sceneId: Id<'scenes'>, title: string) => {
@@ -57,21 +58,23 @@ export function SceneList({ scenes, tourId }: SceneListProps) {
             />
 
             <div
-              className="w-14 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
+              className="relative w-14 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
               style={{
                 backgroundColor: '#1B1916',
                 border: '1px solid rgba(212,160,23,0.06)',
               }}
             >
               {scene.thumbnailUrl || scene.imageUrl ? (
-                <img
+                <Image
                   src={(scene.thumbnailUrl || scene.imageUrl)!}
                   alt={scene.title}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="56px"
+                  className="object-cover"
                   loading="lazy"
                 />
               ) : (
-                <Image size={14} strokeWidth={1.5} style={{ color: '#3D3830' }} />
+                <ImageIcon size={14} strokeWidth={1.5} style={{ color: '#3D3830' }} />
               )}
             </div>
 

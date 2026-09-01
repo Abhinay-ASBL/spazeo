@@ -14,9 +14,6 @@ const DASHSCOPE_CHAT_URL =
 // Image generation + editing: DashScope native endpoint
 const DASHSCOPE_IMAGE_URL =
   'https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
-// Task status polling (for async image jobs)
-const DASHSCOPE_TASK_URL =
-  'https://coding-intl.dashscope.aliyuncs.com/api/v1/tasks'
 
 // Model assignments:
 // - Scene analysis (vision):     qwen3.5-plus  — best visual understanding + structured JSON output

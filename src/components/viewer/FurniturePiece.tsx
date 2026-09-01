@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { ThreeEvent } from '@react-three/fiber'
 import { Clone, TransformControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
@@ -26,13 +26,13 @@ export function FurniturePiece({
   onTransformEnd,
 }: FurniturePieceProps) {
   const { scene } = useGLTF(item.glbUrl)
-  const groupRef = useRef<THREE.Group>(null)
+  // State, not a ref: TransformControls needs the node during render.
+  const [group, setGroup] = useState<THREE.Group | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const transformRef = useRef<any>(null)
 
   // Apply / remove gold selection glow
   useEffect(() => {
-    const group = groupRef.current
     if (!group) return
 
     group.traverse((child) => {
@@ -50,7 +50,7 @@ export function FurniturePiece({
         }
       }
     })
-  }, [selected])
+  }, [selected, group])
 
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
@@ -61,7 +61,6 @@ export function FurniturePiece({
   )
 
   const handleTransformEnd = useCallback(() => {
-    const group = groupRef.current
     if (!group) return
 
     const pos: [number, number, number] = [
@@ -84,12 +83,12 @@ export function FurniturePiece({
     group.position.y = 0
 
     onTransformEnd(pos, rot, scl)
-  }, [onTransformEnd])
+  }, [onTransformEnd, group])
 
   return (
     <>
       <group
-        ref={groupRef}
+        ref={setGroup}
         position={item.position}
         rotation={item.rotation}
         scale={item.scale}
@@ -98,10 +97,10 @@ export function FurniturePiece({
         <Clone object={scene} />
       </group>
 
-      {selected && groupRef.current && (
+      {selected && group && (
         <TransformControls
           ref={transformRef}
-          object={groupRef.current}
+          object={group}
           mode={transformMode}
           onMouseUp={handleTransformEnd}
         />

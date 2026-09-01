@@ -156,9 +156,9 @@ export function GaussianSplatViewer({
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true))
+      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false))
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
     }
   }, [])
 
@@ -169,14 +169,12 @@ export function GaussianSplatViewer({
   }, [])
 
   const handleShare = useCallback(() => {
-    if (savedRoomSlug && tourSlug) {
-      const shareUrl = `${window.location.origin}/tour/${tourSlug}/furnished/${savedRoomSlug}`
-      navigator.clipboard.writeText(shareUrl)
-      toast.success('Furnished room link copied!')
-    } else {
-      navigator.clipboard.writeText(window.location.href)
-      toast.success('Link copied!')
-    }
+    const shareUrl = savedRoomSlug && tourSlug
+      ? `${window.location.origin}/tour/${tourSlug}/furnished/${savedRoomSlug}`
+      : window.location.href
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => toast.success(savedRoomSlug && tourSlug ? 'Furnished room link copied!' : 'Link copied!'))
+      .catch(() => toast.error('Could not copy link'))
   }, [savedRoomSlug, tourSlug])
 
   const handleSaveArrangement = useCallback(async () => {
@@ -218,7 +216,8 @@ export function GaussianSplatViewer({
       if (roomSlug && tourSlug) {
         const shareUrl = `${window.location.origin}/tour/${tourSlug}/furnished/${roomSlug}`
         navigator.clipboard.writeText(shareUrl)
-        toast.success('Arrangement saved! Share link copied.')
+          .then(() => toast.success('Arrangement saved! Share link copied.'))
+          .catch(() => toast.success('Arrangement saved!'))
       } else {
         toast.success('Arrangement saved!')
       }
@@ -399,7 +398,8 @@ export function GaussianSplatViewer({
             <button
               onClick={() => {
                 navigator.clipboard.writeText(window.location.href)
-                toast.success('Link copied!')
+                  .then(() => toast.success('Link copied!'))
+                  .catch(() => toast.error('Could not copy link'))
               }}
               aria-label="Share tour"
               className="w-9 h-9 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useDropzone, type FileRejection } from 'react-dropzone'
-import { UploadCloud, Camera, X, FileText, Image, Hash, Tag, ChevronRight } from 'lucide-react'
+import { UploadCloud, Camera, X, FileText, Image as ImageIcon, Hash, Tag, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 
@@ -238,6 +238,9 @@ export function FloorPlanUpload({ onContinue, className }: FloorPlanUploadProps)
                   style={{ backgroundColor: '#12100E' }}
                 >
                   {fpFile.preview ? (
+                    // Local object URL for a not-yet-uploaded file — nothing for
+                    // the image optimizer to fetch.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={fpFile.preview}
                       alt={fpFile.file.name}
@@ -246,7 +249,7 @@ export function FloorPlanUpload({ onContinue, className }: FloorPlanUploadProps)
                   ) : fpFile.type === 'pdf' ? (
                     <FileText size={24} style={{ color: '#D4A017' }} strokeWidth={1.5} />
                   ) : (
-                    <Image size={24} style={{ color: '#6B6560' }} strokeWidth={1.5} />
+                    <ImageIcon size={24} style={{ color: '#6B6560' }} strokeWidth={1.5} />
                   )}
                 </div>
 

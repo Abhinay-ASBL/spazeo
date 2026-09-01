@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Globe, Cpu, Link2, BarChart2, Smartphone, Shield,
   ChevronDown, ChevronUp, Star, Zap, Home, Hotel,
@@ -184,9 +185,13 @@ function Hero() {
           border: `1px solid ${border}`,
         }}
       >
-        <img
+        <Image
           src={IMG.hero}
           alt="Luxury interior panorama — Spazeo tour preview"
+          width={1024}
+          height={1024}
+          priority
+          sizes="(max-width: 1200px) 100vw, 1200px"
           style={{ width: "100%", height: 520, objectFit: "cover", display: "block" }}
         />
         <div
@@ -317,7 +322,14 @@ function CoreFeatures() {
               </ul>
             </div>
             <div style={{ flex: 1, borderRadius: 16, overflow: "hidden", border: `1px solid ${border}` }}>
-              <img src={f.img} alt={f.imgAlt} style={{ width: "100%", height: 380, objectFit: "cover", display: "block" }} />
+              <Image
+                src={f.img}
+                alt={f.imgAlt}
+                width={1024}
+                height={1024}
+                sizes="(max-width: 900px) 100vw, 600px"
+                style={{ width: "100%", height: 380, objectFit: "cover", display: "block" }}
+              />
             </div>
           </div>
         ))}
@@ -391,7 +403,14 @@ function ProductShowcase() {
             <span style={{ background: gold, color: base, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6 }}>Publish</span>
           </div>
         </div>
-        <img src={IMG.editor} alt="Spazeo editor — Virtual Explorer Pro with coastal panorama" style={{ width: "100%", height: 480, objectFit: "cover", display: "block" }} />
+        <Image
+          src={IMG.editor}
+          alt="Spazeo editor — Virtual Explorer Pro with coastal panorama"
+          width={1024}
+          height={1024}
+          sizes="(max-width: 1100px) 100vw, 1000px"
+          style={{ width: "100%", height: 480, objectFit: "cover", display: "block" }}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, maxWidth: 960, margin: "0 auto" }}>
@@ -435,7 +454,14 @@ function UseCases() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, maxWidth: 960, margin: "0 auto" }}>
         {USE_CASES.map((u) => (
           <div key={u.title} style={{ background: surface, border: `1px solid ${border}`, borderRadius: 20, overflow: "hidden" }}>
-            <img src={u.img} alt={u.title} style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }} />
+            <Image
+              src={u.img}
+              alt={u.title}
+              width={1024}
+              height={1024}
+              sizes="(max-width: 960px) 50vw, 240px"
+              style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }}
+            />
             <div style={{ padding: 20 }}>
               <div style={{ width: 32, height: 32, borderRadius: 8, background: u.iconBg, color: u.iconColor, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                 {u.icon}
@@ -487,7 +513,7 @@ function SocialProof() {
             <div style={{ display: "flex", gap: 2, marginBottom: 16 }}>
               {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={13} fill={gold} color={gold} />)}
             </div>
-            <p style={{ color: txtPri, fontSize: 15, lineHeight: 1.65, marginBottom: 24 }}>"{t.quote}"</p>
+            <p style={{ color: txtPri, fontSize: 15, lineHeight: 1.65, marginBottom: 24 }}>&quot;{t.quote}&quot;</p>
             <div>
               <p style={{ color: txtPri, fontSize: 14, fontWeight: 600 }}>{t.name}</p>
               <p style={{ color: txtMut, fontSize: 13 }}>{t.role}</p>
@@ -535,7 +561,7 @@ function Pricing() {
         Simple, Transparent Pricing
       </h2>
       <p style={{ textAlign: "center", color: txtSec, fontSize: 16, marginBottom: 56 }}>
-        Start free. Upgrade when you're ready. No hidden fees, ever.
+        Start free. Upgrade when you&apos;re ready. No hidden fees, ever.
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 20, maxWidth: 960, margin: "0 auto", alignItems: "start" }}>
         {PLANS.map((p) => (

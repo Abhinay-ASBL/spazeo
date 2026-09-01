@@ -3,66 +3,176 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { X, Settings } from 'lucide-react'
+import { useMutation } from 'convex/react'
+import { makeFunctionReference } from 'convex/server'
+import { isProvidersConfigured } from '@/components/providers/ConvexClientProvider'
 
-interface CookiePreferences {
+export interface CookiePreferences {
   essential: boolean // always true
   analytics: boolean
+  fingerprinting: boolean
   marketing: boolean
 }
 
-const STORAGE_KEY = 'spazeo_cookie_consent'
+export const STORAGE_KEY = 'spazeo_cookie_consent'
+export const POLICY_VERSION = '2026-08-26'
+export const CONSENT_UPDATED_EVENT = 'spazeo:consent-updated'
+const SESSION_STORAGE_KEY = 'spz_sid'
 
-function getStoredPreferences(): CookiePreferences | null {
+// ponytail: codegen may lag parallel agent; FunctionReference works before api.* exists
+const visitorConsentsGrant = makeFunctionReference<'mutation'>(
+  'visitorConsents:grant'
+)
+
+export function getStoredPreferences(): CookiePreferences | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw) as Partial<CookiePreferences>
+    return {
+      essential: true,
+      analytics: !!parsed.analytics,
+      fingerprinting: !!parsed.fingerprinting,
+      marketing: !!parsed.marketing,
+    }
   } catch {
     return null
   }
 }
 
-function storePreferences(prefs: CookiePreferences) {
+function storePreferencesLocal(prefs: CookiePreferences) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
 }
 
+function notifyConsentUpdated(prefs: CookiePreferences) {
+  window.dispatchEvent(new CustomEvent(CONSENT_UPDATED_EVENT, { detail: prefs }))
+}
+
+function getOrCreateSessionId(): string {
+  try {
+    const existing = sessionStorage.getItem(SESSION_STORAGE_KEY)
+    if (existing) return existing
+    const id = crypto.randomUUID()
+    sessionStorage.setItem(SESSION_STORAGE_KEY, id)
+    return id
+  } catch {
+    return crypto.randomUUID()
+  }
+}
+
+type ConsentPurpose =
+  | 'essential'
+  | 'analytics'
+  | 'fingerprinting'
+  | 'geolocation'
+  | 'marketing'
+
+type GrantFn = (prefs: CookiePreferences) => Promise<void>
+
+/** Public entry — skips Convex hooks when providers are not configured. */
 export function CookieConsent() {
+  if (!isProvidersConfigured) {
+    return <CookieConsentUI persistToConvex={async () => {}} />
+  }
+  return <CookieConsentWithConvex />
+}
+
+function CookieConsentWithConvex() {
+  const grantConsent = useMutation(visitorConsentsGrant)
+
+  const persistToConvex = useCallback(
+    async (prefs: CookiePreferences) => {
+      const sessionId = getOrCreateSessionId()
+      const purposes: ConsentPurpose[] = [
+        'essential',
+        'analytics',
+        'fingerprinting',
+        'marketing',
+      ]
+      try {
+        await grantConsent({
+          sessionId,
+          policyVersion: POLICY_VERSION,
+          grants: purposes.map((purpose) => ({
+            purpose,
+            granted:
+              purpose === 'essential'
+                ? true
+                : purpose === 'analytics'
+                  ? prefs.analytics
+                  : purpose === 'fingerprinting'
+                    ? prefs.fingerprinting
+                    : prefs.marketing,
+          })),
+          userAgent:
+            typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        })
+      } catch {
+        /* Convex APIs may still be landing; localStorage remains source of UX truth */
+      }
+    },
+    [grantConsent]
+  )
+
+  return <CookieConsentUI persistToConvex={persistToConvex} />
+}
+
+function CookieConsentUI({ persistToConvex }: { persistToConvex: GrantFn }) {
   const [visible, setVisible] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [preferences, setPreferences] = useState<CookiePreferences>({
     essential: true,
     analytics: false,
+    fingerprinting: false,
     marketing: false,
   })
 
   useEffect(() => {
     const stored = getStoredPreferences()
     if (!stored) {
-      // first-time visitor
+      // Stored preferences live in localStorage — client-only, post-mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(true)
     } else {
       setPreferences(stored)
     }
   }, [])
 
+  const commit = useCallback(
+    async (prefs: CookiePreferences) => {
+      setPreferences(prefs)
+      setVisible(false)
+      setShowModal(false)
+      storePreferencesLocal(prefs)
+      // Convex grant first, then notify so identity resolve runs after audit write
+      await persistToConvex(prefs)
+      notifyConsentUpdated(prefs)
+    },
+    [persistToConvex]
+  )
+
   const handleAcceptAll = useCallback(() => {
-    const prefs: CookiePreferences = {
+    void commit({
       essential: true,
       analytics: true,
+      fingerprinting: true,
       marketing: true,
-    }
-    storePreferences(prefs)
-    setPreferences(prefs)
-    setVisible(false)
-    setShowModal(false)
-  }, [])
+    })
+  }, [commit])
+
+  const handleEssentialOnly = useCallback(() => {
+    void commit({
+      essential: true,
+      analytics: false,
+      fingerprinting: false,
+      marketing: false,
+    })
+  }, [commit])
 
   const handleSavePreferences = useCallback(() => {
-    storePreferences(preferences)
-    setVisible(false)
-    setShowModal(false)
-  }, [preferences])
+    void commit({ ...preferences, essential: true })
+  }, [commit, preferences])
 
   if (!visible) return null
 
@@ -88,9 +198,10 @@ export function CookieConsent() {
                   fontFamily: 'var(--font-dmsans)',
                 }}
               >
-                We use cookies to enhance your experience, analyze site traffic,
-                and for marketing purposes. By clicking &quot;Accept All,&quot;
-                you consent to our use of cookies. Read our{' '}
+                We use cookies for essential site functions and, with your
+                consent, analytics and device recognition. By clicking
+                &quot;Accept,&quot; you allow analytics and fingerprinting.
+                Read our{' '}
                 <Link
                   href="/privacy"
                   className="underline transition-colors duration-200"
@@ -102,7 +213,7 @@ export function CookieConsent() {
               </p>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
               <button
                 onClick={() => setShowModal(true)}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"
@@ -117,6 +228,18 @@ export function CookieConsent() {
               </button>
 
               <button
+                onClick={handleEssentialOnly}
+                className="px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"
+                style={{
+                  color: '#D4A017',
+                  border: '1px solid rgba(212,160,23,0.25)',
+                  fontFamily: 'var(--font-dmsans)',
+                }}
+              >
+                Essential only
+              </button>
+
+              <button
                 onClick={handleAcceptAll}
                 className="px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200"
                 style={{
@@ -125,7 +248,7 @@ export function CookieConsent() {
                   fontFamily: 'var(--font-dmsans)',
                 }}
               >
-                Accept All
+                Accept
               </button>
             </div>
           </div>
@@ -172,7 +295,6 @@ export function CookieConsent() {
             </div>
 
             <div className="space-y-5">
-              {/* Essential */}
               <CookieToggle
                 label="Essential"
                 description="Required for authentication, security, and basic platform functionality."
@@ -181,7 +303,6 @@ export function CookieConsent() {
                 onChange={() => {}}
               />
 
-              {/* Analytics */}
               <CookieToggle
                 label="Analytics"
                 description="Help us understand how visitors use our platform to improve the experience."
@@ -191,7 +312,15 @@ export function CookieConsent() {
                 }
               />
 
-              {/* Marketing */}
+              <CookieToggle
+                label="Fingerprinting"
+                description="Recognizes returning browsers across visits. Used only as a link hint — never as sole identity."
+                checked={preferences.fingerprinting}
+                onChange={(val) =>
+                  setPreferences((p) => ({ ...p, fingerprinting: val }))
+                }
+              />
+
               <CookieToggle
                 label="Marketing"
                 description="Used to deliver relevant advertisements and measure campaign effectiveness."
@@ -203,6 +332,18 @@ export function CookieConsent() {
             </div>
 
             <div className="flex items-center gap-3 mt-8">
+              <button
+                onClick={handleEssentialOnly}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"
+                style={{
+                  color: '#A8A29E',
+                  border: '1px solid rgba(212,160,23,0.15)',
+                  fontFamily: 'var(--font-dmsans)',
+                }}
+              >
+                Essential only
+              </button>
+
               <button
                 onClick={handleSavePreferences}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"
@@ -224,7 +365,7 @@ export function CookieConsent() {
                   fontFamily: 'var(--font-dmsans)',
                 }}
               >
-                Accept All
+                Accept
               </button>
             </div>
           </div>

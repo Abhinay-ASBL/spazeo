@@ -41,6 +41,8 @@ export function CaptureTips({ tab }: CaptureTipsProps) {
   useEffect(() => {
     const seen = localStorage.getItem(STORAGE_KEY)
     if (seen === 'true') {
+      // localStorage is client-only; reading it during render breaks hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpanded(false)
     }
   }, [])

@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
-import { query, mutation } from './_generated/server'
+import { query, mutation, type QueryCtx, type MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
 
 const unitTypeValidator = v.union(
   v.literal('1BHK'),
@@ -18,7 +19,10 @@ const statusValidator = v.union(
 // --- Queries ---
 
 /** Published buildings are publicly viewable; drafts only by their owner. */
-async function isBuildingViewable(ctx: any, buildingId: any) {
+async function isBuildingViewable(
+  ctx: QueryCtx | MutationCtx,
+  buildingId: Id<'buildings'>
+) {
   const building = await ctx.db.get(buildingId)
   if (!building) return false
   if (building.status === 'published') return true
@@ -27,7 +31,7 @@ async function isBuildingViewable(ctx: any, buildingId: any) {
   if (!identity) return false
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   return !!user && building.userId === user._id
 }
@@ -175,13 +179,16 @@ export const update = mutation({
   },
 })
 
-async function requireUnitOwner(ctx: any, unitId: any) {
+async function requireUnitOwner(
+  ctx: QueryCtx | MutationCtx,
+  unitId: Id<'buildingUnits'>
+) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
 
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   const unit = await ctx.db.get(unitId)
   const building = unit ? await ctx.db.get(unit.buildingId) : null

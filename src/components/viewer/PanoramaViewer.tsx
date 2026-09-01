@@ -6,7 +6,7 @@ import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMap
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { HotspotMarker } from './HotspotMarker'
-import { MasterPlanOverlay, type MasterPlanMapping, type MasterPlanCorner, yawPitchToPosition } from './MasterPlanOverlay'
+import { MasterPlanOverlay, type MasterPlanMapping, type MasterPlanCorner } from './MasterPlanOverlay'
 import { ImageOff, Loader2 } from 'lucide-react'
 
 /* ── Error Boundary ── */
@@ -200,17 +200,6 @@ function rayHitOnSphere(event: ThreeEvent<PointerEvent | MouseEvent>, radius = 4
   const len = Math.sqrt(hitX * hitX + hitY * hitY + hitZ * hitZ) || 1
   const k = radius / len
   return { x: hitX * k, y: hitY * k, z: hitZ * k }
-}
-
-function positionToYawPitch(position: { x: number; y: number; z: number }) {
-  const len = Math.sqrt(position.x ** 2 + position.y ** 2 + position.z ** 2) || 1
-  const nx = position.x / len
-  const ny = position.y / len
-  const nz = position.z / len
-  return {
-    yaw: (Math.atan2(nx, -nz) * 180) / Math.PI,
-    pitch: (Math.asin(Math.max(-1, Math.min(1, ny))) * 180) / Math.PI,
-  }
 }
 
 /** Build a spherical rectangle mapping from two corners (degrees). */
@@ -494,7 +483,6 @@ export function PanoramaViewer({
   masterPlanMapping,
   masterPlanVisible = true,
   masterPlanEditing = false,
-  masterPlanPinCorners = [],
 }: Props) {
   const [texture, setTexture] = useState<Texture | null>(null)
   const [fadeOpacity, setFadeOpacity] = useState(1)
@@ -504,6 +492,8 @@ export function PanoramaViewer({
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null)
 
   useEffect(() => {
+    // WebGL probing needs a real canvas — client-only, post-mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWebglSupported(isWebGLAvailable())
   }, [])
 
@@ -518,11 +508,6 @@ export function PanoramaViewer({
     setTexture(t)
     setPolarLimits({ min: minPolar, max: maxPolar })
   }, [])
-
-  // Legacy helper used by TextureLoader callbacks
-  const applyTexture = useCallback((t: Texture) => {
-    applyEntry(processRawTexture(t))
-  }, [applyEntry])
 
   // Background preload: fires after first scene finishes loading
   useEffect(() => {
@@ -541,6 +526,8 @@ export function PanoramaViewer({
 
   useEffect(() => {
     if (!imageUrl) {
+      // Texture loading is an external subscription; the loading flag tracks it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(false)
       return
     }

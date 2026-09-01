@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { ExternalLink } from 'lucide-react'
 import { useGLTF } from '@react-three/drei'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -53,10 +54,12 @@ export function CatalogItemCard({ item, onClick }: CatalogItemCardProps) {
       {/* Thumbnail */}
       <div className="relative aspect-square w-full overflow-hidden">
         {item.thumbnailUrl ? (
-          <img
+          <Image
             src={item.thumbnailUrl}
             alt={item.name}
-            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+            fill
+            sizes="200px"
+            className="object-cover transition-transform group-hover:scale-105"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2E2A24] to-[#1B1916]">

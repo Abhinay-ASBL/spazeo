@@ -1,10 +1,14 @@
 import { v } from 'convex/values'
-import { query, mutation } from './_generated/server'
+import { query, mutation, type QueryCtx, type MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
 
 // === Queries ===
 
 /** Published buildings are publicly viewable; drafts only by their owner. */
-async function isBuildingViewable(ctx: any, buildingId: any) {
+async function isBuildingViewable(
+  ctx: QueryCtx | MutationCtx,
+  buildingId: Id<'buildings'>
+) {
   const building = await ctx.db.get(buildingId)
   if (!building) return false
   if (building.status === 'published') return true
@@ -13,7 +17,7 @@ async function isBuildingViewable(ctx: any, buildingId: any) {
   if (!identity) return false
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   return !!user && building.userId === user._id
 }

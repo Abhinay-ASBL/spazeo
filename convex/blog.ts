@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import type { Doc } from './_generated/dataModel'
 import { requireAdmin } from './authHelpers'
 
 export const list = query({
@@ -9,12 +10,13 @@ export const list = query({
     cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let posts: any[]
+    let posts: Doc<'blogPosts'>[]
 
     if (args.category) {
+      const category = args.category as Doc<'blogPosts'>['category']
       posts = await ctx.db
         .query('blogPosts')
-        .withIndex('by_category', (q) => q.eq('category', args.category as any))
+        .withIndex('by_category', (q) => q.eq('category', category))
         .filter((q) => q.eq(q.field('status'), 'published'))
         .collect()
     } else {

@@ -1,5 +1,5 @@
-import { v } from 'convex/values'
 import { mutation } from './_generated/server'
+import type { Id } from './_generated/dataModel'
 import { requireAdmin } from './authHelpers'
 
 const TOWER_SPECS: Record<string, Record<string, { bhk: '1BHK' | '2BHK' | '3BHK' | '4BHK' | 'penthouse'; area: number; facing: 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW' }>> = {
@@ -69,7 +69,7 @@ export const seedASBLUnits = mutation({
       building = (await ctx.db.get(buildingId))!
     }
 
-    const blockIds: Record<string, any> = {}
+    const blockIds: Record<string, Id<'buildingBlocks'>> = {}
     for (const towerId of ['A', 'B', 'C']) {
       let block = await ctx.db
         .query('buildingBlocks')

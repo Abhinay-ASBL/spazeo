@@ -18,7 +18,7 @@ export const searchTours = query({
       .unique()
     if (!user) return []
 
-    let searchQuery = ctx.db
+    const searchQuery = ctx.db
       .query('tours')
       .withSearchIndex('search_tours', (q) => {
         let search = q.search('title', args.query).eq('userId', user._id)

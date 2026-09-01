@@ -84,6 +84,7 @@ export function OnboardingChecklist() {
   const dismissChecklist = useMutation(api.users.dismissChecklist)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [confetti, setConfetti] = useState<{ left: number; delay: number }[]>([])
   const [prevCompleted, setPrevCompleted] = useState<number | null>(null)
 
   const steps = progress?.steps
@@ -95,6 +96,14 @@ export function OnboardingChecklist() {
   // Trigger confetti when all 6 steps become complete
   useEffect(() => {
     if (prevCompleted !== null && prevCompleted < 6 && completedCount === 6) {
+      // Randomize here, not in render — render must stay pure.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setConfetti(
+        Array.from({ length: 40 }, () => ({
+          left: Math.random() * 100,
+          delay: Math.random() * 1.5,
+        }))
+      )
       setShowConfetti(true)
       const timer = setTimeout(() => setShowConfetti(false), 4000)
       return () => clearTimeout(timer)
@@ -121,13 +130,13 @@ export function OnboardingChecklist() {
           className="pointer-events-none fixed inset-0 z-50 overflow-hidden"
           aria-hidden="true"
         >
-          {Array.from({ length: 40 }).map((_, i) => (
+          {confetti.map((piece, i) => (
             <div
               key={i}
               className="confetti-piece"
               style={{
-                left: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 1.5}s`,
+                left: `${piece.left}%`,
+                animationDelay: `${piece.delay}s`,
                 backgroundColor: ['#D4A017', '#2DD4BF', '#FB7A54', '#34D399', '#F5F3EF'][
                   i % 5
                 ],

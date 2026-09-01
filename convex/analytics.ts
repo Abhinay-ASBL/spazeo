@@ -12,10 +12,18 @@ import { consumeRateLimit, purgeStaleRateLimits } from './rateLimit'
 import type { Doc, Id } from './_generated/dataModel'
 
 const MAX_BATCH_EVENTS = 50
+// ponytail: hard cap on raw per-tour event scans in dashboard aggregates —
+// unbounded .collect() on 'all'/wide windows blew the 15s isolate budget on
+// self-hosted (small instance). Upgrade to dailyAnalytics rollups if precision matters.
+const DASHBOARD_EVENT_SCAN_CAP = 2000
 
 const periodArg = v.optional(
   v.union(v.literal('7d'), v.literal('30d'), v.literal('90d'), v.literal('all'))
 )
+
+function dateStrUTC(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
 
 function periodWindow(period: '7d' | '30d' | '90d' | 'all' | undefined): {
   periodStart: number
@@ -428,7 +436,6 @@ export const getEngagementMetrics = query({
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
       .collect()
 
-    const tourViews = events.filter((e) => e.event === 'tour_view')
     const sceneViews = events.filter((e) => e.event === 'scene_view')
 
     // Group by session
@@ -726,27 +733,74 @@ export const getDashboardOverview = query({
     const totalTours = tours.length
     const publishedTours = tours.filter((t) => t.status === 'published').length
 
-    // Bounded scan: only events since prevPeriodStart (indexed range), not full history.
-    // totalViews comes from the denormalized tour.viewCount instead of a full scan.
-    let allEvents: Array<{
+    // ponytail: dashboard reads dailyAnalytics rollups (cron-populated, ~1 row/tour/day)
+    // instead of scanning raw `analytics` events live — the live scan was unbounded per
+    // tenant and blew memory/time on the self-hosted backend under real traffic. Only
+    // "today" (not yet rolled up) needs a live query, and that's capped to one day's events.
+    const todayStr = dateStrUTC(Date.now())
+    const startOfTodayMs = Date.parse(`${todayStr}T00:00:00.000Z`)
+    const periodStartStr = isAll ? '0000-00-00' : dateStrUTC(periodStart)
+    const prevPeriodStartStr = isAll ? '0000-00-00' : dateStrUTC(prevPeriodStart)
+
+    let totalLeads = 0
+    let currentLeads = 0
+    let prevLeads = 0
+
+    let currentViews = 0
+    let prevViews = 0
+    let currentViewingSeconds = 0
+    let prevViewingSeconds = 0
+    let periodSessions = 0
+    let prevSessions = 0
+    let estimatedVisitors = 0
+    let knownContacts = 0
+    let returningVisitors = 0
+    let uniqueDevices = 0
+    let hasVisitorIds = false
+
+    // Today's live (not-yet-rolled-up) events, bounded to one day, all tours combined.
+    let todayEvents: Array<{
       event: string
       timestamp: number
       duration?: number
       sessionId: string
       visitorId?: Id<'visitors'>
     }> = []
-    let totalLeads = 0
-    let currentLeads = 0
-    let prevLeads = 0
 
     for (const tour of tours) {
+      const dailyRows = await ctx.db
+        .query('dailyAnalytics')
+        .withIndex('by_tourId_date', (q) =>
+          q.eq('tourId', tour._id).gte('date', prevPeriodStartStr).lt('date', todayStr)
+        )
+        .collect()
+
+      for (const row of dailyRows) {
+        const inCurrent = row.date >= periodStartStr
+        const rowSeconds = row.avgDuration * row.views
+        if (inCurrent) {
+          currentViews += row.views
+          currentViewingSeconds += rowSeconds
+          periodSessions += row.uniqueVisitors
+          estimatedVisitors += row.uniqueVisitorsEstimated ?? 0
+          knownContacts += row.uniqueVisitorsVerified ?? 0
+          returningVisitors += row.returningVisitors ?? 0
+          uniqueDevices += row.uniqueDevices ?? 0
+          if ((row.uniqueDevices ?? 0) > 0) hasVisitorIds = true
+        } else {
+          prevViews += row.views
+          prevViewingSeconds += rowSeconds
+          prevSessions += row.uniqueVisitors
+        }
+      }
+
       const events = await ctx.db
         .query('analytics')
         .withIndex('by_tourId_timestamp', (q) =>
-          q.eq('tourId', tour._id).gte('timestamp', prevPeriodStart)
+          q.eq('tourId', tour._id).gte('timestamp', startOfTodayMs)
         )
-        .collect()
-      allEvents = allEvents.concat(events)
+        .take(DASHBOARD_EVENT_SCAN_CAP)
+      todayEvents = todayEvents.concat(events)
 
       const leads = await ctx.db
         .query('leads')
@@ -759,70 +813,52 @@ export const getDashboardOverview = query({
       ).length
     }
 
-    // Views
-    const viewEvents = allEvents.filter((e) => e.event === 'tour_view')
-    const currentViews = viewEvents.filter((e) => e.timestamp >= periodStart).length
-    const prevViews = viewEvents.filter(
-      (e) => e.timestamp >= prevPeriodStart && e.timestamp < periodStart
-    ).length
-    // All-time total comes from the denormalized counter, not the (now window-bounded) events.
-    const totalViews = tours.reduce((sum, t) => sum + t.viewCount, 0)
-
-    // Viewing hours (from duration field, in seconds) — bounded to the 2x-period window
-    const allDurations = allEvents
+    // Merge today's live events into the current-period aggregates (today is always "current").
+    const todayViewEvents = todayEvents.filter((e) => e.event === 'tour_view')
+    currentViews += todayViewEvents.length
+    const todaySessions = new Set(todayViewEvents.map((e) => e.sessionId))
+    periodSessions += todaySessions.size
+    const todayDurations = todayEvents
       .filter((e) => e.duration && e.duration > 0)
       .map((e) => e.duration!)
-    const totalViewingSeconds = allDurations.reduce((sum, d) => sum + d, 0)
-    const totalViewingHours = Math.floor(totalViewingSeconds / 3600)
-    const totalViewingMinutes = Math.floor((totalViewingSeconds % 3600) / 60)
+    currentViewingSeconds += todayDurations.reduce((sum, d) => sum + d, 0)
 
-    // Sessions in the selected period (not people — see identity rollup below)
-    const periodViewEvents = viewEvents.filter((e) => e.timestamp >= periodStart)
-    const periodSessions = new Set(periodViewEvents.map((e) => e.sessionId)).size
-    const prevSessions = new Set(
-      viewEvents
-        .filter((e) => e.timestamp >= prevPeriodStart && e.timestamp < periodStart)
-        .map((e) => e.sessionId)
-    ).size
-    const totalUniqueVisitors = periodSessions
-
-    const periodEvents = allEvents.filter((e) => e.timestamp >= periodStart)
-    const visitorIds = [
+    const todayVisitorIds = [
       ...new Set(
-        periodEvents
-          .map((e) => e.visitorId)
-          .filter((id): id is Id<'visitors'> => id != null)
+        todayEvents.map((e) => e.visitorId).filter((id): id is Id<'visitors'> => id != null)
       ),
     ]
-    const visitorDocs =
-      visitorIds.length > 0
-        ? await Promise.all(visitorIds.map((id) => ctx.db.get(id)))
+    const todayVisitorDocs =
+      todayVisitorIds.length > 0
+        ? await Promise.all(todayVisitorIds.map((id) => ctx.db.get(id)))
         : []
-    const people = summarizeVisitorDocs(visitorDocs, periodSessions)
-    const liveVisitorIds = visitorDocs
-      .filter((d): d is Doc<'visitors'> => d != null && d.mergedInto === undefined)
-      .map((d) => d._id)
-    const uniqueDevices = await countDistinctDeviceIds(ctx, liveVisitorIds)
+    const todayPeople = summarizeVisitorDocs(todayVisitorDocs, todaySessions.size)
+    if (todayPeople.hasVisitorIds) {
+      hasVisitorIds = true
+      estimatedVisitors += todayPeople.uniqueVisitorsEstimated
+      knownContacts += todayPeople.knownContacts
+      returningVisitors += todayPeople.returningVisitors
+      const todayLiveVisitorIds = todayVisitorDocs
+        .filter((d): d is Doc<'visitors'> => d != null && d.mergedInto === undefined)
+        .map((d) => d._id)
+      uniqueDevices += await countDistinctDeviceIds(ctx, todayLiveVisitorIds)
+    }
 
-    // Avg scene time in the selected period
-    const currentDurations = allEvents
-      .filter((e) => e.duration && e.duration > 0 && e.timestamp >= periodStart)
-      .map((e) => e.duration!)
+    // All-time total comes from the denormalized counter, not a table scan.
+    const totalViews = tours.reduce((sum, t) => sum + t.viewCount, 0)
+    const totalViewingHours = Math.floor(currentViewingSeconds / 3600)
+    const totalViewingMinutes = Math.floor((currentViewingSeconds % 3600) / 60)
+    const totalUniqueVisitors = periodSessions
+
+    const people = {
+      uniqueVisitorsEstimated: estimatedVisitors,
+      knownContacts,
+      returningVisitors,
+      hasVisitorIds,
+    }
+
     const avgSceneTime =
-      currentDurations.length > 0
-        ? Math.round(
-            currentDurations.reduce((sum, d) => sum + d, 0) / currentDurations.length
-          )
-        : 0
-    const currentViewingSeconds = currentDurations.reduce((sum, d) => sum + d, 0)
-    const prevDurations = allEvents
-      .filter(
-        (e) =>
-          e.duration && e.duration > 0 &&
-          e.timestamp >= prevPeriodStart && e.timestamp < periodStart
-      )
-      .map((e) => e.duration!)
-    const prevViewingSeconds = prevDurations.reduce((sum, d) => sum + d, 0)
+      currentViews > 0 ? Math.round(currentViewingSeconds / currentViews) : 0
 
     // Tours created in periods
     const currentTours = tours.filter((t) => t._creationTime >= periodStart).length
@@ -964,7 +1000,7 @@ export const exportCsv = action({
     })
     if (!caller) throw new Error('User not found')
 
-    let events: any[]
+    let events: Doc<'analytics'>[]
     if (args.tourId) {
       const tour = await ctx.runQuery(internal.tours.getTourForOwner, {
         tourId: args.tourId,
@@ -983,10 +1019,10 @@ export const exportCsv = action({
       })
       // Apply date filters client-side for the all-events case
       if (args.startDate) {
-        events = events.filter((e: any) => e.timestamp >= args.startDate!)
+        events = events.filter((e) => e.timestamp >= args.startDate!)
       }
       if (args.endDate) {
-        events = events.filter((e: any) => e.timestamp <= args.endDate!)
+        events = events.filter((e) => e.timestamp <= args.endDate!)
       }
     }
 
@@ -1004,7 +1040,7 @@ export const exportCsv = action({
       'Duration (s)',
       'Timestamp',
     ]
-    const rows = events.map((event: any) => [
+    const rows = events.map((event) => [
       event.tourId,
       event.event,
       event.sessionId,
@@ -1050,24 +1086,41 @@ export const getTourPerformance = query({
 
     const results = []
 
+    // ponytail: same rollup-first approach as getDashboardOverview — see comment there.
+    const todayStr = dateStrUTC(Date.now())
+    const startOfTodayMs = Date.parse(`${todayStr}T00:00:00.000Z`)
+    const periodStartStr = isAll ? '0000-00-00' : dateStrUTC(periodStart)
+
     for (const tour of tours) {
-      const periodEvents = await ctx.db
-        .query('analytics')
-        .withIndex('by_tourId_timestamp', (q) =>
-          q.eq('tourId', tour._id).gte('timestamp', periodStart)
+      const dailyRows = await ctx.db
+        .query('dailyAnalytics')
+        .withIndex('by_tourId_date', (q) =>
+          q.eq('tourId', tour._id).gte('date', periodStartStr).lt('date', todayStr)
         )
         .collect()
 
-      const views = periodEvents.filter((e) => e.event === 'tour_view').length
-      const uniqueSessions = new Set(
-        periodEvents.filter((e) => e.event === 'tour_view').map((e) => e.sessionId)
-      ).size
+      const rollupViews = dailyRows.reduce((sum, r) => sum + r.views, 0)
+      const rollupSessions = dailyRows.reduce((sum, r) => sum + r.uniqueVisitors, 0)
+      const rollupSeconds = dailyRows.reduce((sum, r) => sum + r.avgDuration * r.views, 0)
 
-      const durations = periodEvents.filter((e) => e.duration && e.duration > 0).map((e) => e.duration!)
-      const avgDuration =
-        durations.length > 0
-          ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
-          : 0
+      const todayEvents = await ctx.db
+        .query('analytics')
+        .withIndex('by_tourId_timestamp', (q) =>
+          q.eq('tourId', tour._id).gte('timestamp', startOfTodayMs)
+        )
+        .take(DASHBOARD_EVENT_SCAN_CAP)
+
+      const todayViewEvents = todayEvents.filter((e) => e.event === 'tour_view')
+      const todaySessions = new Set(todayViewEvents.map((e) => e.sessionId))
+      const todayDurations = todayEvents
+        .filter((e) => e.duration && e.duration > 0)
+        .map((e) => e.duration!)
+      const todaySeconds = todayDurations.reduce((sum, d) => sum + d, 0)
+
+      const views = rollupViews + todayViewEvents.length
+      const uniqueSessions = rollupSessions + todaySessions.size
+      const totalSeconds = rollupSeconds + todaySeconds
+      const avgDuration = views > 0 ? Math.round(totalSeconds / views) : 0
 
       const leads = await ctx.db
         .query('leads')
@@ -1135,6 +1188,12 @@ export const trackBatch = mutation({
     const now = Date.now()
     let tourViewEmitted = false
     for (const e of args.events) {
+      const metaVid =
+        e.metadata &&
+        typeof e.metadata === 'object' &&
+        typeof (e.metadata as { visitorId?: unknown }).visitorId === 'string'
+          ? ((e.metadata as { visitorId: string }).visitorId as typeof args.visitorId)
+          : undefined
       await ctx.db.insert('analytics', {
         tourId: args.tourId,
         sessionId: args.sessionId,
@@ -1145,18 +1204,59 @@ export const trackBatch = mutation({
         deviceType: args.deviceType,
         country: args.country,
         city: args.city,
-        visitorId: args.visitorId,
+        visitorId: args.visitorId ?? metaVid,
         variantKey: e.variantKey,
         timeOfDay: e.timeOfDay,
         timestamp: e.timestamp ?? now,
       })
-      if (e.event === 'tour_view') tourViewEmitted = true
-    }
-    if (tourViewEmitted) {
-      const tour = await ctx.db.get(args.tourId)
-      if (tour) {
-        await ctx.db.patch(args.tourId, { viewCount: tour.viewCount + 1 })
+      if (e.event === 'tour_view') {
+        const linked =
+          e.metadata &&
+          typeof e.metadata === 'object' &&
+          (e.metadata as { linked?: boolean }).linked === true
+        if (!linked) tourViewEmitted = true
       }
+    }
+    const visitorId = args.visitorId
+    const tour = await ctx.db.get(args.tourId)
+    if (visitorId) {
+      const visitor = await ctx.db.get(visitorId)
+      if (visitor && visitor.mergedInto === undefined) {
+        const added = args.events.reduce((sum, e) => {
+          if (e.event !== 'section_dwell') return sum
+          return sum + (typeof e.duration === 'number' && e.duration > 0 ? e.duration : 0)
+        }, 0)
+        const mm = args.events
+          .map((e) => {
+            const m = e.metadata as Record<string, unknown> | undefined
+            return typeof m?.mm === 'string' ? m.mm : undefined
+          })
+          .find(Boolean)
+        const intentAddr =
+          !mm && !visitor.micromarket && tour?.address?.trim()
+            ? tour.address.trim()
+            : undefined
+        await ctx.db.patch(visitorId, {
+          lastSeenAt: now,
+          lastTourId: args.tourId,
+          totalSecondsViewed: visitor.totalSecondsViewed + added,
+          ...(args.city && !visitor.city ? { city: args.city } : {}),
+          ...(args.country && !visitor.countryCode
+            ? { countryCode: args.country }
+            : {}),
+          ...(mm
+            ? { micromarket: mm, micromarketSource: 'qr_campaign' as const }
+            : intentAddr
+              ? {
+                  micromarket: intentAddr,
+                  micromarketSource: 'tour_intent' as const,
+                }
+              : {}),
+        })
+      }
+    }
+    if (tourViewEmitted && tour) {
+      await ctx.db.patch(args.tourId, { viewCount: tour.viewCount + 1 })
     }
   },
 })
@@ -1276,7 +1376,13 @@ export const getSessionsByTour = query({
 })
 
 export const getYawHeatmap = query({
-  args: { sceneId: v.id('scenes') },
+  args: {
+    sceneId: v.id('scenes'),
+    visitorId: v.optional(v.id('visitors')),
+    sessionId: v.optional(v.string()),
+    startTs: v.optional(v.number()),
+    endTs: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return null
@@ -1295,15 +1401,32 @@ export const getYawHeatmap = query({
       .withIndex('by_tourId', (q) => q.eq('tourId', scene.tourId))
       .collect()
 
-    const YAW_BINS = 36 // 10° each over 360°
-    const PITCH_BINS = 9 // 20° each over ±90° => 180°
+    const YAW_BINS = 36
+    const PITCH_BINS = 9
     const grid: number[][] = Array.from({ length: PITCH_BINS }, () =>
       Array.from({ length: YAW_BINS }, () => 0)
     )
     let total = 0
+    let peakCount = 0
+    let peakYaw = 0
+    let peakPitch = 0
+    let yawFrom = 360
+    let yawTo = 0
+    let pitchFrom = 90
+    let pitchTo = -90
+
+    const startTs = args.startTs ?? 0
+    const endTs = args.endTs ?? Number.POSITIVE_INFINITY
+
     for (const e of events) {
       if (e.event !== 'view_direction') continue
       if (e.sceneId !== args.sceneId) continue
+      if (args.sessionId) {
+        if (e.sessionId !== args.sessionId) continue
+      } else if (args.visitorId && e.visitorId !== args.visitorId) {
+        continue
+      }
+      if (e.timestamp < startTs || e.timestamp > endTs) continue
       const m = e.metadata as { yaw?: number; pitch?: number } | undefined
       if (!m || typeof m.yaw !== 'number' || typeof m.pitch !== 'number') continue
       const yawNorm = ((m.yaw % 360) + 360) % 360
@@ -1315,8 +1438,56 @@ export const getYawHeatmap = query({
       )
       grid[pitchBin][yawBin] += 1
       total += 1
+      yawFrom = Math.min(yawFrom, yawNorm)
+      yawTo = Math.max(yawTo, yawNorm)
+      pitchFrom = Math.min(pitchFrom, pitchNorm)
+      pitchTo = Math.max(pitchTo, pitchNorm)
+      if (grid[pitchBin][yawBin] > peakCount) {
+        peakCount = grid[pitchBin][yawBin]
+        peakYaw = yawBin * 10 + 5
+        peakPitch = Math.round(-90 + (pitchBin + 0.5) * 20)
+      }
     }
-    return { grid, total, yawBins: YAW_BINS, pitchBins: PITCH_BINS }
+
+    const yawRanges: { from: number; to: number }[] = []
+    let yawRun: number | null = null
+    for (let y = 0; y <= YAW_BINS; y++) {
+      const used =
+        y < YAW_BINS && grid.some((row) => (row[y] ?? 0) > 0)
+      if (used && yawRun == null) yawRun = y
+      if (!used && yawRun != null) {
+        yawRanges.push({ from: yawRun * 10, to: y * 10 })
+        yawRun = null
+      }
+    }
+    const pitchRanges: { from: number; to: number }[] = []
+    let pitchRun: number | null = null
+    for (let p = 0; p <= PITCH_BINS; p++) {
+      const used = p < PITCH_BINS && (grid[p]?.some((v) => v > 0) ?? false)
+      if (used && pitchRun == null) pitchRun = p
+      if (!used && pitchRun != null) {
+        pitchRanges.push({
+          from: -90 + pitchRun * 20,
+          to: -90 + p * 20,
+        })
+        pitchRun = null
+      }
+    }
+
+    return {
+      grid,
+      total,
+      yawBins: YAW_BINS,
+      pitchBins: PITCH_BINS,
+      peakYaw: total > 0 ? peakYaw : null,
+      peakPitch: total > 0 ? peakPitch : null,
+      yawFrom: total > 0 ? Math.round(yawFrom) : null,
+      yawTo: total > 0 ? Math.round(yawTo) : null,
+      pitchFrom: total > 0 ? Math.round(pitchFrom) : null,
+      pitchTo: total > 0 ? Math.round(pitchTo) : null,
+      yawRanges,
+      pitchRanges,
+    }
   },
 })
 

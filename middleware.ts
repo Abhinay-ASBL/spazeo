@@ -1,6 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
 
 const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 const isClerkConfigured = clerkKey && clerkKey.startsWith('pk_')
@@ -25,7 +24,7 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
 })
 
 // When Clerk is NOT configured (placeholder keys), allow all routes through
-function passthroughHandler(req: NextRequest) {
+function passthroughHandler() {
   return NextResponse.next()
 }
 

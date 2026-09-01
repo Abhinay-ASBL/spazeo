@@ -1,7 +1,18 @@
 import { v } from 'convex/values'
-import { query, mutation, action, internalQuery, internalMutation } from './_generated/server'
+import {
+  query,
+  mutation,
+  action,
+  internalQuery,
+  internalMutation,
+  type QueryCtx,
+  type MutationCtx,
+} from './_generated/server'
 import { internal } from './_generated/api'
 import { Id } from './_generated/dataModel'
+
+// spazeo.io DNS isn't live yet — fall back to the actual deployed URL so links aren't dead.
+const SITE_URL = process.env.SITE_URL ?? 'https://spazeo.vercel.app'
 
 const TOUR_LIMITS: Record<string, number> = {
   free: 3,
@@ -11,13 +22,13 @@ const TOUR_LIMITS: Record<string, number> = {
   enterprise: -1,
 }
 
-async function getAuthUser(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> }; db: any }) {
+async function getAuthUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
 
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   if (!user) throw new Error('User not found')
   return user
@@ -374,9 +385,11 @@ export const update = mutation({
         gateBehavior: v.union(
           v.literal('before_tour'),
           v.literal('after_delay'),
+          v.literal('after_scenes'),
           v.literal('optional_sidebar')
         ),
         delaySeconds: v.optional(v.number()),
+        afterScenes: v.optional(v.number()),
       })
     ),
     brandingConfig: v.optional(
@@ -441,7 +454,7 @@ export const publish = mutation({
       throw new Error('Cannot publish a tour without scenes')
     }
 
-    const tourUrl = `https://spazeo.io/tour/${tour.slug}`
+    const tourUrl = `${SITE_URL}/tour/${tour.slug}`
     const embedCode = `<iframe src="${tourUrl}?embed=true" width="100%" height="600" frameborder="0" allowfullscreen allow="xr-spatial-tracking; gyroscope; accelerometer"></iframe>`
 
     await ctx.db.patch(args.tourId, {
@@ -560,12 +573,17 @@ export const bulkDelete = mutation({
         await ctx.db.delete(lead._id)
       }
 
-      const analytics = await ctx.db
-        .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
-        .collect()
-      for (const event of analytics) {
-        await ctx.db.delete(event._id)
+      // Delete analytics in bounded batches to avoid pulling an unbounded
+      // number of rows into memory at once.
+      while (true) {
+        const analyticsBatch = await ctx.db
+          .query('analytics')
+          .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
+          .take(1000)
+        for (const event of analyticsBatch) {
+          await ctx.db.delete(event._id)
+        }
+        if (analyticsBatch.length < 1000) break
       }
 
       await ctx.db.delete(tourId)
@@ -1050,6 +1068,9 @@ export const createFromFloorPlan = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
+    const floorPlan = await ctx.db.get(args.floorPlanId)
+    if (!floorPlan || floorPlan.userId !== user._id) throw new Error('Not authorized')
+
     const base = args.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -1179,6 +1200,23 @@ export const setTourPassword = action({
         tourId, passwordHash: undefined,
       })
     }
+  },
+})
+
+// Public action: verifies a visitor-supplied password against the stored
+// bcrypt hash for a password-protected tour. The actual bcrypt compare runs
+// in the internalAction (passwordUtils.verifyTourPassword) so the hash is
+// never exposed to the client.
+export const verifyPassword = action({
+  args: {
+    slug: v.string(),
+    password: v.string(),
+  },
+  handler: async (ctx, { slug, password }): Promise<boolean> => {
+    return ctx.runAction(internal.passwordUtils.verifyTourPassword, {
+      slug,
+      password,
+    })
   },
 })
 

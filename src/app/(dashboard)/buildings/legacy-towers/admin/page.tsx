@@ -498,11 +498,15 @@ function HeroMarkerPicker({
   const previewRef = useRef(preview)
   const dragRef = useRef<{ id: string } | null>(null)
   const drawRef = useRef<DrawState | null>(null)
-  modeRef.current = mode
-  selectedIdRef.current = selectedId
-  onMoveRef.current = onMove
-  onAreaRef.current = onArea
-  previewRef.current = preview
+  // Synced after commit — writing refs during render isn't allowed, and the
+  // native listeners below only read them from user events (post-commit).
+  useEffect(() => {
+    modeRef.current = mode
+    selectedIdRef.current = selectedId
+    onMoveRef.current = onMove
+    onAreaRef.current = onArea
+    previewRef.current = preview
+  })
 
   // Use native DOM listeners — bypasses React synthetic event system entirely.
   // mousemove/mouseup go on window so drag/draw keep working outside the container.
@@ -1166,7 +1170,11 @@ function PanoramasTab({ cfg }: { cfg: LegacyCfg }) {
   const existing = useMemo(() => {
     const m = new Map<string, LegacyCfg['panoramas'][number]>()
     for (const p of cfg.panoramas) {
-      m.set(`${p.towerId}|${p.cornerId}|${p.heightM}`, p)
+      const tod = p.timeOfDay ?? 'afternoon'
+      m.set(`${p.towerId}|${p.cornerId}|${p.heightM}|${tod}`, p)
+      // Grid still shows one cell per unit×floor — prefer afternoon for the slot key
+      const slot = `${p.towerId}|${p.cornerId}|${p.heightM}`
+      if (tod === 'afternoon' || !m.has(slot)) m.set(slot, p)
     }
     return m
   }, [cfg.panoramas])
@@ -1204,6 +1212,7 @@ function PanoramasTab({ cfg }: { cfg: LegacyCfg }) {
           storageId: json.storageId,
           unitId,
           vertexIndex: 0,
+          timeOfDay: 'afternoon',
         },
       })
       return true
@@ -1222,6 +1231,7 @@ function PanoramasTab({ cfg }: { cfg: LegacyCfg }) {
       towerId,
       cornerId: cornerKey(unitId),
       heightM,
+      timeOfDay: 'afternoon',
     })
   }
 
@@ -1231,7 +1241,7 @@ function PanoramasTab({ cfg }: { cfg: LegacyCfg }) {
         <div>
           <SectionHeader title="Panoramas" />
           <p className="mt-1 text-sm text-[#A8A29E]">
-            One 360° image per unit per floor section. Click a cell to upload or replace.
+            One 360° image per unit per floor section (afternoon default). Night/morning variants share the same slot key with timeOfDay and no longer overwrite each other.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">

@@ -1,10 +1,24 @@
 import { httpRouter } from 'convex/server'
 import { httpAction } from './_generated/server'
+import type { Id } from './_generated/dataModel'
 import { internal, api } from './_generated/api'
 import Stripe from 'stripe'
 import { Webhook } from 'svix'
 
 const http = httpRouter()
+
+/** Subset of the Clerk webhook payload this handler reads. */
+type ClerkWebhookEvent = {
+  type: string
+  data: {
+    id: string
+    email_addresses?: { email_address?: string }[]
+    first_name?: string | null
+    last_name?: string | null
+    image_url?: string | null
+    user_id?: string
+  }
+}
 
 // --- CORS helpers ---
 
@@ -80,7 +94,6 @@ http.route({
       switch (event.type) {
         case 'checkout.session.completed': {
           const session = event.data.object as Stripe.Checkout.Session
-          const clerkId = session.metadata?.clerkId
           const convexUserId = session.metadata?.convexUserId
           const plan = session.metadata?.plan as 'starter' | 'professional' | 'business' | 'enterprise' | undefined
 
@@ -103,7 +116,7 @@ http.route({
 
           // Create/update subscription record
           await ctx.runMutation(internal.subscriptions.upsertFromStripe, {
-            userId: convexUserId as any,
+            userId: convexUserId as Id<'users'>,
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscriptionId ?? undefined,
             plan,
@@ -112,7 +125,7 @@ http.route({
 
           // Update user plan
           await ctx.runMutation(internal.subscriptions.syncPlanToUser, {
-            userId: convexUserId as any,
+            userId: convexUserId as Id<'users'>,
             plan,
           })
 
@@ -293,13 +306,13 @@ http.route({
     }
 
     const payload = await request.text()
-    let body: any
+    let body: ClerkWebhookEvent
     try {
       body = new Webhook(webhookSecret).verify(payload, {
         'svix-id': svixId,
         'svix-timestamp': svixTimestamp,
         'svix-signature': svixSignature,
-      })
+      }) as ClerkWebhookEvent
     } catch (err) {
       console.error('Clerk webhook signature verification failed:', err)
       return new Response('Invalid signature', { status: 400 })

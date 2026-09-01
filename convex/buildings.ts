@@ -1,19 +1,25 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation } from './_generated/server'
+import {
+  query,
+  mutation,
+  internalMutation,
+  type QueryCtx,
+  type MutationCtx,
+} from './_generated/server'
 import { internal } from './_generated/api'
+
+// spazeo.io DNS isn't live yet — fall back to the actual deployed URL so links aren't dead.
+const SITE_URL = process.env.SITE_URL ?? 'https://spazeo.vercel.app'
 import { requireAdminKey } from './authHelpers'
 
 // Helper to get the authenticated user
-async function getAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> }
-  db: any
-}) {
+async function getAuthUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
 
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   if (!user) throw new Error('User not found')
   return user
@@ -429,7 +435,7 @@ export const publish = mutation({
       )
     }
 
-    const embedCode = `<iframe src="https://spazeo.io/building/${building.slug}?embed=true" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`
+    const embedCode = `<iframe src="${SITE_URL}/building/${building.slug}?embed=true" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`
 
     await ctx.db.patch(args.buildingId, {
       status: 'published',

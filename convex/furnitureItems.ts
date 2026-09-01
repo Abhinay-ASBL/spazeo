@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { query, mutation, action } from './_generated/server'
 import { api } from './_generated/api'
+import type { Id } from './_generated/dataModel'
 import { requireAdmin } from './authHelpers'
 
 export const list = query({
@@ -350,7 +351,7 @@ export const uploadTestGlbs = action({
 
       // Assign to the item
       await ctx.runMutation(api.furnitureItems.setGlbStorageId, {
-        itemId: itemsWithoutGlb[i]._id as any,
+        itemId: itemsWithoutGlb[i]._id as Id<'furnitureItems'>,
         glbStorageId: storageId,
       })
 

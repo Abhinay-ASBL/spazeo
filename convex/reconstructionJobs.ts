@@ -1,5 +1,13 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation, internalQuery } from './_generated/server'
+import {
+  query,
+  mutation,
+  internalMutation,
+  internalQuery,
+  type QueryCtx,
+  type MutationCtx,
+} from './_generated/server'
+import type { Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 
 /** Monthly reconstruction limits per plan tier */
@@ -12,16 +20,13 @@ const RECONSTRUCTION_LIMITS: Record<string, number> = {
 }
 
 // Helper to get the authenticated user
-async function getAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> }
-  db: any
-}) {
+async function getAuthUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
 
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   if (!user) throw new Error('User not found')
   return user
@@ -31,20 +36,20 @@ async function getAuthUser(ctx: {
  * Count non-failed, non-cancelled reconstruction jobs for a user in the current calendar month.
  */
 async function countMonthlyJobs(
-  db: any,
-  userId: string
+  db: QueryCtx['db'],
+  userId: Id<'users'>
 ): Promise<number> {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
 
   const jobs = await db
     .query('reconstructionJobs')
-    .withIndex('by_userId', (q: any) =>
+    .withIndex('by_userId', (q) =>
       q.eq('userId', userId).gte('_creationTime', startOfMonth)
     )
     .collect()
 
-  return jobs.filter((j: any) => j.status !== 'failed' && j.status !== 'cancelled').length
+  return jobs.filter((j) => j.status !== 'failed' && j.status !== 'cancelled').length
 }
 
 // --- Internal Queries ---
@@ -381,8 +386,10 @@ export const getByUserId = query({
 export const getSplatUrl = query({
   args: { jobId: v.id('reconstructionJobs') },
   handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx)
     const job = await ctx.db.get(args.jobId)
-    if (!job || !job.outputStorageId) return null
+    if (!job || job.userId !== user._id) throw new Error('Not authorized')
+    if (!job.outputStorageId) return null
     const url = await ctx.storage.getUrl(job.outputStorageId)
     return url
   },

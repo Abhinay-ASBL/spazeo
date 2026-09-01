@@ -186,9 +186,12 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const currentUser = useQuery(api.users.getCurrent)
 
-  useEffect(() => {
+  // Close the mobile drawer on navigation — adjusted during render, not in an effect.
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
     setMobileOpen(false)
-  }, [pathname])
+  }
 
   useEffect(() => {
     if (mobileOpen) {
