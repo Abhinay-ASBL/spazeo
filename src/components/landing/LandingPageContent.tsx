@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Globe, Cpu, Link2, BarChart2, Smartphone, Shield,
-  ChevronDown, ChevronUp, Star, Zap, Home, Hotel,
+  ChevronDown, ChevronUp, Zap, Home, Hotel,
   PenTool, ShoppingBag, Check, Play,
 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
@@ -202,31 +202,6 @@ function Hero() {
   );
 }
 
-// ─── TRUSTED BY ───────────────────────────────────────────────────────────────
-const COMPANIES = ["Compass", "Sotheby's", "RE/MAX", "Zillow", "Coldwell Banker", "Century 21", "Keller Williams"];
-
-function TrustedBy() {
-  return (
-    <section
-      style={{
-        background: surface,
-        borderTop: `1px solid ${border}`,
-        borderBottom: `1px solid ${border}`,
-        padding: "28px 48px",
-      }}
-    >
-      <p style={{ textAlign: "center", color: txtMut, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 20 }}>
-        Trusted by Leading Real Estate Companies
-      </p>
-      <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 40 }}>
-        {COMPANIES.map((c) => (
-          <span key={c} style={{ color: txtMut, fontSize: 13, fontWeight: 600 }}>{c}</span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 // ─── HOW IT WORKS ─────────────────────────────────────────────────────────────
 const STEPS = [
   { num: "1", title: "Upload",          desc: "Drop any 360° panorama or standard photo. Our AI handles the rest." },
@@ -333,7 +308,7 @@ const FEATURE_CARDS = [
   { icon: <Link2 size={20} />,      bg: `${coral}18`, color: coral, title: "One-Link Sharing",      desc: "Share tours instantly via link, embed on websites, or add to MLS listings." },
   { icon: <BarChart2 size={20} />,  bg: `${teal}18`,  color: teal,  title: "Analytics Dashboard",  desc: "Track views, engagement time, hotspot clicks, and visitor behavior in real time." },
   { icon: <Smartphone size={20} />, bg: `${gold}18`,  color: gold,  title: "Works on Any Device",  desc: "Responsive tours that look stunning on desktop, tablet, mobile, and VR headsets." },
-  { icon: <Shield size={20} />,     bg: `${coral}18`, color: coral, title: "Enterprise Security",   desc: "SOC 2 compliant with SSO, role-based access, password-protected tours, and audit logs." },
+  { icon: <Shield size={20} />,     bg: `${coral}18`, color: coral, title: "Enterprise Security",   desc: "SSO, role-based access, password-protected tours, and audit logs." },
 ];
 
 function FeaturesGrid() {
@@ -450,55 +425,6 @@ function UseCases() {
   );
 }
 
-// ─── SOCIAL PROOF ─────────────────────────────────────────────────────────────
-const STATS = [
-  { value: "50K+", label: "Tours Created",          color: gold },
-  { value: "12M+", label: "Virtual Walkthroughs",   color: teal },
-  { value: "98%",  label: "Customer Satisfaction",  color: coral },
-  { value: "3.2x", label: "Faster Than Competitors",color: txtPri },
-];
-
-const TESTIMONIALS = [
-  { quote: "Spazeo cut our listing time in half. Buyers can walk through properties before scheduling a visit — it's a game changer.", name: "Sarah Mitchell",  role: "Lead Agent, Compass Real Estate" },
-  { quote: "The AI staging feature alone is worth it. We furnished 40 empty units virtually and lease-up accelerated by 3 weeks.",    name: "James Rodriguez", role: "VP of Marketing, Greystar" },
-  { quote: "We replaced our old Matterport workflow with Spazeo. Faster, cheaper, and the quality blew our clients away.",             name: "Emily Chen",      role: "Founder, LuxeView Properties" },
-];
-
-function SocialProof() {
-  return (
-    <section style={{ background: surface, padding: "96px 120px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 24, maxWidth: 960, margin: "0 auto 80px", textAlign: "center" }}>
-        {STATS.map((s) => (
-          <div key={s.label}>
-            <div style={{ fontFamily: "Plus Jakarta Sans, sans-serif", fontSize: 48, fontWeight: 900, color: s.color, lineHeight: 1.1, marginBottom: 6 }}>{s.value}</div>
-            <div style={{ color: txtSec, fontSize: 16 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-      <h2 style={{ fontFamily: "Plus Jakarta Sans, sans-serif", fontSize: 36, fontWeight: 700, color: txtPri, textAlign: "center", marginBottom: 12 }}>
-        Loved by Real Estate Professionals
-      </h2>
-      <p style={{ textAlign: "center", color: txtSec, fontSize: 16, marginBottom: 48 }}>
-        See what our customers say about transforming their business with Spazeo.
-      </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, maxWidth: 960, margin: "0 auto" }}>
-        {TESTIMONIALS.map((t) => (
-          <div key={t.name} style={{ background: elevated, border: `1px solid ${border}`, borderRadius: 20, padding: 24 }}>
-            <div style={{ display: "flex", gap: 2, marginBottom: 16 }}>
-              {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={13} fill={gold} color={gold} />)}
-            </div>
-            <p style={{ color: txtPri, fontSize: 15, lineHeight: 1.65, marginBottom: 24 }}>"{t.quote}"</p>
-            <div>
-              <p style={{ color: txtPri, fontSize: 14, fontWeight: 600 }}>{t.name}</p>
-              <p style={{ color: txtMut, fontSize: 13 }}>{t.role}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 // ─── PRICING ──────────────────────────────────────────────────────────────────
 const PLANS = [
   {
@@ -523,7 +449,7 @@ const PLANS = [
     ctaLabel: "Contact Sales", ctaHref: "/contact",
     ctaColor: teal, ctaBg: "transparent", ctaBorder: `1px solid ${teal}40`,
     checkColor: teal,
-    features: ["Everything in Pro", "SSO & role-based access", "SOC 2 compliance", "Dedicated account manager", "White-label option", "SLA & 24/7 support"],
+    features: ["Everything in Pro", "SSO & role-based access", "Dedicated account manager", "White-label option", "SLA & 24/7 support"],
   },
 ];
 
@@ -535,7 +461,7 @@ function Pricing() {
         Simple, Transparent Pricing
       </h2>
       <p style={{ textAlign: "center", color: txtSec, fontSize: 16, marginBottom: 56 }}>
-        Start free. Upgrade when you're ready. No hidden fees, ever.
+        Start free. Upgrade when you&apos;re ready. No hidden fees, ever.
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 20, maxWidth: 960, margin: "0 auto", alignItems: "start" }}>
         {PLANS.map((p) => (
@@ -679,13 +605,11 @@ export function LandingPageContent() {
     <div style={{ background: base, fontFamily: "DM Sans, sans-serif" }}>
       <Navbar />
       <Hero />
-      <TrustedBy />
       <HowItWorks />
       <CoreFeatures />
       <FeaturesGrid />
       <ProductShowcase />
       <UseCases />
-      <SocialProof />
       <Pricing />
       <FAQ />
       <FinalCTA />

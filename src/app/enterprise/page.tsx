@@ -8,8 +8,6 @@ import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import {
   ArrowRight,
-  Shield,
-  Lock,
   Key,
   Users,
   Headphones,
@@ -17,7 +15,6 @@ import {
   Globe,
   Server,
   FileCheck,
-  Building2,
   Sparkles,
   Clock,
 } from 'lucide-react'
@@ -58,40 +55,9 @@ const ENTERPRISE_FEATURES = [
 
 const SECURITY_ITEMS = [
   {
-    icon: Shield,
-    title: 'SOC 2 Type II',
-    description: 'Independently audited security controls and processes.',
-  },
-  {
-    icon: Lock,
-    title: 'GDPR Compliant',
-    description: 'Full compliance with EU data protection regulations and data residency options.',
-  },
-  {
     icon: Key,
     title: 'Encryption',
-    description: 'AES-256 encryption at rest. TLS 1.3 in transit. Zero-knowledge architecture.',
-  },
-]
-
-const CASE_STUDIES = [
-  {
-    company: 'National Real Estate Group',
-    industry: 'Real Estate',
-    stat: '2,400+ tours created',
-    quote: 'Spazeo transformed how we present properties to remote buyers. Our engagement rates tripled.',
-  },
-  {
-    company: 'Global Hospitality Chain',
-    industry: 'Hospitality',
-    stat: '85% faster turnaround',
-    quote: 'AI staging saves our team 40+ hours per week across all our hotel properties.',
-  },
-  {
-    company: 'Commercial Property Firm',
-    industry: 'Commercial',
-    stat: '3x more qualified leads',
-    quote: 'The lead capture and analytics features gave us insights we never had before.',
+    description: 'AES-256 encryption at rest. TLS 1.3 in transit.',
   },
 ]
 
@@ -324,84 +290,6 @@ export default function EnterprisePage() {
         </div>
       </section>
 
-      {/* Case Studies */}
-      <section className="py-20 px-6">
-        <div className="max-w-5xl mx-auto">
-          <h2
-            className="text-center font-bold mb-12"
-            style={{
-              fontSize: 'clamp(28px, 4vw, 40px)',
-              fontFamily: 'var(--font-jakarta)',
-              color: '#F5F3EF',
-              letterSpacing: '-1px',
-            }}
-          >
-            Trusted by Industry Leaders
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {CASE_STUDIES.map((study) => (
-              <div
-                key={study.company}
-                className="rounded-2xl p-8 flex flex-col"
-                style={{
-                  backgroundColor: '#12100E',
-                  border: '1px solid rgba(212,160,23,0.08)',
-                }}
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: 'rgba(212,160,23,0.08)' }}
-                  >
-                    <Building2 size={18} style={{ color: '#D4A017' }} />
-                  </div>
-                  <div>
-                    <p
-                      className="text-sm font-bold"
-                      style={{
-                        color: '#F5F3EF',
-                        fontFamily: 'var(--font-jakarta)',
-                      }}
-                    >
-                      {study.company}
-                    </p>
-                    <p
-                      className="text-xs"
-                      style={{
-                        color: '#6B6560',
-                        fontFamily: 'var(--font-dmsans)',
-                      }}
-                    >
-                      {study.industry}
-                    </p>
-                  </div>
-                </div>
-
-                <p
-                  className="text-2xl font-black mb-3"
-                  style={{
-                    color: '#D4A017',
-                    fontFamily: 'var(--font-jakarta)',
-                  }}
-                >
-                  {study.stat}
-                </p>
-
-                <p
-                  className="text-sm leading-relaxed flex-1"
-                  style={{
-                    color: '#A8A29E',
-                    fontFamily: 'var(--font-dmsans)',
-                  }}
-                >
-                  &ldquo;{study.quote}&rdquo;
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* Contact Sales Form */}
       <section id="contact" className="py-20 px-6" style={{ backgroundColor: '#12100E' }}>

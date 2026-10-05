@@ -299,7 +299,7 @@ export default function SignInPage() {
   return (
     <AuthErrorBoundary>
     <div className="flex min-h-screen" style={{ backgroundColor: '#0A0908' }}>
-      {/* ── Left Panel — Background Image + Testimonial ── */}
+      {/* ── Left Panel — Background Image ── */}
       <div className="hidden lg:flex relative w-1/2 flex-shrink-0 overflow-hidden">
         <Image
           src="/images/login-bg.png"
@@ -331,55 +331,6 @@ export default function SignInPage() {
           </Link>
         </div>
 
-        {/* Bottom — Testimonial */}
-        <div className="absolute bottom-0 left-0 right-0 p-10 pb-14 z-10">
-          <div
-            className="p-6 rounded-2xl"
-            style={{
-              backgroundColor: 'rgba(18,16,14,0.6)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(212,160,23,0.08)',
-            }}
-          >
-            <p
-              className="text-[18px] font-medium leading-relaxed"
-              style={{
-                fontFamily: 'var(--font-display)',
-                color: '#F5F3EF',
-              }}
-            >
-              &ldquo;Spazeo transformed how we showcase properties. Our clients can walk
-              through spaces before they even visit.&rdquo;
-            </p>
-
-            <div className="flex items-center gap-3 mt-5">
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{
-                  backgroundColor: 'rgba(212,160,23,0.13)',
-                  color: '#D4A017',
-                  fontFamily: 'var(--font-display)',
-                }}
-              >
-                SM
-              </div>
-              <div>
-                <p
-                  className="text-sm font-semibold"
-                  style={{ color: '#F5F3EF', fontFamily: 'var(--font-dmsans)' }}
-                >
-                  Sarah Mitchell
-                </p>
-                <p
-                  className="text-xs"
-                  style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
-                >
-                  Lead Agent, Prestige Realty
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ── Right Panel — Login Form ── */}
