@@ -44,6 +44,9 @@ export function ExtractionProgress({
   // State, not a ref: render reads it to decide the timeout view. The ref keeps
   // the effects one-shot without waiting for the state update to land.
   const hasCompletedRef = useRef(false)
+  // Job id we already reported a failure for — the reactive query re-emits
+  // the same failed job on unrelated updates, so fire onError once per job.
+  const reportedFailedJobRef = useRef<string | null>(null)
   const [hasCompleted, setHasCompleted] = useState(false)
   // Two-minute stall guard, armed on mount (the clock can't be read during render).
   const [mountTimeoutElapsed, setMountTimeoutElapsed] = useState(false)
@@ -77,7 +80,8 @@ export function ExtractionProgress({
       onComplete(geometry)
     }
 
-    if (job.status === 'failed') {
+    if (job.status === 'failed' && reportedFailedJobRef.current !== job._id) {
+      reportedFailedJobRef.current = job._id
       onError()
     }
   }, [job, onComplete, onError])

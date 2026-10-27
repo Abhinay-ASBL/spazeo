@@ -170,6 +170,14 @@ http.route({
             if (starterPrices.includes(priceId)) plan = 'starter'
             else if (professionalPrices.includes(priceId)) plan = 'professional'
             else if (businessPrices.includes(priceId)) plan = 'business'
+            else {
+              // Unknown price (e.g. custom enterprise deal, unset env var):
+              // keep the current plan instead of silently downgrading to free.
+              const existingSub = await ctx.runQuery(internal.subscriptions.getByUserId, {
+                userId: user._id,
+              })
+              plan = existingSub?.plan ?? user.plan
+            }
           }
 
           const status = mapStripeStatus(subscription.status)
@@ -275,6 +283,7 @@ function mapStripeStatus(
     case 'canceled':
       return 'canceled'
     case 'past_due':
+    case 'unpaid':
       return 'past_due'
     case 'trialing':
       return 'trialing'

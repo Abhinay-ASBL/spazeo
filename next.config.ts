@@ -20,9 +20,9 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://clerk.spazeo.io https://*.clerk.accounts.dev https://challenges.cloudflare.com https://js.stripe.com https://us.i.posthog.com https://sparkjs.dev https://unpkg.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://*.convex.cloud http://127.0.0.1:3210 http://localhost:* http://15.207.169.155 https://convexasbl.duckdns.org https://img.clerk.com https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://picsum.photos https://images.unsplash.com",
+      "img-src 'self' data: blob: https://*.convex.cloud http://127.0.0.1:3210 http://localhost:* http://15.207.169.155 https://convexasbl.duckdns.org https://img.clerk.com https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://picsum.photos https://images.unsplash.com https://tiles.openfreemap.org https://server.arcgisonline.com",
       "font-src 'self' https://fonts.gstatic.com",
-      "connect-src 'self' data: blob: https://*.convex.cloud wss://*.convex.cloud ws://127.0.0.1:3210 ws://localhost:* http://127.0.0.1:3210 http://localhost:* ws://15.207.169.155 http://15.207.169.155 https://convexasbl.duckdns.org wss://convexasbl.duckdns.org https://clerk.spazeo.io https://*.clerk.accounts.dev https://clerk-telemetry.com https://api.stripe.com https://us.i.posthog.com https://sparkjs.dev https://sparkjsdev.github.io https://unpkg.com",
+      "connect-src 'self' data: blob: https://*.convex.cloud wss://*.convex.cloud ws://127.0.0.1:3210 ws://localhost:* http://127.0.0.1:3210 http://localhost:* ws://15.207.169.155 http://15.207.169.155 https://convexasbl.duckdns.org wss://convexasbl.duckdns.org https://clerk.spazeo.io https://*.clerk.accounts.dev https://clerk-telemetry.com https://api.stripe.com https://us.i.posthog.com https://sparkjs.dev https://sparkjsdev.github.io https://unpkg.com https://tiles.openfreemap.org https://server.arcgisonline.com",
       "frame-src https://challenges.cloudflare.com https://js.stripe.com https://*.clerk.accounts.dev https://www.youtube.com https://youtube.com https://player.vimeo.com",
       "worker-src 'self' blob: https://unpkg.com",
       "object-src 'none'",
@@ -45,6 +45,16 @@ const nextConfig: NextConfig = {
       {
         source: '/(.*)',
         headers: securityHeaders,
+      },
+    ]
+  },
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'spazeo.vercel.app' }],
+        destination: 'https://spazeo.io/:path*',
+        permanent: false,
       },
     ]
   },

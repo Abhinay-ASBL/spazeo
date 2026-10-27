@@ -94,7 +94,9 @@ export function FurniturePiece({
         scale={item.scale}
         onClick={handleClick}
       >
-        <Clone object={scene} />
+        {/* Own material copies: the selection glow below mutates materials, which
+            would otherwise light up every instance of the same cached GLB. */}
+        <Clone object={scene} deep="materialsOnly" />
       </group>
 
       {selected && group && (

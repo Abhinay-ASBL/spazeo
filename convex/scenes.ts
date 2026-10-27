@@ -9,12 +9,87 @@ import type { Id } from './_generated/dataModel'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const internal = _internal as any
 
+/**
+ * Deletes a scene image/thumbnail file unless another scene still uses it
+ * (tours.duplicate copies storage ids instead of files).
+ */
+export async function deleteSceneFileIfUnused(
+  ctx: MutationCtx,
+  storageId: Id<'_storage'>,
+  sceneId: Id<'scenes'>
+) {
+  const byImage = await ctx.db
+    .query('scenes')
+    .withIndex('by_imageStorageId', (q) => q.eq('imageStorageId', storageId))
+    .take(2)
+  const byThumb = await ctx.db
+    .query('scenes')
+    .withIndex('by_thumbnailStorageId', (q) => q.eq('thumbnailStorageId', storageId))
+    .take(2)
+  if ([...byImage, ...byThumb].some((s) => s._id !== sceneId)) return
+  await ctx.storage.delete(storageId)
+}
+
 const SCENE_LIMITS: Record<string, number> = {
   free: 10,
   starter: 25,
   professional: 50,
   business: -1, // unlimited
   enterprise: -1,
+}
+
+const timeOfDayValidator = v.union(
+  v.literal('morning'),
+  v.literal('afternoon'),
+  v.literal('evening'),
+  v.literal('sunset'),
+  v.literal('night')
+)
+
+const variantTypeValidator = v.union(
+  v.literal('default'),
+  v.literal('timeOfDay'),
+  v.literal('staged'),
+  v.literal('seasonal')
+)
+
+/** Option A: scenes without variantKey count as their own _id. */
+function variantIdentity(scene: { _id: Id<'scenes'>; variantKey?: string }) {
+  return scene.variantKey ?? (scene._id as string)
+}
+
+function countDistinctVariantKeys(
+  scenes: Array<{ _id: Id<'scenes'>; variantKey?: string }>
+) {
+  return new Set(scenes.map(variantIdentity)).size
+}
+
+/** Group scenes by variantKey (or _id when missing). */
+export function groupScenesByVariantKey<
+  T extends { _id: Id<'scenes'>; variantKey?: string },
+>(scenes: T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>()
+  for (const scene of scenes) {
+    const key = variantIdentity(scene)
+    const list = groups.get(key)
+    if (list) list.push(scene)
+    else groups.set(key, [scene])
+  }
+  return groups
+}
+
+async function refreshTourSceneCounts(
+  ctx: MutationCtx,
+  tourId: Id<'tours'>
+) {
+  const scenes = await ctx.db
+    .query('scenes')
+    .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
+    .collect()
+  await ctx.db.patch(tourId, {
+    sceneCount: countDistinctVariantKeys(scenes),
+    variantCount: scenes.length,
+  })
 }
 
 async function requireSceneOwner(ctx: QueryCtx | MutationCtx, sceneId: Id<'scenes'>) {
@@ -111,6 +186,10 @@ export const create = mutation({
     panoramaType: v.optional(
       v.union(v.literal('equirectangular'), v.literal('cubemap'), v.literal('gaussian'))
     ),
+    variantKey: v.optional(v.string()),
+    variantType: v.optional(variantTypeValidator),
+    timeOfDay: v.optional(timeOfDayValidator),
+    isPrimaryVariant: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
@@ -122,14 +201,22 @@ export const create = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
-    // Enforce plan scene-per-tour limits
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+
+    const existingScenes = await ctx.db
+      .query('scenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+
+    // Option A: plan limit = distinct variantKey (new variant of existing key does not consume)
     const sceneLimit = SCENE_LIMITS[user.plan] ?? 10
     if (sceneLimit !== -1) {
-      const existingScenes = await ctx.db
-        .query('scenes')
-        .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-        .collect()
-      if (existingScenes.length >= sceneLimit) {
+      const existingKeys = countDistinctVariantKeys(existingScenes)
+      const isNewKey =
+        !args.variantKey ||
+        !existingScenes.some((s) => s.variantKey === args.variantKey)
+      if (isNewKey && existingKeys >= sceneLimit) {
         throw new Error(
           `Scene limit reached. Your ${user.plan} plan allows ${sceneLimit} scenes per tour. Upgrade your plan to add more.`
         )
@@ -142,7 +229,15 @@ export const create = mutation({
       imageStorageId: args.imageStorageId,
       order: args.order,
       panoramaType: args.panoramaType ?? 'equirectangular',
+      ...(args.variantKey !== undefined ? { variantKey: args.variantKey } : {}),
+      ...(args.variantType !== undefined ? { variantType: args.variantType } : {}),
+      ...(args.timeOfDay !== undefined ? { timeOfDay: args.timeOfDay } : {}),
+      ...(args.isPrimaryVariant !== undefined
+        ? { isPrimaryVariant: args.isPrimaryVariant }
+        : {}),
     })
+
+    await refreshTourSceneCounts(ctx, args.tourId)
 
     // Log activity
     await ctx.runMutation(internal.activity.log, {
@@ -189,9 +284,13 @@ export const update = mutation({
         suggestions: v.optional(v.array(v.string())),
       })
     ),
+    variantKey: v.optional(v.string()),
+    variantType: v.optional(variantTypeValidator),
+    timeOfDay: v.optional(timeOfDayValidator),
+    isPrimaryVariant: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireSceneOwner(ctx, args.sceneId)
+    const { scene } = await requireSceneOwner(ctx, args.sceneId)
 
     const { sceneId, ...updates } = args
     const cleanUpdates = Object.fromEntries(
@@ -199,6 +298,16 @@ export const update = mutation({
     )
 
     await ctx.db.patch(sceneId, cleanUpdates)
+
+    // Recount when variant grouping fields change
+    if (
+      args.variantKey !== undefined ||
+      args.variantType !== undefined ||
+      args.timeOfDay !== undefined ||
+      args.isPrimaryVariant !== undefined
+    ) {
+      await refreshTourSceneCounts(ctx, scene.tourId)
+    }
   },
 })
 
@@ -245,7 +354,7 @@ export const replaceImage = mutation({
 
     // Delete old image from storage
     if (scene.imageStorageId !== undefined) {
-      await ctx.storage.delete(scene.imageStorageId)
+      await deleteSceneFileIfUnused(ctx, scene.imageStorageId, scene._id)
     }
 
     // Clear staged image if it exists
@@ -274,7 +383,7 @@ export const replaceImageAdmin = mutation({
     if (!scene) throw new Error('Scene not found')
 
     if (scene.imageStorageId !== undefined && scene.imageStorageId !== args.newImageStorageId) {
-      await ctx.storage.delete(scene.imageStorageId)
+      await deleteSceneFileIfUnused(ctx, scene.imageStorageId, scene._id)
     }
     if (scene.stagedImageStorageId !== undefined) {
       await ctx.storage.delete(scene.stagedImageStorageId)
@@ -311,12 +420,14 @@ export const remove = mutation({
     }
 
     const scene = await ctx.db.get(args.sceneId)
+    let tourId: Id<'tours'> | null = null
     if (scene) {
+      tourId = scene.tourId
       if (scene.imageStorageId !== undefined) {
-        await ctx.storage.delete(scene.imageStorageId)
+        await deleteSceneFileIfUnused(ctx, scene.imageStorageId, scene._id)
       }
       if (scene.thumbnailStorageId !== undefined) {
-        await ctx.storage.delete(scene.thumbnailStorageId)
+        await deleteSceneFileIfUnused(ctx, scene.thumbnailStorageId, scene._id)
       }
       if (scene.stagedImageStorageId !== undefined) {
         await ctx.storage.delete(scene.stagedImageStorageId)
@@ -340,6 +451,10 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.sceneId)
+
+    if (tourId) {
+      await refreshTourSceneCounts(ctx, tourId)
+    }
   },
 })
 

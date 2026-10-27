@@ -42,7 +42,11 @@ export function getStoredPreferences(): CookiePreferences | null {
 }
 
 function storePreferencesLocal(prefs: CookiePreferences) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
+  } catch {
+    /* private mode / blocked storage — still persist to Convex and notify */
+  }
 }
 
 function notifyConsentUpdated(prefs: CookiePreferences) {

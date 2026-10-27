@@ -52,6 +52,22 @@ async function countMonthlyJobs(
   return jobs.filter((j) => j.status !== 'failed' && j.status !== 'cancelled').length
 }
 
+/**
+ * True when the signed-in caller owns the tour. Returns false (never throws)
+ * for anonymous callers so the dashboard can render before auth resolves.
+ */
+async function callerOwnsTour(ctx: QueryCtx, tourId: Id<'tours'>): Promise<boolean> {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return false
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) return false
+  const tour = await ctx.db.get(tourId)
+  return !!tour && tour.userId === user._id
+}
+
 // --- Internal Queries ---
 
 /**
@@ -74,6 +90,7 @@ export const getStaleJobs = internalQuery({
     const THIRTY_MINUTES_MS = 30 * 60 * 1000
     const cutoff = Date.now() - THIRTY_MINUTES_MS
     const activeStatuses = [
+      'uploading',
       'queued',
       'extracting_frames',
       'reconstructing',
@@ -91,7 +108,9 @@ export const getStaleJobs = internalQuery({
 
     return byStatus
       .flat()
-      .filter((j) => j.startedAt !== undefined && j.startedAt < cutoff)
+      // startedAt is only set once RunPod accepts the job; fall back to creation
+      // time so jobs whose submission never completed are still swept.
+      .filter((j) => (j.startedAt ?? j._creationTime) < cutoff)
   },
 })
 
@@ -225,6 +244,12 @@ export const complete = internalMutation({
       .withIndex('by_runpodJobId', (q) => q.eq('runpodJobId', args.runpodJobId))
       .unique()
     if (!job) throw new Error(`No reconstruction job found for runpodJobId: ${args.runpodJobId}`)
+    // A user-cancelled job must stay cancelled even if RunPod finishes later;
+    // drop the just-stored output so it does not orphan in storage.
+    if (job.status === 'cancelled') {
+      await ctx.storage.delete(args.outputStorageId)
+      return
+    }
 
     await ctx.db.patch(job._id, {
       status: 'completed' as const,
@@ -286,6 +311,9 @@ export const cancel = mutation({
     const job = await ctx.db.get(args.jobId)
     if (!job) throw new Error('Reconstruction job not found')
     if (job.userId !== user._id) throw new Error('Not authorized')
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      throw new Error('Job has already finished')
+    }
 
     await ctx.db.patch(args.jobId, {
       status: 'cancelled' as const,
@@ -327,11 +355,12 @@ export const acceptResult = mutation({
 
 /**
  * Get the most recent reconstruction job for a tour.
- * No auth required — used by the public viewer to show reconstruction status.
+ * Owner only — returns null for anyone who does not own the tour.
  */
 export const getByTourId = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    if (!(await callerOwnsTour(ctx, args.tourId))) return null
     const jobs = await ctx.db
       .query('reconstructionJobs')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -343,11 +372,12 @@ export const getByTourId = query({
 
 /**
  * Get the active (in-progress) reconstruction job for a tour.
- * Returns null if no active job exists.
+ * Returns null if no active job exists or the caller does not own the tour.
  */
 export const getActiveByTourId = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    if (!(await callerOwnsTour(ctx, args.tourId))) return null
     const jobs = await ctx.db
       .query('reconstructionJobs')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))

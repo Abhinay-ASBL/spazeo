@@ -14,6 +14,12 @@ const isProtectedRoute = createRouteMatcher([
   '/billing(.*)',
   '/onboarding(.*)',
   '/tour/(.*)/sales(.*)',
+  // Dashboard building routes; /buildings/:id/view and /buildings/legacy-towers/view stay public
+  '/buildings',
+  '/buildings/(.*)/exterior(.*)',
+  '/buildings/(.*)/map(.*)',
+  '/buildings/legacy-towers/admin(.*)',
+  '/buildings/legacy-towers/edit-markers(.*)',
 ])
 
 // When Clerk is properly configured, use Clerk middleware for route protection

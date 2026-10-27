@@ -96,6 +96,10 @@ export const extractFloorPlan = action({
       floorPlanId: args.floorPlanId,
     })
     if (!floorPlan || floorPlan.userId !== user._id) throw new Error('Not authorized')
+    // Only ever extract the floor plan's own image, never an arbitrary file id.
+    if (floorPlan.imageStorageId !== args.imageStorageId) {
+      throw new Error('Image does not belong to this floor plan')
+    }
 
     // 1. Check plan limits
     const used = user.floorPlanExtractionsUsed ?? 0
@@ -146,7 +150,12 @@ export const extractFloorPlan = action({
       const dataUrl = `data:${contentType};base64,${base64Image}`
 
       // 6. Call DashScope vision API with structured JSON output
+      // Abort a hung call so the catch below marks the job failed instead of the
+      // action timing out and leaving it stuck in 'processing'.
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 300_000)
       const response = await fetch(DASHSCOPE_CHAT_URL, {
+        signal: controller.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -171,7 +180,7 @@ export const extractFloorPlan = action({
           response_format: { type: 'json_object' },
           // Do NOT set max_tokens -- may truncate JSON
         }),
-      })
+      }).finally(() => clearTimeout(timer))
 
       if (!response.ok) {
         const errText = await response.text()

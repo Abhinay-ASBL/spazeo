@@ -10,7 +10,6 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
-  X,
   Mail,
   Phone,
   MessageSquare,
@@ -98,7 +97,10 @@ export default function LeadsPage() {
   const leads = useQuery(api.leads.listAll, queryArgs)
   const updateStatus = useMutation(api.leads.updateStatus)
 
-  const isLoading = leads === undefined || leadStats === undefined
+  const hasFilters = statusFilter !== 'all' || !!searchTerm.trim()
+  // Only block the whole page on first load; filter changes re-query (leads -> undefined)
+  // and must not unmount the search input mid-typing.
+  const isLoading = leadStats === undefined || (leads === undefined && !hasFilters)
 
   const handleStatusChange = async (leadId: Id<'leads'>, newStatus: LeadStatus) => {
     try {
@@ -338,7 +340,21 @@ export default function LeadsPage() {
           overflow: 'hidden',
         }}
       >
-        {!leads || leads.length === 0 ? (
+        {leads === undefined ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '64px 24px',
+              color: '#A8A29E',
+              gap: 10,
+            }}
+          >
+            <Loader2 size={20} className="animate-spin" />
+            Loading leads...
+          </div>
+        ) : leads.length === 0 ? (
           <div
             style={{
               padding: '64px 24px',
@@ -608,6 +624,30 @@ export default function LeadsPage() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <Phone size={14} style={{ color: '#A8A29E' }} />
                               <span style={{ fontSize: 13, color: '#A8A29E' }}>{lead.phone}</span>
+                              {lead.phoneNormalized && (
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    padding: '2px 7px',
+                                    borderRadius: 9999,
+                                    color: '#0A0908',
+                                    backgroundColor: '#2DD4BF',
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  Known contact
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {lead.micromarket && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <MapPin size={14} style={{ color: '#2DD4BF' }} />
+                              <span style={{ fontSize: 13, color: '#A8A29E' }}>
+                                Micromarket: {lead.micromarket}
+                              </span>
                             </div>
                           )}
                           {lead.message && (

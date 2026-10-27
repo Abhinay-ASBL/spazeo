@@ -213,6 +213,9 @@ export const capture = mutation({
     micromarket: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) throw new Error('Tour not found')
+
     const emailKey = args.email.trim().toLowerCase()
     await consumeRateLimit(ctx, `leads:email:${emailKey}`, {
       windowMs: 60 * 60 * 1000,
@@ -229,8 +232,15 @@ export const capture = mutation({
       })
     }
 
-    let visitorId = args.visitorId
-    let phoneNormalized = args.phoneNormalized
+    // Client-supplied ids: keep only ones that resolve to an existing row.
+    const customerIdNorm = args.customerId ? ctx.db.normalizeId('customers', args.customerId) : null
+    const customerId =
+      customerIdNorm && (await ctx.db.get(customerIdNorm)) ? customerIdNorm : undefined
+    const visitorIdNorm = args.visitorId ? ctx.db.normalizeId('visitors', args.visitorId) : null
+    let visitorId =
+      visitorIdNorm && (await ctx.db.get(visitorIdNorm)) ? visitorIdNorm : undefined
+    // Derived server-side only — a client-supplied value would spoof identity matching.
+    let phoneNormalized: string | undefined = undefined
     if (args.phone) {
       const e164 = toE164(args.phone)
       if (!e164) throw new Error('Invalid phone number')
@@ -251,6 +261,7 @@ export const capture = mutation({
 
     const leadId = await ctx.db.insert('leads', {
       ...args,
+      customerId,
       visitorId,
       phoneNormalized,
       phoneVerified: false,
@@ -258,8 +269,7 @@ export const capture = mutation({
     })
 
     // Log activity for the tour owner and send email notification
-    const tour = await ctx.db.get(args.tourId)
-    if (tour) {
+    {
       await ctx.runMutation(internal.activity.log, {
         userId: tour.userId,
         type: 'lead_captured',
@@ -396,16 +406,20 @@ export const exportCsv = action({
       lead.name,
       lead.email,
       lead.phone ?? '',
-      (lead.message ?? '').replace(/"/g, '""'),
+      lead.message ?? '',
       lead.status ?? 'new',
       lead.source ?? '',
       new Date(lead._creationTime).toISOString(),
     ])
 
+    // Visitor-supplied cells: escape quotes and neutralise spreadsheet formulas.
+    const csvCell = (cell: string) =>
+      `"${(/^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell).replace(/"/g, '""')}"`
+
     const csv =
       headers.join(',') +
       '\n' +
-      rows.map((row: string[]) => row.map((cell) => `"${cell}"`).join(',')).join('\n')
+      rows.map((row: string[]) => row.map(csvCell).join(',')).join('\n')
 
     return csv
   },

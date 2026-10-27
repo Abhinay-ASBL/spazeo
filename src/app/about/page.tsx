@@ -12,7 +12,6 @@ import {
   Rocket,
   Users,
   ShieldCheck,
-  ArrowRight,
   Mail,
 } from 'lucide-react'
 

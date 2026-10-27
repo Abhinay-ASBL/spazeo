@@ -15,7 +15,12 @@ export async function GET(request: NextRequest) {
   }
 
   // Only allow proxying to local Convex dev server for security
-  const parsed = new URL(url)
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return new NextResponse('Invalid url param', { status: 400 })
+  }
   const isLocalConvex =
     (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') &&
     parsed.port === '3210' &&

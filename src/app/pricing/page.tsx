@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import Link from 'next/link'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
-import { Check, X, ChevronDown, ArrowRight, Minus } from 'lucide-react'
+import { Check, ChevronDown, ArrowRight, Minus } from 'lucide-react'
 import { trackEvent } from '@/lib/posthog'
 
 /* ─── Plan Data ─────────────────────────────────────────────── */

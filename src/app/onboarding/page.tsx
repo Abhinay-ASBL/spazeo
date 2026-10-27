@@ -24,7 +24,6 @@ import {
   Share2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import Link from 'next/link'
 import { Logo } from '@/components/ui/Logo'
 import { trackEvent } from '@/lib/posthog'
 
@@ -607,7 +606,7 @@ function StepGetStarted() {
         className="text-2xl sm:text-3xl font-bold mb-2"
         style={{ color: '#F5F3EF', fontFamily: 'var(--font-display)' }}
       >
-        You're all set!
+        You&apos;re all set!
       </h2>
       <p
         className="text-sm mb-10 max-w-md mx-auto"
@@ -699,14 +698,19 @@ export default function OnboardingPage() {
     trackEvent('onboarding_started')
   }, [])
 
-  // Pre-fill display name from Clerk
+  // Pre-fill display name from Clerk — once, so the user can clear the field
+  const prefilledNameRef = useRef(false)
   useEffect(() => {
-    if (clerkUser && !displayName) {
+    if (clerkUser && !prefilledNameRef.current) {
+      prefilledNameRef.current = true
       setDisplayName(clerkUser.fullName || clerkUser.firstName || '')
     }
-  }, [clerkUser, displayName])
+  }, [clerkUser])
 
-  // Redirect if onboarding is already complete, or resume from saved step
+  // Redirect if onboarding is already complete, or resume from saved step.
+  // Resume only once: currentUser updates after every saved step, and re-applying
+  // the server step would undo the Back button.
+  const resumedRef = useRef(false)
   useEffect(() => {
     if (currentUser === undefined) return
     if (currentUser === null) return
@@ -716,6 +720,8 @@ export default function OnboardingPage() {
       return
     }
 
+    if (resumedRef.current) return
+    resumedRef.current = true
     if (currentUser.onboardingStep && currentUser.onboardingStep > 0) {
       setStep(currentUser.onboardingStep)
     }
@@ -736,7 +742,7 @@ export default function OnboardingPage() {
   }
 
   // Map use case to propertyFocus array for Convex
-  const useCaseToPropertyFocus = (uc: string): string[] => {
+  const mapUseCaseToPropertyFocus = (uc: string): string[] => {
     switch (uc) {
       case 'Residential Sales': return ['Residential']
       case 'Commercial Leasing': return ['Commercial']
@@ -758,7 +764,7 @@ export default function OnboardingPage() {
           step: nextStep,
           userType: businessType as 'agent' | 'photographer' | 'developer' | 'manager' | 'other',
           roleOther: businessType === 'other' ? otherRole : undefined,
-          propertyFocus: useCaseToPropertyFocus(useCase),
+          propertyFocus: mapUseCaseToPropertyFocus(useCase),
         })
       } else if (step === 2) {
         await saveOnboardingStep({
@@ -783,12 +789,15 @@ export default function OnboardingPage() {
   const handleComplete = async (destination: 'dashboard' | 'create') => {
     setIsSubmitting(true)
     try {
+      // After a resume the local step-1/2 state is empty; fall back to what was saved
+      // so completing does not overwrite it with blanks.
+      const resolvedType = (businessType || currentUser?.userType || 'other') as 'agent' | 'photographer' | 'developer' | 'manager' | 'other'
       await completeOnboarding({
-        userType: businessType as 'agent' | 'photographer' | 'developer' | 'manager' | 'other' || 'other',
-        roleOther: businessType === 'other' ? otherRole : undefined,
-        propertyFocus: useCaseToPropertyFocus(useCase),
-        company: companyName || undefined,
-        website: website || undefined,
+        userType: resolvedType,
+        roleOther: resolvedType === 'other' ? (otherRole || currentUser?.roleOther) : undefined,
+        propertyFocus: useCase ? mapUseCaseToPropertyFocus(useCase) : (currentUser?.propertyFocus ?? []),
+        company: companyName || currentUser?.company || undefined,
+        website: website || currentUser?.website || undefined,
       })
       trackEvent('onboarding_completed', { destination, businessType, useCase })
       toast.success('Welcome to Spazeo!')

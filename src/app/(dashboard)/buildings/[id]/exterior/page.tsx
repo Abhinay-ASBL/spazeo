@@ -62,7 +62,12 @@ export default function BuildingExteriorPage({
   const [selectedFloor, setSelectedFloor] = useState<number>(1)
   const [selectedCorner, setSelectedCorner] = useState<CornerKey>('NE')
   const [isUploading, setIsUploading] = useState(false)
+  const [modelLoaded, setModelLoaded] = useState(false)
+  const [modelError, setModelError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Reset load state whenever the underlying model changes (new upload)
+  const lastModelUrl = useRef<string | null>(null)
 
   // Initialize floor selection when building loads
   const hasInitializedFloor = useRef(false)
@@ -79,24 +84,34 @@ export default function BuildingExteriorPage({
         toast.error('Please upload a .glb or .gltf file')
         return
       }
+      if (file.size > 500 * 1024 * 1024) {
+        toast.error('File too large — max 500 MB')
+        return
+      }
+      setModelLoaded(false)
+      setModelError(null)
       setIsUploading(true)
-      const toastId = toast.loading('Uploading 3D model...')
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(0)
+      const toastId = toast.loading(`Uploading 3D model (${sizeMb} MB)…`)
       try {
-        // Step 1: get upload URL
         const uploadUrl = await generateUploadUrl()
-        // Step 2: upload file
         const res = await fetch(uploadUrl, {
           method: 'POST',
           body: file,
           headers: { 'Content-Type': file.type || 'model/gltf-binary' },
         })
-        const { storageId } = await res.json()
-        // Step 3: save to building
+        if (!res.ok) {
+          throw new Error(`Upload failed (${res.status})`)
+        }
+        const body = await res.json()
+        if (!body.storageId) {
+          throw new Error('Upload failed — no storage ID returned')
+        }
         await setModelStorageId({
           buildingId: building._id as Id<'buildings'>,
-          modelStorageId: storageId,
+          modelStorageId: body.storageId,
         })
-        toast.success('3D model uploaded', { id: toastId })
+        toast.success('3D model uploaded — loading preview…', { id: toastId })
       } catch (err) {
         console.error('Model upload error:', err)
         toast.error((err as Error).message || 'Upload failed — try again', { id: toastId })
@@ -106,6 +121,17 @@ export default function BuildingExteriorPage({
     },
     [building, generateUploadUrl, setModelStorageId]
   )
+
+  const handleModelLoaded = useCallback(() => {
+    setModelError(null)
+    setModelLoaded(true)
+  }, [])
+
+  const handleModelError = useCallback((message: string) => {
+    setModelLoaded(false)
+    setModelError(message)
+    toast.error('3D model failed to load — try re-uploading')
+  }, [])
 
   if (building === undefined) {
     return (
@@ -127,9 +153,14 @@ export default function BuildingExteriorPage({
     )
   }
 
-  // Always use local GLB for now (Convex-stored model may be Draco-compressed)
-  const modelUrl = null
-  const hasModel = !!modelUrl
+  const modelUrl = building.optimizedModelUrl ?? building.modelUrl ?? null
+  if (lastModelUrl.current !== modelUrl) {
+    lastModelUrl.current = modelUrl
+    setModelLoaded(false)
+    setModelError(null)
+  }
+  const hasModel = modelLoaded && !modelError
+  const isLoadingModel = Boolean(modelUrl) && !hasModel && !modelError
   const currentCorner = CORNERS.find((c) => c.key === selectedCorner)!
 
   return (
@@ -232,6 +263,8 @@ export default function BuildingExteriorPage({
               totalFloors={building.totalFloors}
               selectedFloor={selectedFloor}
               selectedCorner={selectedCorner}
+              onModelLoaded={handleModelLoaded}
+              onModelError={handleModelError}
             />
           </div>
         </div>
@@ -245,10 +278,22 @@ export default function BuildingExteriorPage({
                 <Building2 size={12} strokeWidth={1.5} />
                 {building.totalFloors} floors · {building.totalBlocks} block{building.totalBlocks !== 1 ? 's' : ''}
               </span>
-              {!hasModel && (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[rgba(251,122,84,0.12)] border border-[rgba(251,122,84,0.2)] text-xs text-[#FB7A54]">
+              {!modelUrl && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[rgba(45,212,191,0.12)] border border-[rgba(45,212,191,0.2)] text-xs text-[#2DD4BF]">
                   <Info size={12} strokeWidth={1.5} />
-                  Preview mode — no model uploaded
+                  Dev preview — local all-towers.glb
+                </span>
+              )}
+              {isLoadingModel && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[rgba(212,160,23,0.12)] border border-[rgba(212,160,23,0.2)] text-xs text-[#D4A017]">
+                  <Loader2 size={12} strokeWidth={1.5} className="animate-spin" />
+                  Loading 3D model (100 MB)…
+                </span>
+              )}
+              {modelError && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[rgba(248,113,113,0.12)] border border-[rgba(248,113,113,0.2)] text-xs text-[#F87171]">
+                  <Info size={12} strokeWidth={1.5} />
+                  Model load failed
                 </span>
               )}
               {hasModel && (

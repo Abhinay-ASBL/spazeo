@@ -42,3 +42,4 @@ next-env.d.ts
 
 # convex generated files committed so Vercel build can resolve imports
 # convex/_generated/
+.gstack/

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Navbar } from '@/components/layout/Navbar'
@@ -11,9 +10,7 @@ import {
   Shield,
   Lock,
   Key,
-  Users,
   Headphones,
-  Zap,
   Globe,
   Server,
   FileCheck,

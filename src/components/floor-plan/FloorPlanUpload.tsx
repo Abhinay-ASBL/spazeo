@@ -112,8 +112,8 @@ export function FloorPlanUpload({ onContinue, className }: FloorPlanUploadProps)
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const capturedFiles = e.target.files
       if (!capturedFiles || capturedFiles.length === 0) return
-      const arr = Array.from(capturedFiles).map((f) => {
-        const currentFloor = nextFloorNumber
+      const arr = Array.from(capturedFiles).map((f, i) => {
+        const currentFloor = nextFloorNumber + i
         return {
           id: generateFileId(),
           file: f,

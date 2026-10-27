@@ -101,6 +101,8 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireBuildingOwner(ctx, args.buildingId)
+    const block = await ctx.db.get(args.blockId)
+    if (!block || block.buildingId !== args.buildingId) throw new Error('Block not found')
 
     return await ctx.db.insert('viewPositions', {
       buildingId: args.buildingId,
@@ -257,6 +259,8 @@ export const bulkCreate = mutation({
 
     const ids = []
     for (const position of args.positions) {
+      const block = await ctx.db.get(position.blockId)
+      if (!block || block.buildingId !== position.buildingId) throw new Error('Block not found')
       const id = await ctx.db.insert('viewPositions', position)
       ids.push(id)
     }

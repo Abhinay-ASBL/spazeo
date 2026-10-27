@@ -41,6 +41,17 @@ async function requireTourOwner(ctx: QueryCtx | MutationCtx, tourId: Id<'tours'>
   return { user, tour }
 }
 
+/** Throws unless targetSceneId (when set) is a scene in the given tour. */
+async function assertTargetInTour(
+  ctx: QueryCtx | MutationCtx,
+  targetSceneId: Id<'scenes'> | undefined,
+  tourId: Id<'tours'>
+) {
+  if (!targetSceneId) return
+  const target = await ctx.db.get(targetSceneId)
+  if (!target || target.tourId !== tourId) throw new Error('Target scene not in this tour')
+}
+
 export const listByScene = query({
   args: { sceneId: v.id('scenes') },
   handler: async (ctx, args) => {
@@ -124,7 +135,8 @@ export const create = mutation({
     lineHeight: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireSceneOwner(ctx, args.sceneId)
+    const { scene } = await requireSceneOwner(ctx, args.sceneId)
+    await assertTargetInTour(ctx, args.targetSceneId, scene.tourId)
     return await ctx.db.insert('hotspots', args)
   },
 })
@@ -154,7 +166,8 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const doc = await ctx.db.get(args.hotspotId)
     if (!doc) throw new Error('Hotspot not found')
-    await requireSceneOwner(ctx, doc.sceneId)
+    const { scene } = await requireSceneOwner(ctx, doc.sceneId)
+    await assertTargetInTour(ctx, args.targetSceneId, scene.tourId)
 
     const { hotspotId, ...updates } = args
     const cleanUpdates = Object.fromEntries(

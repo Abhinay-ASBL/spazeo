@@ -1,5 +1,8 @@
 import { v } from 'convex/values'
-import { mutation } from './_generated/server'
+import { mutation, internalMutation } from './_generated/server'
+import { consumeRateLimit } from './rateLimit'
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 export const subscribe = mutation({
   args: {
@@ -7,6 +10,12 @@ export const subscribe = mutation({
     source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await consumeRateLimit(ctx, `newsletter:email:${args.email.trim().toLowerCase()}`, {
+      windowMs: DAY_MS,
+      max: 5,
+    })
+    await consumeRateLimit(ctx, 'newsletter:global', { windowMs: 60 * 60 * 1000, max: 300 })
+
     // Check if already subscribed
     const existing = await ctx.db
       .query('newsletterSubscriptions')
@@ -37,7 +46,9 @@ export const subscribe = mutation({
   },
 })
 
-export const unsubscribe = mutation({
+// Internal only: a public unsubscribe-by-email let anyone unsubscribe anyone.
+// Expose again only behind a signed per-subscriber token.
+export const unsubscribe = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const sub = await ctx.db

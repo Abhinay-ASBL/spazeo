@@ -1,6 +1,8 @@
 # Research — Analytics totals (KPI cards)
 
-Scope: `/analytics` top totals only. No implementation. Sources dated 2026-08-26.
+Scope: `/analytics` top totals only. Sources dated 2026-08-26.
+
+**Shipped** (`3fb6e56`, `d57dc04`, `903dc43`): bonded People (estimated) band + period Views / Sessions / Leads / Avg. scene time. No Unique Visitors tile. Live copy is `docs/analytics-metric-validation.md`. Section 2 below is the pre-ship snapshot.
 
 ---
 

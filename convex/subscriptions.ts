@@ -69,14 +69,21 @@ export const getUsage = query({
 
     const activeTours = tours.filter((t) => t.status !== 'archived')
 
-    // Count total scenes
+    // Prefer denormalised tour.sceneCount (distinct variantKey); fall back to live count
     let totalScenes = 0
     for (const tour of tours) {
+      if (typeof tour.sceneCount === 'number') {
+        totalScenes += tour.sceneCount
+        continue
+      }
       const scenes = await ctx.db
         .query('scenes')
         .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
         .collect()
-      totalScenes += scenes.length
+      const keys = new Set(
+        scenes.map((s) => s.variantKey ?? (s._id as string))
+      )
+      totalScenes += keys.size
     }
 
     const limits = PLAN_LIMITS[user.plan] ?? PLAN_LIMITS.free

@@ -2,6 +2,9 @@ import { v } from 'convex/values'
 import { query, mutation, action, internalMutation, internalQuery } from './_generated/server'
 import { internal } from './_generated/api'
 import { requireAdmin } from './authHelpers'
+import { deleteTourCascade } from './tours'
+import type { MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
 
 export const getByClerkIdInternal = internalQuery({
   args: { clerkId: v.string() },
@@ -276,8 +279,11 @@ export const generateApiKey = mutation({
     // Generate a random API key
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
     let apiKey = 'spz_'
-    for (let i = 0; i < 32; i++) {
-      apiKey += chars.charAt(Math.floor(Math.random() * chars.length))
+    // 248 = largest multiple of 62 below 256, so rejection sampling keeps it unbiased.
+    while (apiKey.length < 36) {
+      for (const b of crypto.getRandomValues(new Uint8Array(32))) {
+        if (b < 248 && apiKey.length < 36) apiKey += chars.charAt(b % chars.length)
+      }
     }
 
     await ctx.db.patch(user._id, { apiKey })
@@ -370,10 +376,12 @@ export const getAllUserDataInternal = internalQuery({
         .collect()
       allLeads.push(...leads)
 
+      // Bounded to avoid unbounded scans on tours with very large event
+      // histories, which can OOM the self-hosted backend.
       const analytics = await ctx.db
         .query('analytics')
         .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
+        .take(10000)
       allAnalytics.push(...analytics)
     }
 
@@ -460,6 +468,23 @@ export const exportData = action({
   },
 })
 
+// Internal only (CLI / dashboard): requireAdmin no longer trusts the default 'owner' role.
+export const setRoleByEmail = internalMutation({
+  args: {
+    email: v.string(),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('editor'), v.literal('viewer')),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_email', (q) => q.eq('email', args.email))
+      .first()
+    if (!user) throw new Error('User not found')
+    await ctx.db.patch(user._id, { role: args.role })
+    return user._id
+  },
+})
+
 // SPA-15: Record failed login attempt
 export const recordFailedLogin = internalMutation({
   args: { clerkId: v.string() },
@@ -501,6 +526,70 @@ export const resetFailedLogins = internalMutation({
   },
 })
 
+/**
+ * Deletes a user and everything they own. Shared by deleteAccount and the
+ * Clerk user.deleted webhook (deleteByClerkId).
+ */
+async function deleteUserCascade(ctx: MutationCtx, userId: Id<'users'>) {
+  // Cascade delete: tours → scenes → hotspots
+  const tours = await ctx.db
+    .query('tours')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .collect()
+
+  for (const tour of tours) {
+    await deleteTourCascade(ctx, tour._id)
+  }
+
+  // Delete AI jobs
+  const aiJobs = await ctx.db
+    .query('aiJobs')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .collect()
+  for (const job of aiJobs) {
+    await ctx.db.delete(job._id)
+  }
+
+  // Delete subscriptions
+  const subscription = await ctx.db
+    .query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .unique()
+  if (subscription) {
+    await ctx.db.delete(subscription._id)
+  }
+
+  // Delete activity log
+  const activities = await ctx.db
+    .query('activityLog')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .collect()
+  for (const activity of activities) {
+    await ctx.db.delete(activity._id)
+  }
+
+  // Delete team memberships
+  const memberships = await ctx.db
+    .query('teamMembers')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .collect()
+  for (const membership of memberships) {
+    await ctx.db.delete(membership._id)
+  }
+
+  // Delete consents
+  const consents = await ctx.db
+    .query('consents')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .collect()
+  for (const consent of consents) {
+    await ctx.db.delete(consent._id)
+  }
+
+  // Finally delete user
+  await ctx.db.delete(userId)
+}
+
 export const deleteAccount = mutation({
   args: {},
   handler: async (ctx) => {
@@ -513,125 +602,7 @@ export const deleteAccount = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
-    // Cascade delete: tours → scenes → hotspots
-    const tours = await ctx.db
-      .query('tours')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
-
-    for (const tour of tours) {
-      const scenes = await ctx.db
-        .query('scenes')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-
-      for (const scene of scenes) {
-        const hotspots = await ctx.db
-          .query('hotspots')
-          .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
-          .collect()
-        for (const hotspot of hotspots) {
-          await ctx.db.delete(hotspot._id)
-        }
-        if (scene.imageStorageId) {
-          await ctx.storage.delete(scene.imageStorageId)
-        }
-        if (scene.thumbnailStorageId) {
-          await ctx.storage.delete(scene.thumbnailStorageId)
-        }
-        if (scene.stagedImageStorageId) {
-          await ctx.storage.delete(scene.stagedImageStorageId)
-        }
-        await ctx.db.delete(scene._id)
-      }
-
-      // Delete leads for this tour
-      const leads = await ctx.db
-        .query('leads')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-      for (const lead of leads) {
-        await ctx.db.delete(lead._id)
-      }
-
-      // Delete analytics for this tour
-      const analytics = await ctx.db
-        .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-      for (const event of analytics) {
-        await ctx.db.delete(event._id)
-      }
-
-      // Delete daily analytics for this tour
-      const dailyAnalytics = await ctx.db
-        .query('dailyAnalytics')
-        .withIndex('by_tourId_date', (q) => q.eq('tourId', tour._id))
-        .collect()
-      for (const da of dailyAnalytics) {
-        await ctx.db.delete(da._id)
-      }
-
-      // Delete floor plans
-      const floorPlans = await ctx.db
-        .query('floorPlans')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-      for (const fp of floorPlans) {
-        await ctx.storage.delete(fp.imageStorageId)
-        await ctx.db.delete(fp._id)
-      }
-
-      await ctx.db.delete(tour._id)
-    }
-
-    // Delete AI jobs
-    const aiJobs = await ctx.db
-      .query('aiJobs')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
-    for (const job of aiJobs) {
-      await ctx.db.delete(job._id)
-    }
-
-    // Delete subscriptions
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .unique()
-    if (subscription) {
-      await ctx.db.delete(subscription._id)
-    }
-
-    // Delete activity log
-    const activities = await ctx.db
-      .query('activityLog')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
-    for (const activity of activities) {
-      await ctx.db.delete(activity._id)
-    }
-
-    // Delete team memberships
-    const memberships = await ctx.db
-      .query('teamMembers')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
-    for (const membership of memberships) {
-      await ctx.db.delete(membership._id)
-    }
-
-    // Delete consents
-    const consents = await ctx.db
-      .query('consents')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
-    for (const consent of consents) {
-      await ctx.db.delete(consent._id)
-    }
-
-    // Finally delete user
-    await ctx.db.delete(user._id)
+    await deleteUserCascade(ctx, user._id)
   },
 })
 
@@ -756,47 +727,7 @@ export const deleteByClerkId = internalMutation({
       .unique()
     if (!user) return
 
-    // Simplified cascade — in production, the full deleteAccount logic would be called
-    // For webhook handling, we just mark essential cleanup
-    const tours = await ctx.db
-      .query('tours')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
-
-    for (const tour of tours) {
-      const scenes = await ctx.db
-        .query('scenes')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-      for (const scene of scenes) {
-        const hotspots = await ctx.db
-          .query('hotspots')
-          .withIndex('by_sceneId', (q) => q.eq('sceneId', scene._id))
-          .collect()
-        for (const hotspot of hotspots) {
-          await ctx.db.delete(hotspot._id)
-        }
-        await ctx.db.delete(scene._id)
-      }
-      const leads = await ctx.db
-        .query('leads')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-      for (const lead of leads) {
-        await ctx.db.delete(lead._id)
-      }
-      await ctx.db.delete(tour._id)
-    }
-
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .unique()
-    if (subscription) {
-      await ctx.db.delete(subscription._id)
-    }
-
-    await ctx.db.delete(user._id)
+    await deleteUserCascade(ctx, user._id)
   },
 })
 

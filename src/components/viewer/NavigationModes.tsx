@@ -42,10 +42,12 @@ interface NavigationModesProps {
 
 export function NavigationModes({ onFlyTo }: NavigationModesProps) {
   const { camera, gl } = useThree()
+  const controls = useThree((s) => s.controls) as unknown as
+    | { target: THREE.Vector3; update: () => void }
+    | null
   const perspCamera = camera as THREE.PerspectiveCamera
 
   const navMode = useSplatViewerStore((s) => s.navMode)
-  const transitioning = useSplatViewerStore((s) => s.transitioning)
   const setTransitioning = useSplatViewerStore((s) => s.setTransitioning)
   const joystickVector = useSplatViewerStore((s) => s.joystickVector)
 
@@ -63,6 +65,7 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
 
   // Fly-to for hotspot mode
   const flyToTargetRef = useRef<THREE.Vector3 | null>(null)
+  const prevCamPosRef = useRef(new THREE.Vector3())
 
   // Expose flyTo callback for SplatHotspot3D
   useEffect(() => {
@@ -84,6 +87,10 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
       flyToTargetRef.current = null
     }
   }, [navMode, setTransitioning])
+
+  // The store is global: unmounting mid-transition would leave `transitioning`
+  // stuck true and OrbitControls disabled in the next viewer that mounts.
+  useEffect(() => () => setTransitioning(false), [setTransitioning])
 
   // Click-to-move handler for free-roam
   const handleCanvasClick = useCallback(
@@ -123,6 +130,10 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
       camera.position.lerp(targetPosRef.current, LERP_FACTOR)
       perspCamera.fov += (targetFovRef.current - perspCamera.fov) * LERP_FACTOR
       perspCamera.updateProjectionMatrix()
+      if (controls) {
+        controls.target.lerp(targetLookRef.current, LERP_FACTOR)
+        controls.update()
+      }
 
       const dist = camera.position.distanceTo(targetPosRef.current)
       const fovDist = Math.abs(perspCamera.fov - targetFovRef.current)
@@ -130,11 +141,19 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
         camera.position.copy(targetPosRef.current)
         perspCamera.fov = targetFovRef.current
         perspCamera.updateProjectionMatrix()
+        if (controls) {
+          controls.target.copy(targetLookRef.current)
+          controls.update()
+        }
         isTransitioningRef.current = false
         setTransitioning(false)
       }
       return // Skip other movement during transition
     }
+
+    // Remember where the camera started this frame so the orbit target can
+    // follow any click-to-move / joystick / fly-to translation below.
+    prevCamPosRef.current.copy(camera.position)
 
     // Click-to-move in free-roam
     if (navMode === 'freeRoam' && moveTargetRef.current) {
@@ -173,6 +192,11 @@ export function NavigationModes({ onFlyTo }: NavigationModesProps) {
         camera.position.y = EYE_HEIGHT
         flyToTargetRef.current = null
       }
+    }
+
+    if (controls && !camera.position.equals(prevCamPosRef.current)) {
+      controls.target.add(camera.position.clone().sub(prevCamPosRef.current))
+      controls.update()
     }
   })
 

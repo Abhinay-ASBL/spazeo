@@ -72,11 +72,14 @@ export const getJobsByTour = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return []
 
+    // Capped: unbounded .collect() over aiJobs caused the OOM crash-loop
+    // incident (2026-08-26). A tour's most-recent 500 jobs is plenty for
+    // this list view — same cap used in listJobs above.
     return await ctx.db
       .query('aiJobs')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
       .order('desc')
-      .collect()
+      .take(500)
   },
 })
 

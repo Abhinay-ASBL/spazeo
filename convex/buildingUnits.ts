@@ -141,6 +141,13 @@ export const create = mutation({
     const building = await ctx.db.get(args.buildingId)
     if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
 
+    const block = await ctx.db.get(args.blockId)
+    if (!block || block.buildingId !== args.buildingId) throw new Error('Forbidden')
+    if (args.tourId) {
+      const tour = await ctx.db.get(args.tourId)
+      if (!tour || tour.userId !== user._id) throw new Error('Forbidden')
+    }
+
     return await ctx.db.insert('buildingUnits', {
       buildingId: args.buildingId,
       blockId: args.blockId,
@@ -193,6 +200,7 @@ async function requireUnitOwner(
   const unit = await ctx.db.get(unitId)
   const building = unit ? await ctx.db.get(unit.buildingId) : null
   if (!user || !building || building.userId !== user._id) throw new Error('Forbidden')
+  return user
 }
 
 export const remove = mutation({
@@ -210,7 +218,10 @@ export const linkTour = mutation({
     tourId: v.id('tours'),
   },
   handler: async (ctx, args) => {
-    await requireUnitOwner(ctx, args.unitId)
+    const user = await requireUnitOwner(ctx, args.unitId)
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) throw new Error('Forbidden')
 
     await ctx.db.patch(args.unitId, { tourId: args.tourId })
   },

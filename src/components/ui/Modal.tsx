@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -10,14 +10,21 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   footer?: React.ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
+  xl: 'max-w-5xl',
 }
+
+// Open modals, topmost last: only the top one reacts to Escape / Tab.
+const openModalStack: string[] = []
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export function Modal({
   isOpen,
@@ -27,32 +34,77 @@ export function Modal({
   footer,
   size = 'md',
 }: ModalProps) {
-  const handleEscape = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    },
-    [onClose]
-  )
+  const modalId = useId()
+  const titleId = `${modalId}-title`
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // Latest onClose without re-running the open effect (inline handlers change every render)
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape)
-      document.body.style.overflow = 'hidden'
+    if (!isOpen) return
+    const prevOverflow = document.body.style.overflow
+    const prevFocus = document.activeElement as HTMLElement | null
+    openModalStack.push(modalId)
+    document.body.style.overflow = 'hidden'
+
+    const dialog = dialogRef.current
+    const focusables = () =>
+      dialog ? Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)) : []
+    const initial = focusables()
+    if (dialog && !dialog.contains(document.activeElement)) {
+      ;(initial[0] ?? dialog).focus()
     }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (openModalStack[openModalStack.length - 1] !== modalId) return
+      if (e.key === 'Escape') {
+        onCloseRef.current()
+        return
+      }
+      if (e.key !== 'Tab' || !dialog) return
+      const items = focusables()
+      if (items.length === 0) {
+        e.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey && (active === first || !dialog.contains(active))) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && (active === last || !dialog.contains(active))) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('keydown', handleEscape)
-      document.body.style.overflow = ''
+      document.removeEventListener('keydown', handleKeyDown)
+      const idx = openModalStack.lastIndexOf(modalId)
+      if (idx !== -1) openModalStack.splice(idx, 1)
+      document.body.style.overflow = prevOverflow
+      if (prevFocus && typeof prevFocus.focus === 'function' && prevFocus.isConnected) {
+        prevFocus.focus()
+      }
     }
-  }, [isOpen, handleEscape])
+  }, [isOpen, modalId])
 
   if (!isOpen) return null
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 outline-none"
       aria-modal="true"
       role="dialog"
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
     >
       {/* Backdrop */}
       <div
@@ -70,6 +122,7 @@ export function Modal({
         className={cn(
           'relative w-full rounded-[12px] shadow-xl overflow-hidden',
           'animate-in fade-in zoom-in-95 duration-200',
+          size === 'xl' ? 'max-h-[90vh] flex flex-col' : '',
           sizeClasses[size]
         )}
         style={{
@@ -83,7 +136,7 @@ export function Modal({
           style={{ borderBottom: '1px solid rgba(212,160,23,0.12)' }}
         >
           <h2
-            id="modal-title"
+            id={titleId}
             className="font-semibold"
             style={{ color: '#F5F3EF' }}
           >
@@ -100,7 +153,10 @@ export function Modal({
         </div>
 
         {/* Body */}
-        <div className="p-6" style={{ color: '#A8A29E' }}>
+        <div
+          className={size === 'xl' ? 'p-6 overflow-y-auto flex-1' : 'p-6'}
+          style={{ color: '#A8A29E' }}
+        >
           {children}
         </div>
 

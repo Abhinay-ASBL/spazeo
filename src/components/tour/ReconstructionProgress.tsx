@@ -118,7 +118,6 @@ export function ReconstructionProgress({ tourId, onReupload }: ReconstructionPro
         {STAGES.map((stage, idx) => {
           const isComplete = idx < currentStageIndex
           const isActive = idx === currentStageIndex
-          const isPending = idx > currentStageIndex
           const Icon = stage.icon
 
           return (

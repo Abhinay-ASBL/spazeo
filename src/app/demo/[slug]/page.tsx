@@ -1,4 +1,3 @@
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/Footer'
 import {
@@ -137,7 +136,7 @@ export default async function DemoTourPage({ params }: { params: Promise<Params>
               Tour Not Found
             </h1>
             <p className="text-lg mb-8" style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}>
-              The demo tour you're looking for doesn't exist.
+              The demo tour you&apos;re looking for doesn&apos;t exist.
             </p>
             <Link
               href="/demo"

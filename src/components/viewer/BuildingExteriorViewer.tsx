@@ -1,9 +1,68 @@
 'use client'
 
-import { useRef, useMemo, Suspense } from 'react'
+import { useRef, useMemo, useEffect, useState, Suspense, Component, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Grid, useGLTF } from '@react-three/drei'
+import { OrbitControls, Grid, useGLTF, Html, useProgress } from '@react-three/drei'
+import { MeshoptDecoder } from 'three-stdlib'
 import * as THREE from 'three'
+
+/** Shared meshopt decoder — must be ready before any compressed GLB loads. */
+const meshoptDecoder =
+  typeof MeshoptDecoder === 'function' ? MeshoptDecoder() : MeshoptDecoder
+
+function useMeshoptReady() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    Promise.resolve('ready' in meshoptDecoder ? meshoptDecoder.ready : undefined).then(() => {
+      if (!cancelled) setReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return ready
+}
+
+function ModelLoadProgress() {
+  const { progress, active } = useProgress()
+  if (!active) return null
+  return (
+    <Html center>
+      <div className="rounded-lg bg-[rgba(10,9,8,0.92)] border border-[rgba(212,160,23,0.25)] px-4 py-3 text-center min-w-[200px]">
+        <p className="text-xs font-medium text-[#D4A017] mb-1">Loading 3D model</p>
+        <p className="text-[10px] text-[#6B6560] mb-2">Large files can take 30–60s</p>
+        <div className="h-1.5 rounded-full bg-[#1B1916] overflow-hidden">
+          <div
+            className="h-full bg-[#D4A017] transition-all duration-300"
+            style={{ width: `${Math.round(progress)}%` }}
+          />
+        </div>
+        <p className="text-[10px] text-[#A8A29E] mt-1.5">{Math.round(progress)}%</p>
+      </div>
+    </Html>
+  )
+}
+
+export class ModelErrorBoundary extends Component<
+  { children: ReactNode; onError?: (message: string) => void },
+  { error: string | null }
+> {
+  state = { error: null as string | null }
+
+  static getDerivedStateFromError(err: Error) {
+    return { error: err.message || 'Failed to load 3D model' }
+  }
+
+  componentDidCatch(err: Error) {
+    this.props.onError?.(err.message || 'Failed to load 3D model')
+  }
+
+  render() {
+    if (this.state.error) return null
+    return this.props.children
+  }
+}
 
 // ─── Types & Constants ────────────────────────────────────────────────────────
 
@@ -90,12 +149,22 @@ function getCameraTarget(
 function CameraRig({ target }: { target: { position: THREE.Vector3; lookAt: THREE.Vector3 } }) {
   const { camera } = useThree()
   const currentLookAt = useRef(new THREE.Vector3(0, 20, 0))
+  const lastTarget = useRef(new THREE.Vector3(NaN, NaN, NaN))
+  const settled = useRef(false)
 
   useFrame((_, delta) => {
+    // Re-arm only when floor/corner changes; once arrived, release the camera
+    // so OrbitControls can be used instead of being pulled back every frame.
+    if (!lastTarget.current.equals(target.position)) {
+      lastTarget.current.copy(target.position)
+      settled.current = false
+    }
+    if (settled.current) return
     const t = Math.min(delta * 2, 1)
     camera.position.lerp(target.position, t)
     currentLookAt.current.lerp(target.lookAt, t)
     camera.lookAt(currentLookAt.current)
+    if (camera.position.distanceTo(target.position) < 0.5) settled.current = true
   })
 
   return null
@@ -103,9 +172,22 @@ function CameraRig({ target }: { target: { position: THREE.Vector3; lookAt: THRE
 
 // ─── Building GLB Model ──────────────────────────────────────────────────────
 
-function BuildingModel({ url, totalFloors }: { url: string; totalFloors: number }) {
-  const { scene } = useGLTF(url)
+function BuildingModelInner({
+  url,
+  totalFloors,
+  onLoaded,
+}: {
+  url: string
+  totalFloors: number
+  onLoaded?: () => void
+}) {
+  // Draco off — Legacy Towers GLB uses meshopt + WebP, not Draco
+  const { scene } = useGLTF(url, false, true)
   const ref = useRef<THREE.Group>(null!)
+
+  useEffect(() => {
+    onLoaded?.()
+  }, [onLoaded, scene])
 
   // Auto-center and scale the model so it fits our camera rig
   const transform = useMemo(() => {
@@ -134,6 +216,24 @@ function BuildingModel({ url, totalFloors }: { url: string; totalFloors: number 
     <group ref={ref} position={transform.position} scale={transform.scale}>
       <primitive object={scene} />
     </group>
+  )
+}
+
+function BuildingModel({
+  url,
+  totalFloors,
+  onLoaded,
+}: {
+  url: string
+  totalFloors: number
+  onLoaded?: () => void
+}) {
+  const meshoptReady = useMeshoptReady()
+  if (!meshoptReady) {
+    return <PlaceholderBuilding totalFloors={totalFloors} />
+  }
+  return (
+    <BuildingModelInner url={url} totalFloors={totalFloors} onLoaded={onLoaded} />
   )
 }
 
@@ -186,6 +286,13 @@ function PlotOutline() {
     return mesh
   }, [])
 
+  useEffect(() => () => {
+    lineObj.geometry.dispose()
+    ;(lineObj.material as THREE.Material).dispose()
+    shapeMesh.geometry.dispose()
+    ;(shapeMesh.material as THREE.Material).dispose()
+  }, [lineObj, shapeMesh])
+
   return (
     <group>
       <primitive object={lineObj} />
@@ -211,6 +318,8 @@ export interface BuildingExteriorViewerProps {
   totalFloors: number
   selectedFloor: number
   selectedCorner: CornerKey
+  onModelLoaded?: () => void
+  onModelError?: (message: string) => void
 }
 
 export function BuildingExteriorViewer({
@@ -218,20 +327,24 @@ export function BuildingExteriorViewer({
   totalFloors,
   selectedFloor,
   selectedCorner,
+  onModelLoaded,
+  onModelError,
 }: BuildingExteriorViewerProps) {
-  // Use a closer camera if we have a model, wider for the plot view
   const viewDist = 200
   const target = getCameraTarget(selectedFloor, selectedCorner, totalFloors, viewDist)
 
-  // If a Convex model URL exists use it, otherwise fall back to local GLB
-  const effectiveModelUrl = modelUrl || '/legacy-towers.glb'
+  // Prefer Convex URL; local meshopt-compressed asset is the dev fallback
+  const effectiveModelUrl = modelUrl || '/buildings/all-towers.glb'
+
+  // Bust cache when Convex replaces storage after re-upload
+  const cacheKey = modelUrl ? `${effectiveModelUrl}#${modelUrl.length}` : effectiveModelUrl
 
   return (
     <Canvas
       camera={{ fov: 50, near: 0.1, far: 5000, position: [viewDist, 80, viewDist] }}
       shadows
       style={{ width: '100%', height: '100%' }}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, powerPreference: 'high-performance' }}
     >
       <color attach="background" args={['#0a0e14']} />
 
@@ -244,9 +357,17 @@ export function BuildingExteriorViewer({
       <hemisphereLight args={['#87CEEB', '#3A3530', 0.4]} />
 
       {/* Model */}
-      <Suspense fallback={<PlaceholderBuilding totalFloors={totalFloors} />}>
-        <BuildingModel url={effectiveModelUrl} totalFloors={totalFloors} />
-      </Suspense>
+      <ModelErrorBoundary key={cacheKey} onError={onModelError}>
+        <Suspense fallback={<PlaceholderBuilding totalFloors={totalFloors} />}>
+          <BuildingModel
+            key={cacheKey}
+            url={effectiveModelUrl}
+            totalFloors={totalFloors}
+            onLoaded={onModelLoaded}
+          />
+        </Suspense>
+      </ModelErrorBoundary>
+      <ModelLoadProgress />
 
       {/* KML plot outline */}
       <PlotOutline />

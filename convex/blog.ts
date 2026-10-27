@@ -33,10 +33,13 @@ export const list = query({
 export const getBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const post = await ctx.db
       .query('blogPosts')
       .withIndex('by_slug', (q) => q.eq('slug', args.slug))
       .first()
+    // Drafts and archived posts must not be readable by slug on the public site
+    if (!post || post.status !== 'published') return null
+    return post
   },
 })
 

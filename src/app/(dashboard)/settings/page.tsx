@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useUser, useClerk, useSession } from '@clerk/nextjs'
-import { useRouter } from 'next/navigation'
 import {
   ExternalLink,
   Check,
@@ -66,7 +65,6 @@ export default function SettingsPage() {
   const { user: clerkUser, isLoaded: isClerkLoaded } = useUser()
   const { signOut, openUserProfile } = useClerk()
   const { session } = useSession()
-  const router = useRouter()
   const convexUser = useQuery(api.users.getCurrent)
   const updateProfile = useMutation(api.users.updateProfile)
   const updateNotificationPreferences = useMutation(api.users.updateNotificationPreferences)
@@ -102,16 +100,22 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Populate form from Clerk + Convex data
+  // Populate form from Clerk + Convex data — once each. Both user objects get a new
+  // identity on every reactive update (e.g. a notification toggle), which would
+  // otherwise wipe unsaved profile edits.
+  const clerkPopulatedRef = useRef(false)
+  const convexPopulatedRef = useRef(false)
   useEffect(() => {
-    if (clerkUser) {
+    if (clerkUser && !clerkPopulatedRef.current) {
+      clerkPopulatedRef.current = true
       setFirstName(clerkUser.firstName ?? '')
       setLastName(clerkUser.lastName ?? '')
     }
   }, [clerkUser])
 
   useEffect(() => {
-    if (convexUser) {
+    if (convexUser && !convexPopulatedRef.current) {
+      convexPopulatedRef.current = true
       setCompany(convexUser.company ?? '')
       setWebsite(convexUser.website ?? '')
       setCity(convexUser.city ?? '')

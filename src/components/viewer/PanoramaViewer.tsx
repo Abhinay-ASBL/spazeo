@@ -498,11 +498,19 @@ export function PanoramaViewer({
   }, [])
 
   // Refs to avoid stale closures in setTimeout callbacks
-  const isTransitioningRef = useRef(false)
   const isFirstLoadRef = useRef(true)
   const currentUrlRef = useRef<string>('')
   // Texture cache: url → processed {texture, polarLimits}
   const textureCacheRef = useRef<Map<string, CachedEntry>>(new Map())
+
+  // Free cached panorama textures (GPU memory) when the viewer unmounts
+  useEffect(() => {
+    const cache = textureCacheRef.current
+    return () => {
+      cache.forEach((entry) => entry.texture.dispose())
+      cache.clear()
+    }
+  }, [])
 
   const applyEntry = useCallback(({ texture: t, minPolar, maxPolar }: CachedEntry) => {
     setTexture(t)
@@ -549,30 +557,30 @@ export function PanoramaViewer({
         setIsLoading(false)
         return
       }
-      if (isTransitioningRef.current) return
-      isTransitioningRef.current = true
       setFadeOpacity(0)
-      setTimeout(() => {
+      const cachedTimer = setTimeout(() => {
         applyEntry(cached)
         setResetTrigger((n) => n + 1)
         setFadeOpacity(1)
         setIsLoading(false)
-        setTimeout(() => { isTransitioningRef.current = false }, 420)
       }, 400)
-      return
+      return () => clearTimeout(cachedTimer)
     }
 
     if (isFirstLoadRef.current) {
       // First load — no transition, just load directly
       isFirstLoadRef.current = false
       setIsLoading(true)
+      const firstUrl = imageUrl
       const loader = new TextureLoader()
       loader.crossOrigin = 'anonymous'
       loader.load(
-        imageUrl,
+        firstUrl,
         (t) => {
           const entry = processRawTexture(t)
-          textureCacheRef.current.set(imageUrl, entry)
+          textureCacheRef.current.set(firstUrl, entry)
+          // A newer scene was requested while this one loaded — keep it cached only
+          if (currentUrlRef.current !== firstUrl) return
           applyEntry(entry)
           setFadeOpacity(1)
           setIsLoading(false)
@@ -580,15 +588,11 @@ export function PanoramaViewer({
         undefined,
         (err) => {
           console.error('[PanoramaViewer] texture load error:', err)
-          setIsLoading(false)
+          if (currentUrlRef.current === firstUrl) setIsLoading(false)
         }
       )
       return
     }
-
-    // Block overlapping transitions
-    if (isTransitioningRef.current) return
-    isTransitioningRef.current = true
 
     // Step 1: Fade out
     setFadeOpacity(0)
@@ -604,18 +608,19 @@ export function PanoramaViewer({
         (t) => {
           const entry = processRawTexture(t)
           textureCacheRef.current.set(capturedUrl, entry)
+          // Stale load (user switched scenes again) — cache it, don't apply
+          if (currentUrlRef.current !== capturedUrl) return
           applyEntry(entry)
           setResetTrigger((n) => n + 1)
           setIsLoading(false)
           setFadeOpacity(1)
-          setTimeout(() => { isTransitioningRef.current = false }, 420)
         },
         undefined,
         (err) => {
           console.error('[PanoramaViewer] texture load error:', err)
+          if (currentUrlRef.current !== capturedUrl) return
           setIsLoading(false)
           setFadeOpacity(1)
-          setTimeout(() => { isTransitioningRef.current = false }, 420)
         }
       )
     }, 400) // wait for fade-out to complete

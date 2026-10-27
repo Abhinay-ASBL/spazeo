@@ -1,6 +1,10 @@
 import type { MutationCtx, QueryCtx } from './_generated/server'
 
-/** Throws unless the caller is signed in AND has role 'owner' or 'admin'. */
+/**
+ * Throws unless the caller is signed in AND has role 'admin'.
+ * 'owner' is the default role for every signup, so it must not grant admin.
+ * Promote with: npx convex run users:setRoleByEmail '{"email":"...","role":"admin"}'
+ */
 export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
@@ -10,7 +14,7 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
     .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
 
-  if (!user || (user.role !== 'owner' && user.role !== 'admin')) {
+  if (!user || user.role !== 'admin') {
     throw new Error('Admin access required')
   }
   return user

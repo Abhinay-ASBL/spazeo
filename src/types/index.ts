@@ -19,7 +19,11 @@ export type StagingStyle = 'modern' | 'scandinavian' | 'luxury' | 'minimalist' |
 export type DescriptionTone = 'professional' | 'casual' | 'luxury'
 export type DeviceType = 'desktop' | 'mobile' | 'tablet'
 export type ActivityType = 'tour_created' | 'tour_published' | 'lead_captured' | 'ai_completed' | 'scene_uploaded' | 'building_created' | 'building_published'
-export type LeadGateBehavior = 'before_tour' | 'after_delay' | 'optional_sidebar'
+export type LeadGateBehavior =
+  | 'before_tour'
+  | 'after_delay'
+  | 'after_scenes'
+  | 'optional_sidebar'
 
 // --- Config objects ---
 
@@ -34,6 +38,7 @@ export interface LeadCaptureConfig {
   fields: string[]
   gateBehavior: LeadGateBehavior
   delaySeconds?: number
+  afterScenes?: number
 }
 
 export interface BrandingConfig {

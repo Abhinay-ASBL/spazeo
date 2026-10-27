@@ -546,7 +546,7 @@ const PLANS = [
   {
     name: "Enterprise", desc: "For teams and brokerages at scale.",
     price: "Custom", period: "", popular: false,
-    ctaLabel: "Contact Sales", ctaHref: "/contact",
+    ctaLabel: "Contact Sales", ctaHref: "/enterprise#contact",
     ctaColor: teal, ctaBg: "transparent", ctaBorder: `1px solid ${teal}40`,
     checkColor: teal,
     features: ["Everything in Pro", "SSO & role-based access", "SOC 2 compliance", "Dedicated account manager", "White-label option", "SLA & 24/7 support"],

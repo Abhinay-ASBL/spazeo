@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useAction } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
-import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { FloorPlanUpload, type FloorPlanFile } from '@/components/floor-plan/FloorPlanUpload'
@@ -174,7 +174,7 @@ export default function NewFloorPlanPage() {
         setExtracting(false)
       }
     },
-    [createProject, createDetail, extractFloorPlan, generateUploadUrl, uploadBlob, applyRotation, router]
+    [createProject, createDetail, extractFloorPlan, uploadBlob, applyRotation, router]
   )
 
   return (

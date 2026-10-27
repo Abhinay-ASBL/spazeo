@@ -16,6 +16,11 @@ const MAX_BATCH_EVENTS = 50
 // unbounded .collect() on 'all'/wide windows blew the 15s isolate budget on
 // self-hosted (small instance). Upgrade to dailyAnalytics rollups if precision matters.
 const DASHBOARD_EVENT_SCAN_CAP = 2000
+// Per-tour raw-event aggregates: bounded window + hard cap (matches buildingAnalytics.ts).
+const AGGREGATE_EVENT_SCAN_CAP = 10000
+const DEFAULT_AGGREGATE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000
+const GET_BY_TOUR_DEFAULT_LIMIT = 100
+const GET_BY_TOUR_MAX_LIMIT = 500
 
 const periodArg = v.optional(
   v.union(v.literal('7d'), v.literal('30d'), v.literal('90d'), v.literal('all'))
@@ -93,6 +98,35 @@ async function countDistinctDeviceIds(
     }
   }
   return values.size
+}
+
+/** Most recent capped events for a tour since `startDate` (default last 90 days). */
+async function recentTourEvents(
+  ctx: QueryCtx,
+  tourId: Id<'tours'>,
+  startDate?: number
+): Promise<Doc<'analytics'>[]> {
+  return ctx.db
+    .query('analytics')
+    .withIndex('by_tourId_timestamp', (q) =>
+      q
+        .eq('tourId', tourId)
+        .gte('timestamp', startDate ?? Date.now() - DEFAULT_AGGREGATE_WINDOW_MS)
+    )
+    .order('desc')
+    .take(AGGREGATE_EVENT_SCAN_CAP)
+}
+
+/** tour_view counts once per session; the `linked: true` re-emit (visitor id resolved) is not a view. */
+function isCountedView(e: { event: string; metadata?: unknown }): boolean {
+  return (
+    e.event === 'tour_view' &&
+    !(
+      e.metadata &&
+      typeof e.metadata === 'object' &&
+      (e.metadata as { linked?: boolean }).linked === true
+    )
+  )
 }
 
 const timeOfDayValidator = v.union(
@@ -174,7 +208,11 @@ export const getByTour = query({
       )
       .order('desc')
 
-    const events = args.limit ? await query.take(args.limit) : await query.collect()
+    const limit = Math.min(
+      Math.max(1, Math.floor(args.limit ?? GET_BY_TOUR_DEFAULT_LIMIT)),
+      GET_BY_TOUR_MAX_LIMIT
+    )
+    const events = await query.take(limit)
 
     return events
   },
@@ -252,9 +290,10 @@ export const getViewsOverTime = query({
       .withIndex('by_tourId_timestamp', (q) =>
         q.eq('tourId', args.tourId).gte('timestamp', args.startDate).lte('timestamp', args.endDate)
       )
-      .collect()
+      .order('desc')
+      .take(AGGREGATE_EVENT_SCAN_CAP)
 
-    const filtered = events.filter((e) => e.event === 'tour_view')
+    const filtered = events.filter(isCountedView)
 
     // Group by day
     const grouped: Record<string, number> = {}
@@ -280,7 +319,7 @@ function getWeekKey(date: Date): string {
 }
 
 export const getSceneHeatmap = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), startDate: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
@@ -292,10 +331,7 @@ export const getSceneHeatmap = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return []
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
 
     const sceneEvents = events.filter((e) => e.event === 'scene_view' && e.sceneId)
 
@@ -325,7 +361,7 @@ export const getSceneHeatmap = query({
 })
 
 export const getDeviceBreakdown = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), startDate: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return { desktop: 0, mobile: 0, tablet: 0, total: 0 }
@@ -337,12 +373,9 @@ export const getDeviceBreakdown = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return { desktop: 0, mobile: 0, tablet: 0, total: 0 }
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
 
-    const views = events.filter((e) => e.event === 'tour_view')
+    const views = events.filter(isCountedView)
     const total = views.length
 
     if (total === 0) {
@@ -367,7 +400,7 @@ export const getDeviceBreakdown = query({
 })
 
 export const getGeography = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), startDate: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return { topCountries: [], topCities: [] }
@@ -379,12 +412,9 @@ export const getGeography = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return { topCountries: [], topCities: [] }
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
 
-    const views = events.filter((e) => e.event === 'tour_view')
+    const views = events.filter(isCountedView)
 
     const countries: Record<string, number> = {}
     const cities: Record<string, number> = {}
@@ -412,7 +442,7 @@ export const getGeography = query({
 })
 
 export const getEngagementMetrics = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), startDate: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     const empty = {
@@ -431,10 +461,7 @@ export const getEngagementMetrics = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return empty
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
 
     const sceneViews = events.filter((e) => e.event === 'scene_view')
 
@@ -486,7 +513,7 @@ export const getEngagementMetrics = query({
 })
 
 export const getLeadFunnel = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), startDate: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     const empty = {
@@ -506,12 +533,9 @@ export const getLeadFunnel = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return empty
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
 
-    const totalViews = events.filter((e) => e.event === 'tour_view').length
+    const totalViews = events.filter(isCountedView).length
     const formShown = events.filter((e) => e.event === 'lead_form_shown').length
     const formSubmitted = events.filter((e) => e.event === 'lead_form_submitted').length
 
@@ -555,9 +579,9 @@ export const getDashboardStats = query({
         .withIndex('by_tourId_timestamp', (q) =>
           q.eq('tourId', tour._id).gte('timestamp', oneWeekAgo)
         )
-        .collect()
+        .take(DASHBOARD_EVENT_SCAN_CAP)
 
-      viewsThisWeek += events.filter((e) => e.event === 'tour_view').length
+      viewsThisWeek += events.filter(isCountedView).length
 
       const leads = await ctx.db
         .query('leads')
@@ -576,135 +600,233 @@ export const getDashboardStats = query({
   },
 })
 
+// Rollup runs in two paginated phases so no single transaction reads a whole
+// busy day (Convex caps reads per mutation):
+//   1. rollupDaily pages yesterday's events by timestamp and schedules one
+//      rollupTourDay per tour, deduped by "this page holds the tour's first
+//      event of the day" (exactly one page does).
+//   2. rollupTourDay pages that tour's day via by_tourId_timestamp, carrying
+//      partial counters + distinct sets in args, and writes the row (overwrite,
+//      so reruns/retries never double count) on its last page.
+const ROLLUP_PAGE_SIZE = 2000
+
+const rollupStateValidator = v.object({
+  views: v.number(),
+  durationSum: v.number(),
+  durationCount: v.number(),
+  sceneViews: v.record(v.string(), v.number()),
+  deviceBreakdown: v.object({ desktop: v.number(), mobile: v.number(), tablet: v.number() }),
+  topCountries: v.record(v.string(), v.number()),
+  sessionIds: v.array(v.string()),
+  visitorIds: v.array(v.id('visitors')),
+})
+
 export const rollupDaily = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    // Get yesterday's date
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    const dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+  args: {
+    // Omitted on the cron call; set on continuation pages.
+    dateStr: v.optional(v.string()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    // Get yesterday's date (pinned on page 0 so continuations stay on the same day)
+    let dateStr = args.dateStr
+    if (!dateStr) {
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+    }
 
     const startOfDay = new Date(dateStr + 'T00:00:00Z').getTime()
     const endOfDay = startOfDay + 24 * 60 * 60 * 1000
 
-    // Get all published tours
-    const tours = await ctx.db
-      .query('tours')
-      .withIndex('by_status', (q) => q.eq('status', 'published'))
-      .collect()
+    // Every tour (any status) that had events yesterday — dashboards read rollups for
+    // draft/archived tours too. Found via the timestamp index, not a tours scan.
+    const page = await ctx.db
+      .query('analytics')
+      .withIndex('by_timestamp', (q) =>
+        q.gte('timestamp', startOfDay).lt('timestamp', endOfDay)
+      )
+      .paginate({ cursor: args.cursor ?? null, numItems: ROLLUP_PAGE_SIZE })
 
-    for (const tour of tours) {
-      const dayEvents = await ctx.db
+    const pageIds = new Set(page.page.map((e) => e._id))
+    const pageTourIds = new Set(page.page.map((e) => e.tourId))
+    for (const tourId of pageTourIds) {
+      const first = await ctx.db
         .query('analytics')
         .withIndex('by_tourId_timestamp', (q) =>
-          q.eq('tourId', tour._id).gte('timestamp', startOfDay).lt('timestamp', endOfDay)
+          q.eq('tourId', tourId).gte('timestamp', startOfDay).lt('timestamp', endOfDay)
         )
-        .collect()
+        .first()
+      if (first && pageIds.has(first._id)) {
+        await ctx.scheduler.runAfter(0, internal.analytics.rollupTourDay, {
+          tourId,
+          dateStr,
+          cursor: null,
+        })
+      }
+    }
 
-      if (dayEvents.length === 0) continue
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.analytics.rollupDaily, {
+        dateStr,
+        cursor: page.continueCursor,
+      })
+    }
+  },
+})
 
-      const views = dayEvents.filter((e) => e.event === 'tour_view')
-      const uniqueSessions = new Set(views.map((e) => e.sessionId))
+export const rollupTourDay = internalMutation({
+  args: {
+    tourId: v.id('tours'),
+    dateStr: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    state: v.optional(rollupStateValidator),
+  },
+  handler: async (ctx, args) => {
+    const { tourId, dateStr } = args
+    const tour = await ctx.db.get(tourId)
+    if (!tour) return // deleted
 
-      // Duration
-      const durations = dayEvents.filter((e) => e.duration).map((e) => e.duration!)
-      const avgDuration =
-        durations.length > 0
-          ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
-          : 0
+    const startOfDay = new Date(dateStr + 'T00:00:00Z').getTime()
+    const endOfDay = startOfDay + 24 * 60 * 60 * 1000
 
-      // Leads count — bounded to yesterday's tours only, `leads` has no timestamp
-      // index so this stays scoped per-tour rather than a full-table scan.
-      const leads = await ctx.db
-        .query('leads')
-        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-        .collect()
-      const dayLeads = leads.filter(
-        (l) => l._creationTime >= startOfDay && l._creationTime < endOfDay
+    const page = await ctx.db
+      .query('analytics')
+      .withIndex('by_tourId_timestamp', (q) =>
+        q.eq('tourId', tourId).gte('timestamp', startOfDay).lt('timestamp', endOfDay)
       )
+      .paginate({ cursor: args.cursor, numItems: ROLLUP_PAGE_SIZE })
+    const dayEvents = page.page
 
-      // Scene views
-      const sceneEvents = dayEvents.filter((e) => e.event === 'scene_view' && e.sceneId)
-      const sceneViews: Record<string, number> = {}
-      for (const e of sceneEvents) {
-        if (e.sceneId) {
-          const id = e.sceneId as string
-          sceneViews[id] = (sceneViews[id] ?? 0) + 1
-        }
+    const state = args.state ?? {
+      views: 0,
+      durationSum: 0,
+      durationCount: 0,
+      sceneViews: {},
+      deviceBreakdown: { desktop: 0, mobile: 0, tablet: 0 },
+      topCountries: {},
+      sessionIds: [],
+      visitorIds: [],
+    }
+    const sessionIds = new Set(state.sessionIds)
+    const visitorIdSet = new Set(state.visitorIds)
+
+    const views = dayEvents.filter(isCountedView)
+    state.views += views.length
+    for (const e of views) sessionIds.add(e.sessionId)
+
+    // Duration
+    for (const e of dayEvents) {
+      if (e.duration) {
+        state.durationSum += e.duration
+        state.durationCount++
       }
+    }
 
-      // Device breakdown
-      const deviceBreakdown = { desktop: 0, mobile: 0, tablet: 0 }
-      for (const v of views) {
-        const device = v.deviceType ?? 'desktop'
-        if (device in deviceBreakdown) {
-          deviceBreakdown[device as keyof typeof deviceBreakdown]++
-        }
+    // Scene views
+    for (const e of dayEvents) {
+      if (e.event === 'scene_view' && e.sceneId) {
+        const id = e.sceneId as string
+        state.sceneViews[id] = (state.sceneViews[id] ?? 0) + 1
       }
+    }
 
-      // Top countries
-      const countryMap: Record<string, number> = {}
-      for (const v of views) {
-        if (v.country) {
-          countryMap[v.country] = (countryMap[v.country] ?? 0) + 1
-        }
+    // Device breakdown
+    for (const v of views) {
+      const device = v.deviceType ?? 'desktop'
+      if (device in state.deviceBreakdown) {
+        state.deviceBreakdown[device as keyof typeof state.deviceBreakdown]++
       }
+    }
 
-      // Best-effort identity rollups when visitorId is present on events
-      const visitorIds = [
-        ...new Set(
-          dayEvents
-            .map((e) => e.visitorId)
-            .filter((id): id is NonNullable<typeof id> => id != null)
-        ),
-      ]
-      let uniqueVisitorsVerified = 0
-      let uniqueDevices = 0
-      let returningVisitors = 0
-      if (visitorIds.length > 0) {
-        const visitorDocs = await Promise.all(visitorIds.map((id) => ctx.db.get(id)))
-        const present = visitorDocs.filter(
-          (doc): doc is NonNullable<typeof doc> =>
-            doc != null && doc.mergedInto === undefined
-        )
-        uniqueVisitorsVerified = present.filter((v) => v.phoneHash != null).length
-        // ponytail: device floor ≈ distinct visitor rows at device+ tier
-        uniqueDevices = present.filter(
-          (v) =>
-            v.identityTier === 'device' ||
-            v.identityTier === 'fingerprint' ||
-            v.identityTier === 'identified' ||
-            v.identityTier === 'verified'
-        ).length
-        returningVisitors = present.filter((v) => v.totalSessions > 1).length
+    // Top countries
+    for (const v of views) {
+      if (v.country) {
+        state.topCountries[v.country] = (state.topCountries[v.country] ?? 0) + 1
       }
+    }
 
-      // Check if daily analytics already exists for this date
-      const existing = await ctx.db
-        .query('dailyAnalytics')
-        .withIndex('by_tourId_date', (q) => q.eq('tourId', tour._id).eq('date', dateStr))
-        .unique()
+    for (const e of dayEvents) {
+      if (e.visitorId != null) visitorIdSet.add(e.visitorId)
+    }
 
-      const data = {
-        tourId: tour._id,
-        date: dateStr,
-        views: views.length,
-        uniqueVisitors: uniqueSessions.size,
-        avgDuration,
-        leadsCount: dayLeads.length,
-        sceneViews,
-        deviceBreakdown,
-        topCountries: countryMap,
-        uniqueVisitorsVerified,
-        uniqueDevices,
-        returningVisitors,
-      }
+    state.sessionIds = [...sessionIds]
+    state.visitorIds = [...visitorIdSet]
 
-      if (existing) {
-        await ctx.db.patch(existing._id, data)
-      } else {
-        await ctx.db.insert('dailyAnalytics', data)
-      }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.analytics.rollupTourDay, {
+        tourId,
+        dateStr,
+        cursor: page.continueCursor,
+        state,
+      })
+      return
+    }
+
+    const avgDuration =
+      state.durationCount > 0 ? Math.round(state.durationSum / state.durationCount) : 0
+
+    // Leads count — bounded to yesterday's tours only, `leads` has no timestamp
+    // index so this stays scoped per-tour rather than a full-table scan.
+    const leads = await ctx.db
+      .query('leads')
+      .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+      .collect()
+    const dayLeads = leads.filter(
+      (l) => l._creationTime >= startOfDay && l._creationTime < endOfDay
+    )
+
+    // Best-effort identity rollups when visitorId is present on events
+    const visitorIds = state.visitorIds
+    let uniqueVisitorsEstimated = 0
+    let uniqueVisitorsVerified = 0
+    let uniqueDevices = 0
+    let returningVisitors = 0
+    if (visitorIds.length > 0) {
+      const visitorDocs = await Promise.all(visitorIds.map((id) => ctx.db.get(id)))
+      const present = visitorDocs.filter(
+        (doc): doc is NonNullable<typeof doc> =>
+          doc != null && doc.mergedInto === undefined
+      )
+      uniqueVisitorsEstimated = present.filter((v) => v.confidence >= 70).length
+      uniqueVisitorsVerified = present.filter((v) => v.phoneHash != null).length
+      // ponytail: device floor ≈ distinct visitor rows at device+ tier
+      uniqueDevices = present.filter(
+        (v) =>
+          v.identityTier === 'device' ||
+          v.identityTier === 'fingerprint' ||
+          v.identityTier === 'identified' ||
+          v.identityTier === 'verified'
+      ).length
+      returningVisitors = present.filter((v) => v.totalSessions > 1).length
+    }
+
+    // Check if daily analytics already exists for this date
+    const existing = await ctx.db
+      .query('dailyAnalytics')
+      .withIndex('by_tourId_date', (q) => q.eq('tourId', tour._id).eq('date', dateStr))
+      .unique()
+
+    const data = {
+      tourId: tour._id,
+      date: dateStr,
+      views: state.views,
+      uniqueVisitors: sessionIds.size,
+      avgDuration,
+      leadsCount: dayLeads.length,
+      sceneViews: state.sceneViews,
+      deviceBreakdown: state.deviceBreakdown,
+      topCountries: state.topCountries,
+      uniqueVisitorsEstimated,
+      uniqueVisitorsVerified,
+      uniqueDevices,
+      returningVisitors,
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, data)
+    } else {
+      await ctx.db.insert('dailyAnalytics', data)
     }
   },
 })
@@ -814,7 +936,7 @@ export const getDashboardOverview = query({
     }
 
     // Merge today's live events into the current-period aggregates (today is always "current").
-    const todayViewEvents = todayEvents.filter((e) => e.event === 'tour_view')
+    const todayViewEvents = todayEvents.filter(isCountedView)
     currentViews += todayViewEvents.length
     const todaySessions = new Set(todayViewEvents.map((e) => e.sessionId))
     periodSessions += todaySessions.size
@@ -954,12 +1076,16 @@ export const getEventsByTourInternal = internalQuery({
           .lte('timestamp', args.endDate ?? Infinity)
       )
       .order('desc')
-      .collect()
+      .take(AGGREGATE_EVENT_SCAN_CAP)
   },
 })
 
 export const getAllEventsInternal = internalQuery({
-  args: { clerkId: v.string() },
+  args: {
+    clerkId: v.string(),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const user = await ctx.db
       .query('users')
@@ -972,16 +1098,25 @@ export const getAllEventsInternal = internalQuery({
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
       .collect()
 
-    const allEvents = await Promise.all(
-      tours.map((tour) =>
-        ctx.db
-          .query('analytics')
-          .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
-          .collect()
-      )
-    )
+    // Shared budget across tours so one export stays under the read limit.
+    const allEvents: Doc<'analytics'>[] = []
+    for (const tour of tours) {
+      const remaining = AGGREGATE_EVENT_SCAN_CAP - allEvents.length
+      if (remaining <= 0) break
+      const rows = await ctx.db
+        .query('analytics')
+        .withIndex('by_tourId_timestamp', (q) =>
+          q
+            .eq('tourId', tour._id)
+            .gte('timestamp', args.startDate ?? -Infinity)
+            .lte('timestamp', args.endDate ?? Infinity)
+        )
+        .order('desc')
+        .take(remaining)
+      allEvents.push(...rows)
+    }
 
-    return allEvents.flat().sort((a, b) => b.timestamp - a.timestamp)
+    return allEvents.sort((a, b) => b.timestamp - a.timestamp)
   },
 })
 
@@ -1016,14 +1151,9 @@ export const exportCsv = action({
     } else {
       events = await ctx.runQuery(internal.analytics.getAllEventsInternal, {
         clerkId: identity.subject,
+        startDate: args.startDate,
+        endDate: args.endDate,
       })
-      // Apply date filters client-side for the all-events case
-      if (args.startDate) {
-        events = events.filter((e) => e.timestamp >= args.startDate!)
-      }
-      if (args.endDate) {
-        events = events.filter((e) => e.timestamp <= args.endDate!)
-      }
     }
 
     // Build CSV
@@ -1110,7 +1240,7 @@ export const getTourPerformance = query({
         )
         .take(DASHBOARD_EVENT_SCAN_CAP)
 
-      const todayViewEvents = todayEvents.filter((e) => e.event === 'tour_view')
+      const todayViewEvents = todayEvents.filter(isCountedView)
       const todaySessions = new Set(todayViewEvents.map((e) => e.sessionId))
       const todayDurations = todayEvents
         .filter((e) => e.duration && e.duration > 0)
@@ -1192,7 +1322,8 @@ export const trackBatch = mutation({
         e.metadata &&
         typeof e.metadata === 'object' &&
         typeof (e.metadata as { visitorId?: unknown }).visitorId === 'string'
-          ? ((e.metadata as { visitorId: string }).visitorId as typeof args.visitorId)
+          ? (ctx.db.normalizeId('visitors', (e.metadata as { visitorId: string }).visitorId) ??
+            undefined)
           : undefined
       await ctx.db.insert('analytics', {
         tourId: args.tourId,
@@ -1207,7 +1338,7 @@ export const trackBatch = mutation({
         visitorId: args.visitorId ?? metaVid,
         variantKey: e.variantKey,
         timeOfDay: e.timeOfDay,
-        timestamp: e.timestamp ?? now,
+        timestamp: Math.min(e.timestamp ?? now, now),
       })
       if (e.event === 'tour_view') {
         const linked =
@@ -1294,7 +1425,11 @@ export const getBySession = query({
 })
 
 export const getSessionsByTour = query({
-  args: { tourId: v.id('tours'), limit: v.optional(v.number()) },
+  args: {
+    tourId: v.id('tours'),
+    limit: v.optional(v.number()),
+    startDate: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return []
@@ -1306,10 +1441,7 @@ export const getSessionsByTour = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return []
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
 
     const bySession = new Map<
       string,
@@ -1396,10 +1528,16 @@ export const getYawHeatmap = query({
       .unique()
     if (!user || tour.userId !== user._id) return null
 
+    const startTs = args.startTs ?? 0
+    const endTs = args.endTs ?? Number.POSITIVE_INFINITY
+
     const events = await ctx.db
       .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', scene.tourId))
-      .collect()
+      .withIndex('by_tourId_timestamp', (q) =>
+        q.eq('tourId', scene.tourId).gte('timestamp', startTs).lte('timestamp', endTs)
+      )
+      .order('desc')
+      .take(AGGREGATE_EVENT_SCAN_CAP)
 
     const YAW_BINS = 36
     const PITCH_BINS = 9
@@ -1414,9 +1552,6 @@ export const getYawHeatmap = query({
     let yawTo = 0
     let pitchFrom = 90
     let pitchTo = -90
-
-    const startTs = args.startTs ?? 0
-    const endTs = args.endTs ?? Number.POSITIVE_INFINITY
 
     for (const e of events) {
       if (e.event !== 'view_direction') continue
@@ -1492,7 +1627,7 @@ export const getYawHeatmap = query({
 })
 
 export const getHotspotClickCounts = query({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), startDate: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity().catch(() => null)
     if (!identity) return {}
@@ -1504,10 +1639,7 @@ export const getHotspotClickCounts = query({
       .unique()
     if (!user || tour.userId !== user._id) return {}
 
-    const events = await ctx.db
-      .query('analytics')
-      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+    const events = await recentTourEvents(ctx, args.tourId, args.startDate)
     const counts: Record<string, number> = {}
     for (const e of events) {
       if (e.event !== 'hotspot_click') continue
@@ -1544,7 +1676,8 @@ export const getUniqueVisitorStats = query({
       .withIndex('by_tourId_timestamp', (q) =>
         q.eq('tourId', args.tourId).gte('timestamp', periodStart)
       )
-      .collect()
+      .order('desc')
+      .take(AGGREGATE_EVENT_SCAN_CAP)
 
     const views = events.filter((e) => e.event === 'tour_view')
     const sessionUniques = new Set(views.map((e) => e.sessionId)).size
@@ -1591,7 +1724,8 @@ export const getVariantEngagement = query({
       .withIndex('by_tourId_timestamp', (q) =>
         q.eq('tourId', args.tourId).gte('timestamp', periodStart)
       )
-      .collect()
+      .order('desc')
+      .take(AGGREGATE_EVENT_SCAN_CAP)
 
     const viewSessions = new Set(
       events.filter((e) => e.event === 'tour_view').map((e) => e.sessionId)
@@ -1667,7 +1801,8 @@ export const getQrAttribution = query({
       .withIndex('by_tourId_timestamp', (q) =>
         q.eq('tourId', args.tourId).gte('timestamp', periodStart)
       )
-      .collect()
+      .order('desc')
+      .take(AGGREGATE_EVENT_SCAN_CAP)
 
     const allLeads = await ctx.db
       .query('leads')
@@ -1692,7 +1827,7 @@ export const getQrAttribution = query({
       `${qr || '—'}|${mm || '—'}|${camp || '—'}`
 
     for (const e of events) {
-      if (e.event !== 'tour_view') continue
+      if (!isCountedView(e)) continue
       const m = (e.metadata ?? {}) as Record<string, unknown>
       const qr = typeof m.qr === 'string' ? m.qr : undefined
       const mm = typeof m.mm === 'string' ? m.mm : undefined
@@ -1715,15 +1850,15 @@ export const getQrAttribution = query({
     for (const lead of leads) {
       const mm = lead.micromarket
       if (!mm) continue
-      let matched = false
+      // Attribute each lead once: to the matching placement with the most scans.
+      let best: Row | undefined
       for (const row of byKey.values()) {
-        if (row.mm === mm) {
-          row.leads += 1
-          if (lead.phoneNormalized || lead.phone) row.leadsWithPhone += 1
-          matched = true
-        }
+        if (row.mm === mm && (!best || row.scans > best.scans)) best = row
       }
-      if (!matched) {
+      if (best) {
+        best.leads += 1
+        if (lead.phoneNormalized || lead.phone) best.leadsWithPhone += 1
+      } else {
         const k = keyOf(undefined, mm, undefined)
         const row = byKey.get(k) ?? {
           qr: '—',

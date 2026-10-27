@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, lazy } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Clone, useGLTF } from '@react-three/drei'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { CostSummaryPanel } from './CostSummaryPanel'
+import { ModelErrorBoundary } from '@/components/viewer/BuildingExteriorViewer'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 
 interface FurnishedRoomViewerProps {
@@ -35,7 +36,6 @@ function ReadOnlyFurniturePiece({
 }
 
 export function FurnishedRoomViewer({
-  tourSlug,
   furnishedRoomSlug,
 }: FurnishedRoomViewerProps) {
   const [furnitureVisible, setFurnitureVisible] = useState(true)
@@ -149,14 +149,16 @@ export function FurnishedRoomViewer({
           {/* Render furniture pieces */}
           {furnitureVisible &&
             validPlacements.map((p) => (
-              <Suspense key={p.instanceId} fallback={null}>
-                <ReadOnlyFurniturePiece
-                  glbUrl={p.furnitureItem.glbUrl}
-                  position={[p.position.x, p.position.y, p.position.z]}
-                  rotation={[p.rotation.x, p.rotation.y, p.rotation.z]}
-                  scale={[p.scale.x, p.scale.y, p.scale.z]}
-                />
-              </Suspense>
+              <ModelErrorBoundary key={p.instanceId}>
+                <Suspense fallback={null}>
+                  <ReadOnlyFurniturePiece
+                    glbUrl={p.furnitureItem.glbUrl}
+                    position={[p.position.x, p.position.y, p.position.z]}
+                    rotation={[p.rotation.x, p.rotation.y, p.rotation.z]}
+                    scale={[p.scale.x, p.scale.y, p.scale.z]}
+                  />
+                </Suspense>
+              </ModelErrorBoundary>
             ))}
 
           <OrbitControls
@@ -238,8 +240,9 @@ export function FurnishedRoomViewer({
 }
 
 /** Lazy wrapper for SplatScene to avoid top-level import of spark.js */
+const LazySplatScene = lazy(() =>
+  import('@/components/viewer/SplatScene').then((mod) => ({ default: mod.SplatScene }))
+)
 function SplatSceneLoader({ url }: { url: string }) {
-  // Dynamic import inside R3F context
-  const { SplatScene } = require('@/components/viewer/SplatScene')
-  return <SplatScene url={url} />
+  return <LazySplatScene url={url} />
 }

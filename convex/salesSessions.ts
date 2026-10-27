@@ -30,6 +30,7 @@ export const create = mutation({
     const tour = await ctx.db.get(args.tourId)
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
+    if (!(await ctx.db.get(args.customerId))) throw new Error('Customer not found')
 
     return await ctx.db.insert('salesSessions', {
       tourId: args.tourId,
@@ -90,10 +91,14 @@ export const getByTour = query({
     const tour = await ctx.db.get(args.tourId)
     if (!tour || tour.userId !== user._id) return []
 
+    // Capped: unbounded .collect() + per-row db.get is the same N+1 shape
+    // that caused the OOM crash-loop incident (2026-08-26). 500 most-recent
+    // sessions per tour is far beyond realistic sales-visit history.
     const sessions = await ctx.db
       .query('salesSessions')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
-      .collect()
+      .order('desc')
+      .take(500)
 
     const enriched = []
     for (const s of sessions) {
@@ -115,10 +120,14 @@ export const getByCustomer = query({
     const user = await getAuthUser(ctx)
     if (!user) return []
 
+    // Capped: unbounded .collect() over a shared, cross-tenant customer's
+    // sessions (plus per-row db.get below) is the same N+1 shape that caused
+    // the OOM crash-loop incident (2026-08-26).
     const sessions = await ctx.db
       .query('salesSessions')
       .withIndex('by_customerId', (q) => q.eq('customerId', args.customerId))
-      .collect()
+      .order('desc')
+      .take(500)
 
     const enriched = []
     for (const s of sessions) {

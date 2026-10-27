@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.38.2",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@google/model-viewer": "^4.3.1",
     "@photo-sphere-viewer/autorotate-plugin": "^5.14.1",
     "@photo-sphere-viewer/core": "^5.14.1",

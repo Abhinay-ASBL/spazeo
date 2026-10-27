@@ -303,9 +303,6 @@ export function AnimatedBuildUp({
                   const c = toCanvas(pt.x, pt.y)
                   return [c.x, c.y]
                 })
-                const center = centroid(
-                  room.points.map((pt) => toCanvas(pt.x, pt.y))
-                )
                 const isLowConfidence = room.confidence === 'low'
 
                 return (
@@ -350,9 +347,6 @@ export function AnimatedBuildUp({
                   const start = toCanvas(dim.start.x, dim.start.y)
                   const end = toCanvas(dim.end.x, dim.end.y)
                   const opacity = dimOpacities[i] ?? 0
-                  const midX = (start.x + end.x) / 2
-                  const midY = (start.y + end.y) / 2
-                  const label = dim.label || `${dim.value.toFixed(2)}m`
 
                   return (
                     <Line

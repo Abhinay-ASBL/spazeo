@@ -222,11 +222,15 @@ export default function PublicTourViewerPage() {
 
   const tourData = useQuery(api.tours.getBySlug, { slug })
   const captureLead = useMutation(api.leads.capture)
+  // Holds the unlock token from verifyPassword once the visitor enters the right password.
+  const [passwordVerified, setPasswordVerified] = useState<string | null>(null)
 
   const hasSplat = !!(tourData && '_id' in tourData && tourData.splatStorageId)
   const splatUrl = useQuery(
     api.tours.getTourSplatUrl,
-    hasSplat && tourData && '_id' in tourData ? { tourId: tourData._id as Id<'tours'> } : 'skip'
+    hasSplat && tourData && '_id' in tourData
+      ? { tourId: tourData._id as Id<'tours'>, unlockToken: passwordVerified ?? undefined }
+      : 'skip'
   )
 
   // Detect floor-plan-derived tours (third renderer branch)
@@ -234,7 +238,7 @@ export default function PublicTourViewerPage() {
   const floorPlanGeometryData = useQuery(
     api.tours.getFloorPlanGeometry,
     hasFloorPlan && tourData && '_id' in tourData
-      ? { tourId: tourData._id as Id<'tours'> }
+      ? { tourId: tourData._id as Id<'tours'>, unlockToken: passwordVerified ?? undefined }
       : 'skip'
   )
 
@@ -252,7 +256,6 @@ export default function PublicTourViewerPage() {
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [passwordVerified, setPasswordVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [showPasswordError, setShowPasswordError] = useState(false)
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '' })
@@ -268,8 +271,13 @@ export default function PublicTourViewerPage() {
 
   const unlockedTour = useQuery(
     api.tours.getBySlugWithScenes,
-    passwordVerified ? { slug } : 'skip'
+    passwordVerified ? { slug, unlockToken: passwordVerified } : 'skip'
   )
+
+  // Stale unlock token (owner changed the password): drop it so the gate shows again.
+  if (passwordVerified && unlockedTour && 'requiresPassword' in unlockedTour && unlockedTour.requiresPassword) {
+    setPasswordVerified(null)
+  }
 
   // Use unlocked tour (post-verification) if available, otherwise use the initial data
   const tour = unlockedTour ?? tourData
@@ -349,27 +357,32 @@ export default function PublicTourViewerPage() {
   const welcomeBackDoneRef = useRef(false)
 
   // Soft lead prompt — after_delay default 20s (no OTP gate)
+  const leadCfg =
+    tour && typeof tour === 'object' && 'leadCaptureConfig' in tour
+      ? (tour as { leadCaptureConfig?: { enabled?: boolean; gateBehavior?: string; delaySeconds?: number } })
+          .leadCaptureConfig
+      : undefined
+  const leadCfgEnabled = leadCfg?.enabled
+  const leadCfgBehavior = leadCfg?.gateBehavior
+  const leadCfgDelaySeconds = leadCfg?.delaySeconds
+  // Depend on primitives, not `tour`: every reactive update (e.g. viewCount) yields a new
+  // object and would restart the delay timer.
   useEffect(() => {
     if (!tourIdForTracking) return
-    const cfg =
-      tour && typeof tour === 'object' && 'leadCaptureConfig' in tour
-        ? (tour as { leadCaptureConfig?: { enabled?: boolean; gateBehavior?: string; delaySeconds?: number } })
-            .leadCaptureConfig
-        : undefined
-    if (cfg?.enabled === false) return
-    const behavior = cfg?.gateBehavior ?? 'after_delay'
+    if (leadCfgEnabled === false) return
+    const behavior = leadCfgBehavior ?? 'after_delay'
     if (behavior !== 'after_delay' && behavior !== 'after_scenes') return
-    const delayMs = (cfg?.delaySeconds ?? 20) * 1000
+    const delayMs = (leadCfgDelaySeconds ?? 20) * 1000
     const t = window.setTimeout(() => {
       if (!leadFormShownRef.current) setPanelOpen(true)
     }, delayMs)
     return () => window.clearTimeout(t)
-  }, [tourIdForTracking, tour])
+  }, [tourIdForTracking, leadCfgEnabled, leadCfgBehavior, leadCfgDelaySeconds])
 
   // Welcome back + resume last scene when returning identified visitor
   useEffect(() => {
     if (welcomeBackDoneRef.current || !visitorDoc || !tour) return
-    if (!visitorDoc.phoneHash || !visitorDoc.lastSceneId) return
+    if (!visitorDoc.identified || !visitorDoc.lastSceneId) return
     const scenes = Array.isArray(tour.scenes) ? tour.scenes : []
     const exists = scenes.some(
       (s: { _id: string }) => s._id === visitorDoc.lastSceneId
@@ -628,9 +641,9 @@ export default function PublicTourViewerPage() {
     setVerifying(true)
     setShowPasswordError(false)
     try {
-      const ok = await verifyPassword({ slug, password: password.trim() })
-      if (ok) {
-        setPasswordVerified(true)
+      const token = await verifyPassword({ slug, password: password.trim() })
+      if (token) {
+        setPasswordVerified(token)
       } else {
         setShowPasswordError(true)
       }

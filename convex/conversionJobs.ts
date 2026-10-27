@@ -9,6 +9,7 @@ import {
 } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 import { api as _api } from './_generated/api'
+import { deleteOptimizedModel } from './buildings'
 
 // Cast to break circular type reference (api.d.ts imports this module's types)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,7 +134,13 @@ export const complete = internalMutation({
       textureCount: args.textureCount,
     })
 
-    // Update the building's optimizedModelStorageId
+    // Replace the building's optimizedModelStorageId, deleting the previous
+    // optimized file (and detaching it from the job that produced it).
+    const building = await ctx.db.get(job.buildingId)
+    const previous = building?.optimizedModelStorageId
+    if (previous && previous !== args.outputStorageId && previous !== building?.modelStorageId) {
+      await deleteOptimizedModel(ctx, job.buildingId, previous)
+    }
     await ctx.db.patch(job.buildingId, {
       optimizedModelStorageId: args.outputStorageId,
     })

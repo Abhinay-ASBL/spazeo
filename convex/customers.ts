@@ -22,10 +22,15 @@ async function ownedSessionsForCustomer(
   userId: Id<'users'>,
   customerId: Id<'customers'>
 ): Promise<Doc<'salesSessions'>[]> {
+  // Capped: unbounded .collect() over a shared, cross-tenant customer's
+  // sessions (plus per-row db.get below) is the same N+1 shape that caused
+  // the OOM crash-loop incident (2026-08-26). 500 most-recent sessions per
+  // customer is far beyond realistic sales-visit history.
   const sessions = await ctx.db
     .query('salesSessions')
     .withIndex('by_customerId', (q) => q.eq('customerId', customerId))
-    .collect()
+    .order('desc')
+    .take(500)
 
   const owned: Doc<'salesSessions'>[] = []
   for (const s of sessions) {
@@ -55,6 +60,17 @@ export const findByPhone = query({
     // the customer record itself is a shared-by-phone directory entry, but
     // another tenant's visit history/notes must not leak here.
     const sessions = await ownedSessionsForCustomer(ctx, user._id, customer._id)
+
+    // No relationship with this customer: return the id only, never another
+    // tenant's name/email/notes.
+    if (customer.createdBy !== user._id && sessions.length === 0) {
+      return {
+        customer: { _id: customer._id, phone: customer.phone, name: undefined as string | undefined },
+        visitCount: 0,
+        lastVisitAt: null,
+        toursVisited: [],
+      }
+    }
 
     const tourIds = [...new Set(sessions.map((s) => s.tourId))]
     const tours: Array<{ id: string; title: string }> = []
@@ -129,14 +145,16 @@ export const update = mutation({
     const customer = await ctx.db.get(args.customerId)
     if (!customer) throw new Error('Customer not found')
 
+    let fillOnly = false
     if (customer.createdBy !== user._id) {
       const owned = await ownedSessionsForCustomer(ctx, user._id, args.customerId)
-      if (owned.length === 0) throw new Error('Not authorized')
+      // Unrelated tenant (first visit via shared phone directory): may only fill empty fields.
+      fillOnly = owned.length === 0
     }
 
     const patch: Record<string, string> = {}
-    if (args.name !== undefined) patch.name = args.name
-    if (args.email !== undefined) patch.email = args.email
+    if (args.name !== undefined && !(fillOnly && customer.name)) patch.name = args.name
+    if (args.email !== undefined && !(fillOnly && customer.email)) patch.email = args.email
 
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.customerId, patch)

@@ -120,6 +120,8 @@ function LabelMarker({
   // Per-frame spring update — no React state, direct DOM mutation for performance
   useFrame((_, delta) => {
     if (!wrapRef.current) return
+    // Keep in sync when the hotspot is moved in the editor
+    hotVec.current.set(hotspot.position.x, hotspot.position.y, hotspot.position.z)
 
     // Camera direction (from camera toward sphere center)
     const camDir = camera.position.clone().normalize().negate()

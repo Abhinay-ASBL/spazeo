@@ -155,9 +155,9 @@ export function useConversionJobMutations() {
   return { create, retry, triggerConversion }
 }
 
-// --- Building analytics ---
+// --- Building analytics (read queries) ---
 
-export function useBuildingAnalytics(
+export function useBuildingAnalyticsEvents(
   buildingId: Id<'buildings'>,
   dateRange?: { startDate?: number; endDate?: number }
 ) {
