@@ -210,6 +210,7 @@ export const TIME_OF_DAY_OPTIONS = [
   { value: 'morning', label: 'Morning', description: 'Sunrise, warm golden light' },
   { value: 'afternoon', label: 'Afternoon', description: 'Bright daylight, clear sky' },
   { value: 'sunset', label: 'Sunset', description: 'Golden hour, warm orange tones' },
+  { value: 'evening', label: 'Evening', description: 'Dusk, soft ambient light' },
   { value: 'night', label: 'Night', description: 'City lights, blue hour' },
 ] as const
 

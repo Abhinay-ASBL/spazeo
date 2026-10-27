@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
-import { query, mutation } from './_generated/server'
+import { query, mutation, type MutationCtx } from './_generated/server'
+import type { Id } from './_generated/dataModel'
 import { requireAdmin, requireAdminKey } from './authHelpers'
 
 const heightSampleValidator = v.object({
@@ -79,6 +80,38 @@ const panoramaValidator = v.object({
   unitId: v.optional(v.string()),
   vertexIndex: v.optional(v.number()),
 })
+
+/** Default when missing — matches existing rows that predate timeOfDay. */
+function panoramaTod(p: { timeOfDay?: string }) {
+  return p.timeOfDay ?? 'afternoon'
+}
+
+/** Delete images of panoramas that were replaced, unless another kept panorama still uses them. */
+async function deleteReplacedPanoramaImages(
+  ctx: MutationCtx,
+  before: { storageId: Id<'_storage'> }[],
+  after: { storageId: Id<'_storage'> }[]
+) {
+  const kept = new Set(after.map((p) => p.storageId))
+  for (const id of new Set(before.map((p) => p.storageId))) {
+    if (kept.has(id)) continue
+    try {
+      await ctx.storage.delete(id)
+    } catch {}
+  }
+}
+
+function samePanoramaSlot(
+  a: { towerId: string; cornerId: string; heightM: number; timeOfDay?: string },
+  b: { towerId: string; cornerId: string; heightM: number; timeOfDay?: string }
+) {
+  return (
+    a.towerId === b.towerId &&
+    a.cornerId === b.cornerId &&
+    a.heightM === b.heightM &&
+    panoramaTod(a) === panoramaTod(b)
+  )
+}
 
 async function resolveStorageUrls<T extends Record<string, unknown>>(
   ctx: { storage: { getUrl: (id: string) => Promise<string | null> } },
@@ -556,16 +589,11 @@ export const addPanoramaAdmin = mutation({
       .withIndex('by_slug', (q) => q.eq('slug', args.slug))
       .unique()
     if (!existing) throw new Error('Config not found')
-    const filtered = existing.panoramas.filter(
-      (p) =>
-        !(
-          p.towerId === args.panorama.towerId &&
-          p.cornerId === args.panorama.cornerId &&
-          p.heightM === args.panorama.heightM
-        )
-    )
+    const incoming = { ...args.panorama, timeOfDay: panoramaTod(args.panorama) }
+    const filtered = existing.panoramas.filter((p) => !samePanoramaSlot(p, incoming))
+    await deleteReplacedPanoramaImages(ctx, existing.panoramas, [...filtered, incoming])
     await ctx.db.patch(existing._id, {
-      panoramas: [...filtered, args.panorama],
+      panoramas: [...filtered, incoming],
       updatedAt: Date.now(),
     })
   },
@@ -582,17 +610,12 @@ export const addPanorama = mutation({
       .unique()
     if (!existing) throw new Error('Config not found')
 
-    const filtered = existing.panoramas.filter(
-      (p) =>
-        !(
-          p.towerId === args.panorama.towerId &&
-          p.cornerId === args.panorama.cornerId &&
-          p.heightM === args.panorama.heightM
-        )
-    )
+    const incoming = { ...args.panorama, timeOfDay: panoramaTod(args.panorama) }
+    const filtered = existing.panoramas.filter((p) => !samePanoramaSlot(p, incoming))
+    await deleteReplacedPanoramaImages(ctx, existing.panoramas, [...filtered, incoming])
 
     await ctx.db.patch(existing._id, {
-      panoramas: [...filtered, args.panorama],
+      panoramas: [...filtered, incoming],
       updatedAt: Date.now(),
     })
   },
@@ -604,6 +627,7 @@ export const removePanorama = mutation({
     towerId: v.string(),
     cornerId: v.string(),
     heightM: v.number(),
+    timeOfDay: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx)
@@ -614,12 +638,13 @@ export const removePanorama = mutation({
       .unique()
     if (!existing) throw new Error('Config not found')
 
-    const target = existing.panoramas.find(
-      (p) =>
-        p.towerId === args.towerId &&
-        p.cornerId === args.cornerId &&
-        p.heightM === args.heightM
-    )
+    const slot = {
+      towerId: args.towerId,
+      cornerId: args.cornerId,
+      heightM: args.heightM,
+      timeOfDay: args.timeOfDay,
+    }
+    const target = existing.panoramas.find((p) => samePanoramaSlot(p, slot))
     if (target) {
       try {
         await ctx.storage.delete(target.storageId)
@@ -627,14 +652,7 @@ export const removePanorama = mutation({
     }
 
     await ctx.db.patch(existing._id, {
-      panoramas: existing.panoramas.filter(
-        (p) =>
-          !(
-            p.towerId === args.towerId &&
-            p.cornerId === args.cornerId &&
-            p.heightM === args.heightM
-          )
-      ),
+      panoramas: existing.panoramas.filter((p) => !samePanoramaSlot(p, slot)),
       updatedAt: Date.now(),
     })
   },
@@ -665,10 +683,10 @@ export const fixPanoramaHeights = mutation({
       heightM: REMAP[p.heightM] ?? p.heightM,
     }))
 
-    // Deduplicate: if remap creates duplicate tower|cornerId|heightM, keep last
+    // Deduplicate: if remap creates duplicate tower|corner|height|timeOfDay, keep last
     const seen = new Map<string, typeof remapped[number]>()
     for (const p of remapped) {
-      seen.set(`${p.towerId}|${p.cornerId}|${p.heightM}`, p)
+      seen.set(`${p.towerId}|${p.cornerId}|${p.heightM}|${panoramaTod(p)}`, p)
     }
     const deduped = Array.from(seen.values())
 

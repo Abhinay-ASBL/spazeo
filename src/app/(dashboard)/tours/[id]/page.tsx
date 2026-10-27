@@ -80,6 +80,11 @@ export default function TourDetailPage() {
   const sceneList = scenes ?? []
   const statusStyle = STATUS_STYLES[tour.status] ?? STATUS_STYLES.draft
   const coverScene = sceneList.find((s) => s._id === tour.coverSceneId) ?? sceneList[0]
+  // Option A: display count = distinct variantKey (fallback to denorm or raw)
+  const sceneDisplayCount =
+    typeof tour.sceneCount === 'number'
+      ? tour.sceneCount
+      : new Set(sceneList.map((s) => s.variantKey ?? s._id)).size
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,7 +157,7 @@ export default function TourDetailPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Views', value: (tour.viewCount ?? 0).toLocaleString(), icon: Eye },
-          { label: 'Scenes', value: sceneList.length.toString(), icon: ImageIcon },
+          { label: 'Scenes', value: sceneDisplayCount.toString(), icon: ImageIcon },
           { label: 'Status', value: tour.status, icon: tour.status === 'published' ? Globe : Clock },
           {
             label: 'Created',
@@ -250,7 +255,7 @@ export default function TourDetailPage() {
               className="text-[16px] font-semibold"
               style={{ fontFamily: 'var(--font-display)', color: '#F5F3EF' }}
             >
-              Scenes ({sceneList.length})
+              Scenes ({sceneDisplayCount})
             </h2>
             <Link
               href={`/tours/${tourId}/edit`}

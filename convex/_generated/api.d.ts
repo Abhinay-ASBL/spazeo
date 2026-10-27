@@ -41,7 +41,9 @@ import type * as legacyTowersConfig from "../legacyTowersConfig.js";
 import type * as newsletter from "../newsletter.js";
 import type * as notifications from "../notifications.js";
 import type * as passwordUtils from "../passwordUtils.js";
+import type * as phoneHash from "../phoneHash.js";
 import type * as pricing from "../pricing.js";
+import type * as rateLimit from "../rateLimit.js";
 import type * as reconstructionActions from "../reconstructionActions.js";
 import type * as reconstructionJobs from "../reconstructionJobs.js";
 import type * as salesSessions from "../salesSessions.js";
@@ -52,6 +54,8 @@ import type * as subscriptions from "../subscriptions.js";
 import type * as tours from "../tours.js";
 import type * as users from "../users.js";
 import type * as viewPositions from "../viewPositions.js";
+import type * as visitorConsents from "../visitorConsents.js";
+import type * as visitors from "../visitors.js";
 
 import type {
   ApiFromModules,
@@ -93,7 +97,9 @@ declare const fullApi: ApiFromModules<{
   newsletter: typeof newsletter;
   notifications: typeof notifications;
   passwordUtils: typeof passwordUtils;
+  phoneHash: typeof phoneHash;
   pricing: typeof pricing;
+  rateLimit: typeof rateLimit;
   reconstructionActions: typeof reconstructionActions;
   reconstructionJobs: typeof reconstructionJobs;
   salesSessions: typeof salesSessions;
@@ -104,6 +110,8 @@ declare const fullApi: ApiFromModules<{
   tours: typeof tours;
   users: typeof users;
   viewPositions: typeof viewPositions;
+  visitorConsents: typeof visitorConsents;
+  visitors: typeof visitors;
 }>;
 
 /**

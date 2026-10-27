@@ -1,22 +1,63 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation } from './_generated/server'
+import {
+  query,
+  mutation,
+  internalMutation,
+  type QueryCtx,
+  type MutationCtx,
+} from './_generated/server'
 import { internal } from './_generated/api'
+import type { Id } from './_generated/dataModel'
+
+// spazeo.io DNS isn't live yet — fall back to the actual deployed URL so links aren't dead.
+const SITE_URL = process.env.SITE_URL ?? 'https://spazeo.vercel.app'
 import { requireAdminKey } from './authHelpers'
 
 // Helper to get the authenticated user
-async function getAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> }
-  db: any
-}) {
+async function getAuthUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
 
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   if (!user) throw new Error('User not found')
   return user
+}
+
+/**
+ * Delete a building's optimized model and detach it from any conversion job
+ * whose outputStorageId still points at it, so no job is left dangling.
+ */
+export async function deleteOptimizedModel(
+  ctx: MutationCtx,
+  buildingId: Id<'buildings'>,
+  storageId: Id<'_storage'>
+) {
+  const jobs = await ctx.db
+    .query('conversionJobs')
+    .withIndex('by_buildingId', (q) => q.eq('buildingId', buildingId))
+    .collect()
+  for (const job of jobs) {
+    if (job.outputStorageId === storageId) {
+      await ctx.db.patch(job._id, { outputStorageId: undefined })
+    }
+  }
+  await ctx.storage.delete(storageId)
+}
+
+/** True while an unfinished conversion job still reads this file as its input. */
+async function isPendingConversionInput(
+  ctx: MutationCtx,
+  buildingId: Id<'buildings'>,
+  storageId: Id<'_storage'>
+) {
+  const jobs = await ctx.db
+    .query('conversionJobs')
+    .withIndex('by_buildingId', (q) => q.eq('buildingId', buildingId))
+    .collect()
+  return jobs.some((j) => j.inputStorageId === storageId && j.status !== 'completed')
 }
 
 function generateSlug(name: string): string {
@@ -321,6 +362,14 @@ export const update = mutation({
       Object.entries(updates).filter(([, val]) => val !== undefined)
     )
 
+    if (
+      args.thumbnailStorageId &&
+      building.thumbnailStorageId &&
+      building.thumbnailStorageId !== args.thumbnailStorageId
+    ) {
+      await ctx.storage.delete(building.thumbnailStorageId)
+    }
+
     await ctx.db.patch(buildingId, cleanUpdates)
   },
 })
@@ -335,6 +384,14 @@ export const remove = mutation({
     if (building.userId !== user._id) throw new Error('Not authorized')
 
     // CASCADE: delete all related records
+    // A completed conversion job's output is also the building's optimizedModelStorageId,
+    // so track what's been deleted to avoid deleting the same file twice.
+    const deletedFiles = new Set<string>()
+    const deleteFile = async (id: Id<'_storage'>) => {
+      if (deletedFiles.has(id)) return
+      deletedFiles.add(id)
+      await ctx.storage.delete(id)
+    }
 
     // 1. Delete building blocks
     const blocks = await ctx.db
@@ -360,9 +417,9 @@ export const remove = mutation({
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
       .collect()
     for (const pano of panoramas) {
-      await ctx.storage.delete(pano.imageStorageId)
+      await deleteFile(pano.imageStorageId)
       if (pano.thumbnailStorageId) {
-        await ctx.storage.delete(pano.thumbnailStorageId)
+        await deleteFile(pano.thumbnailStorageId)
       }
       await ctx.db.delete(pano._id)
     }
@@ -383,7 +440,7 @@ export const remove = mutation({
       .collect()
     for (const job of jobs) {
       if (job.outputStorageId) {
-        await ctx.storage.delete(job.outputStorageId)
+        await deleteFile(job.outputStorageId)
       }
       await ctx.db.delete(job._id)
     }
@@ -399,13 +456,13 @@ export const remove = mutation({
 
     // 7. Delete model storage files
     if (building.modelStorageId) {
-      await ctx.storage.delete(building.modelStorageId)
+      await deleteFile(building.modelStorageId)
     }
     if (building.optimizedModelStorageId) {
-      await ctx.storage.delete(building.optimizedModelStorageId)
+      await deleteFile(building.optimizedModelStorageId)
     }
     if (building.thumbnailStorageId) {
-      await ctx.storage.delete(building.thumbnailStorageId)
+      await deleteFile(building.thumbnailStorageId)
     }
 
     // 8. Delete the building itself
@@ -429,7 +486,7 @@ export const publish = mutation({
       )
     }
 
-    const embedCode = `<iframe src="https://spazeo.io/building/${building.slug}?embed=true" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`
+    const embedCode = `<iframe src="${SITE_URL}/building/${building.slug}?embed=true" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`
 
     await ctx.db.patch(args.buildingId, {
       status: 'published',
@@ -506,12 +563,13 @@ export const setModelStorageId = mutation({
 
     if (
       building.modelStorageId &&
-      building.modelStorageId !== args.modelStorageId
+      building.modelStorageId !== args.modelStorageId &&
+      !(await isPendingConversionInput(ctx, args.buildingId, building.modelStorageId))
     ) {
       await ctx.storage.delete(building.modelStorageId)
     }
     if (building.optimizedModelStorageId) {
-      await ctx.storage.delete(building.optimizedModelStorageId)
+      await deleteOptimizedModel(ctx, args.buildingId, building.optimizedModelStorageId)
     }
 
     await ctx.db.patch(args.buildingId, {
@@ -545,12 +603,13 @@ export const setModelStorageIdAdmin = mutation({
 
     if (
       building.modelStorageId &&
-      building.modelStorageId !== args.modelStorageId
+      building.modelStorageId !== args.modelStorageId &&
+      !(await isPendingConversionInput(ctx, args.buildingId, building.modelStorageId))
     ) {
       await ctx.storage.delete(building.modelStorageId)
     }
     if (building.optimizedModelStorageId) {
-      await ctx.storage.delete(building.optimizedModelStorageId)
+      await deleteOptimizedModel(ctx, args.buildingId, building.optimizedModelStorageId)
     }
 
     await ctx.db.patch(args.buildingId, {

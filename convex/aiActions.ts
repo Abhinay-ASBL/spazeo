@@ -14,9 +14,6 @@ const DASHSCOPE_CHAT_URL =
 // Image generation + editing: DashScope native endpoint
 const DASHSCOPE_IMAGE_URL =
   'https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
-// Task status polling (for async image jobs)
-const DASHSCOPE_TASK_URL =
-  'https://coding-intl.dashscope.aliyuncs.com/api/v1/tasks'
 
 // Model assignments:
 // - Scene analysis (vision):     qwen3.5-plus  — best visual understanding + structured JSON output
@@ -36,13 +33,27 @@ function getDashScopeKey(): string {
   return key
 }
 
+// Abort hung upstream calls so the catch block can mark the job failed before
+// the action's own time limit kills it (which would leave it stuck in 'processing').
+const FETCH_TIMEOUT_MS = 180_000
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ── Helper: Call DashScope OpenAI-compatible chat endpoint ──
 async function callChat(
   model: string,
   messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>,
   maxTokens: number
 ): Promise<{ choices: Array<{ message: { content: string } }> }> {
-  const response = await fetch(DASHSCOPE_CHAT_URL, {
+  const response = await fetchWithTimeout(DASHSCOPE_CHAT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -65,7 +76,7 @@ async function callImageGen(
   messages: Array<{ role: string; content: Array<{ text?: string; image?: string }> }>,
   params?: Record<string, unknown>
 ): Promise<{ output: { choices: Array<{ message: { content: Array<{ image?: string }> } }> }; request_id: string }> {
-  const response = await fetch(DASHSCOPE_IMAGE_URL, {
+  const response = await fetchWithTimeout(DASHSCOPE_IMAGE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -109,6 +120,12 @@ export const analyzeScene = action({
       userId: user._id,
     })
     if (!tour) throw new Error('Forbidden')
+
+    const scene = await ctx.runQuery(internal.aiHelpers.getSceneForTour, {
+      sceneId: args.sceneId,
+      tourId: args.tourId,
+    })
+    if (!scene || scene.imageStorageId !== args.sceneStorageId) throw new Error('Forbidden')
 
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
@@ -337,6 +354,12 @@ export const stageScene = action({
     })
     if (!tour) throw new Error('Forbidden')
 
+    const scene = await ctx.runQuery(internal.aiHelpers.getSceneForTour, {
+      sceneId: args.sceneId,
+      tourId: args.tourId,
+    })
+    if (!scene || scene.imageStorageId !== args.sceneStorageId) throw new Error('Forbidden')
+
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
 
@@ -390,7 +413,8 @@ export const stageScene = action({
 
       // Download the generated image and upload to Convex storage
       // DashScope image URLs expire after 24 hours
-      const imageResponse = await fetch(stagedImageUrl)
+      const imageResponse = await fetchWithTimeout(stagedImageUrl)
+      if (!imageResponse.ok) throw new Error(`Failed to download generated image: ${imageResponse.status}`)
       const imageBlob = await imageResponse.blob()
 
       const uploadUrl = await ctx.storage.generateUploadUrl()
@@ -399,6 +423,7 @@ export const stageScene = action({
         headers: { 'Content-Type': imageBlob.type || 'image/png' },
         body: imageBlob,
       })
+      if (!uploadResponse.ok) throw new Error(`Failed to upload generated image: ${uploadResponse.status}`)
       const { storageId } = await uploadResponse.json()
 
       const duration = Date.now() - startTime
@@ -489,10 +514,24 @@ export const processStageScene = internalAction({
       const stagedImageUrl = result.output.choices[0]?.message?.content?.[0]?.image
       if (!stagedImageUrl) throw new Error('No image returned from staging model')
 
+      // Same as the main path: DashScope URLs expire after 24h, so persist to storage.
+      const imageResponse = await fetchWithTimeout(stagedImageUrl)
+      if (!imageResponse.ok) throw new Error(`Failed to download generated image: ${imageResponse.status}`)
+      const imageBlob = await imageResponse.blob()
+
+      const uploadUrl = await ctx.storage.generateUploadUrl()
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': imageBlob.type || 'image/png' },
+        body: imageBlob,
+      })
+      if (!uploadResponse.ok) throw new Error(`Failed to upload generated image: ${uploadResponse.status}`)
+      const { storageId } = await uploadResponse.json()
+
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
         jobId: args.jobId,
         status: 'completed',
-        output: { resultUrl: stagedImageUrl },
+        output: { stagedImageStorageId: storageId, style: args.style },
         duration: Date.now() - startTime,
       })
     } catch (error) {
@@ -530,6 +569,12 @@ export const enhanceImage = action({
       userId: user._id,
     })
     if (!tour) throw new Error('Forbidden')
+
+    const scene = await ctx.runQuery(internal.aiHelpers.getSceneForTour, {
+      sceneId: args.sceneId,
+      tourId: args.tourId,
+    })
+    if (!scene || scene.imageStorageId !== args.sceneStorageId) throw new Error('Forbidden')
 
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')
@@ -575,7 +620,8 @@ export const enhanceImage = action({
       if (!enhancedImageUrl) throw new Error('No image returned from enhancement model')
 
       // Download and store — DashScope URLs expire in 24h
-      const imageResponse = await fetch(enhancedImageUrl)
+      const imageResponse = await fetchWithTimeout(enhancedImageUrl)
+      if (!imageResponse.ok) throw new Error(`Failed to download generated image: ${imageResponse.status}`)
       const imageBlob = await imageResponse.blob()
 
       const uploadUrl = await ctx.storage.generateUploadUrl()
@@ -584,6 +630,7 @@ export const enhanceImage = action({
         headers: { 'Content-Type': imageBlob.type || 'image/png' },
         body: imageBlob,
       })
+      if (!uploadResponse.ok) throw new Error(`Failed to upload generated image: ${uploadResponse.status}`)
       const { storageId } = await uploadResponse.json()
 
       const enhancedStorageUrl = await ctx.storage.getUrl(storageId)
@@ -666,10 +713,25 @@ export const processEnhanceImage = internalAction({
       const enhancedImageUrl = result.output.choices[0]?.message?.content?.[0]?.image
       if (!enhancedImageUrl) throw new Error('No image returned from enhancement model')
 
+      // Same as the main path: DashScope URLs expire after 24h, so persist to storage.
+      const imageResponse = await fetchWithTimeout(enhancedImageUrl)
+      if (!imageResponse.ok) throw new Error(`Failed to download generated image: ${imageResponse.status}`)
+      const imageBlob = await imageResponse.blob()
+
+      const uploadUrl = await ctx.storage.generateUploadUrl()
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': imageBlob.type || 'image/png' },
+        body: imageBlob,
+      })
+      if (!uploadResponse.ok) throw new Error(`Failed to upload generated image: ${uploadResponse.status}`)
+      const { storageId } = await uploadResponse.json()
+      const enhancedStorageUrl = await ctx.storage.getUrl(storageId)
+
       await ctx.runMutation(internal.aiHelpers.updateJobStatus, {
         jobId: args.jobId,
         status: 'completed',
-        output: { enhancedUrl: enhancedImageUrl },
+        output: { enhancedUrl: enhancedStorageUrl, enhancedStorageId: storageId },
         duration: Date.now() - startTime,
       })
     } catch (error) {
@@ -887,6 +949,12 @@ export const generateSceneDescription = action({
       userId: user._id,
     })
     if (!tour) throw new Error('Forbidden')
+
+    const scene = await ctx.runQuery(internal.aiHelpers.getSceneForTour, {
+      sceneId: args.sceneId,
+      tourId: args.tourId,
+    })
+    if (!scene || scene.imageStorageId !== args.sceneStorageId) throw new Error('Forbidden')
 
     const credits = await ctx.runQuery(internal.aiHelpers.checkCredits, { userId: user._id })
     if (!credits.allowed) throw new Error('AI credit limit reached. Upgrade your plan for more.')

@@ -4,6 +4,8 @@ import { internalAction } from './_generated/server'
 /* ─── Brand Constants ────────────────────────────────────────── */
 
 const FROM_ADDRESS = 'Spazeo <noreply@spazeo.io>'
+// spazeo.io DNS isn't live yet — fall back to the actual deployed URL so links aren't dead.
+const SITE_URL = process.env.SITE_URL ?? 'https://spazeo.vercel.app'
 const BRAND_GOLD = '#D4A017'
 const BRAND_DARK = '#0A0908'
 const BRAND_SURFACE = '#12100E'
@@ -13,6 +15,16 @@ const BRAND_MUTED = '#A8A29E'
 const BRAND_DIM = '#6B6560'
 
 /* ─── Shared Layout Helpers ──────────────────────────────────── */
+
+/** Lead fields are typed by anonymous visitors — never interpolate them raw into HTML. */
+function esc(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
 
 function emailHeader(): string {
   return `
@@ -30,9 +42,9 @@ function emailFooter(): string {
         Spazeo — Step Inside Any Space
       </p>
       <p style="font-family: 'DM Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: ${BRAND_DIM}; margin: 0;">
-        <a href="https://spazeo.io/settings" style="color: ${BRAND_GOLD}; text-decoration: none;">Manage preferences</a>
+        <a href="${SITE_URL}/settings" style="color: ${BRAND_GOLD}; text-decoration: none;">Manage preferences</a>
         &nbsp;&middot;&nbsp;
-        <a href="https://spazeo.io/settings?tab=notifications" style="color: ${BRAND_GOLD}; text-decoration: none;">Unsubscribe</a>
+        <a href="${SITE_URL}/settings?tab=notifications" style="color: ${BRAND_GOLD}; text-decoration: none;">Unsubscribe</a>
       </p>
     </div>
   `
@@ -75,7 +87,7 @@ function primaryButton(text: string, href: string): string {
 /* ─── Email Templates ────────────────────────────────────────── */
 
 function welcomeEmailHtml(name: string): string {
-  const firstName = name.split(' ')[0] || 'there'
+  const firstName = esc(name.split(' ')[0] || 'there')
   return emailWrapper(`
     <h2 style="font-family: 'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: 700; color: ${BRAND_TEXT}; margin: 0 0 8px;">
       Welcome to Spazeo, ${firstName}!
@@ -106,7 +118,7 @@ function welcomeEmailHtml(name: string): string {
     </div>
 
     <div style="text-align: center; margin-bottom: 8px;">
-      ${primaryButton('Go to Dashboard', 'https://spazeo.io/dashboard')}
+      ${primaryButton('Go to Dashboard', `${SITE_URL}/dashboard`)}
     </div>
   `)
 }
@@ -119,7 +131,12 @@ function leadNotificationHtml(
   leadPhone?: string,
   leadMessage?: string,
 ): string {
-  const firstName = ownerName.split(' ')[0] || 'there'
+  const firstName = esc(ownerName.split(' ')[0] || 'there')
+  leadName = esc(leadName)
+  leadEmail = esc(leadEmail)
+  tourTitle = esc(tourTitle)
+  leadPhone = leadPhone && esc(leadPhone)
+  leadMessage = leadMessage && esc(leadMessage)
   return emailWrapper(`
     <h2 style="font-family: 'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 22px; font-weight: 700; color: ${BRAND_TEXT}; margin: 0 0 8px;">
       New Lead Captured
@@ -140,7 +157,7 @@ function leadNotificationHtml(
     </div>
 
     <div style="text-align: center; margin-bottom: 8px;">
-      ${primaryButton('View in Dashboard', 'https://spazeo.io/dashboard/leads')}
+      ${primaryButton('View in Dashboard', `${SITE_URL}/leads`)}
     </div>
   `)
 }
@@ -154,7 +171,7 @@ function weeklySummaryHtml(
     topTour?: string
   },
 ): string {
-  const firstName = name.split(' ')[0] || 'there'
+  const firstName = esc(name.split(' ')[0] || 'there')
   return emailWrapper(`
     <h2 style="font-family: 'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 22px; font-weight: 700; color: ${BRAND_TEXT}; margin: 0 0 8px;">
       Your Weekly Summary
@@ -182,12 +199,12 @@ function weeklySummaryHtml(
 
     ${stats.topTour ? `
       <p style="font-size: 14px; color: ${BRAND_MUTED}; margin: 0 0 24px;">
-        Your top-performing tour: <strong style="color: ${BRAND_TEXT};">"${stats.topTour}"</strong>
+        Your top-performing tour: <strong style="color: ${BRAND_TEXT};">"${esc(stats.topTour)}"</strong>
       </p>
     ` : ''}
 
     <div style="text-align: center; margin-bottom: 8px;">
-      ${primaryButton('View Full Analytics', 'https://spazeo.io/dashboard/analytics')}
+      ${primaryButton('View Full Analytics', `${SITE_URL}/analytics`)}
     </div>
   `)
 }
@@ -235,7 +252,7 @@ export const sendWelcomeEmail = internalAction({
   },
   handler: async (_ctx, args) => {
     const html = welcomeEmailHtml(args.name)
-    const text = `Welcome to Spazeo, ${args.name}! Your account is ready. Get started at https://spazeo.io/dashboard`
+    const text = `Welcome to Spazeo, ${args.name}! Your account is ready. Get started at ${SITE_URL}/dashboard`
 
     await sendEmail(args.email, 'Welcome to Spazeo — Step Inside Any Space', html, text)
   },
@@ -260,7 +277,7 @@ export const sendLeadNotification = internalAction({
       args.leadPhone,
       args.leadMessage,
     )
-    const text = `New lead on "${args.tourTitle}": ${args.leadName} (${args.leadEmail}). View in dashboard: https://spazeo.io/dashboard/leads`
+    const text = `New lead on "${args.tourTitle}": ${args.leadName} (${args.leadEmail}). View in dashboard: ${SITE_URL}/leads`
 
     await sendEmail(args.ownerEmail, `New lead on "${args.tourTitle}"`, html, text)
   },
@@ -279,7 +296,7 @@ export const sendWeeklySummary = internalAction({
   },
   handler: async (_ctx, args) => {
     const html = weeklySummaryHtml(args.name, args.stats)
-    const text = `Your weekly Spazeo summary: ${args.stats.totalViews} views, ${args.stats.newLeads} leads, ${args.stats.activeTours} active tours. View analytics: https://spazeo.io/dashboard/analytics`
+    const text = `Your weekly Spazeo summary: ${args.stats.totalViews} views, ${args.stats.newLeads} leads, ${args.stats.activeTours} active tours. View analytics: ${SITE_URL}/analytics`
 
     await sendEmail(args.email, 'Your Weekly Spazeo Summary', html, text)
   },

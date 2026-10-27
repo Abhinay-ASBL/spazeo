@@ -17,6 +17,11 @@ export const create = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
+    if (args.tourId) {
+      const tour = await ctx.db.get(args.tourId)
+      if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+    }
+
     const now = Date.now()
     return await ctx.db.insert('floorPlanProjects', {
       userId: user._id,
@@ -154,6 +159,11 @@ export const update = mutation({
       .unique()
     if (!user || user._id !== project.userId) throw new Error('Not authorized')
 
+    if (args.tourId) {
+      const tour = await ctx.db.get(args.tourId)
+      if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+    }
+
     const { projectId, ...updates } = args
     const cleanUpdates = Object.fromEntries(
       Object.entries(updates).filter(([, val]) => val !== undefined)
@@ -206,6 +216,7 @@ export const remove = mutation({
         await ctx.db.delete(job._id)
       }
 
+      await ctx.storage.delete(detail.imageStorageId)
       await ctx.db.delete(detail._id)
     }
 

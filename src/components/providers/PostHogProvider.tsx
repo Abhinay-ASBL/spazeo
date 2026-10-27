@@ -11,10 +11,8 @@ function ClerkIdentitySync() {
 
   useEffect(() => {
     if (isSignedIn && user) {
-      identifyUser(user.id, {
-        email: user.primaryEmailAddress?.emailAddress,
-        name: user.fullName ?? undefined,
-      })
+      // No PII to external services: identify by Clerk user id only.
+      identifyUser(user.id)
     } else if (isSignedIn === false) {
       resetUser()
     }

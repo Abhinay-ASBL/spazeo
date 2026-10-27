@@ -20,13 +20,11 @@ import {
   Headphones,
   Sparkles,
   ScanSearch,
-  FileText,
   Share2,
   BarChart3,
   Building,
   type LucideIcon,
 } from 'lucide-react'
-import { Logo } from '@/components/ui/Logo'
 
 /* ═══════════════════════════════════════════════════════════════════
    DATA
@@ -653,7 +651,7 @@ export default function FeaturesPage() {
               </Link>
 
               <Link
-                href="/contact"
+                href="/enterprise#contact"
                 className="flex items-center justify-center font-medium text-[15px] px-8 py-3.5 rounded-lg transition-all duration-200 hover:bg-[rgba(212,160,23,0.06)]"
                 style={{
                   border: '1px solid rgba(212,160,23,0.20)',

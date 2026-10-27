@@ -1,14 +1,12 @@
 'use client'
 
-import { Suspense, use, useMemo, useState } from 'react'
+import { Suspense, use, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  Building2,
   Layers,
   Eye,
-  ArrowUpRight,
   Phone,
   ArrowLeft,
   Check,
@@ -19,7 +17,13 @@ import {
 } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
+import { ModelViewerEmbed } from '@/components/viewer/ModelViewerEmbed'
 import { PanoramaViewer } from '@/components/viewer/PanoramaViewer'
+import { useBuildingAnalytics } from '@/hooks/useBuildingAnalytics'
+import { useVisitorIdentity } from '@/hooks/useVisitorIdentity'
+import { useUTMCapture } from '@/hooks/useUTMCapture'
+import { buildingStageSection } from '@/lib/analyticsAttribution'
 import {
   TOWERS as STATIC_TOWERS,
   HEIGHT_SAMPLES as STATIC_HEIGHT_SAMPLES,
@@ -158,6 +162,7 @@ type ConvexCfg = {
     cornerId: string
     heightM: number
     imageUrl?: string | null
+    timeOfDay?: string
   }>
 }
 
@@ -267,11 +272,16 @@ function mergeConfig(remote: ConvexCfg | null | undefined): MergedConfig {
   const panoBasesByTower = new Map<string, Set<string>>()
   for (const p of remote.panoramas) {
     if (!p.imageUrl) continue
+    const tod = p.timeOfDay ?? 'afternoon'
+    // Prefer afternoon as default; other TODs fill only if slot empty (viewer has no TOD switcher yet)
+    const prefer = tod === 'afternoon'
     if (p.cornerId.startsWith('unit_')) {
       // store both full key and prefix without #vertex for lookups
       const base = p.cornerId.split('#')[0]
-      unitPanoMap.set(`${p.towerId}|${base}|${p.heightM}`, p.imageUrl)
-      unitPanoMap.set(`${p.towerId}|${p.cornerId}|${p.heightM}`, p.imageUrl)
+      const kBase = `${p.towerId}|${base}|${p.heightM}`
+      const kFull = `${p.towerId}|${p.cornerId}|${p.heightM}`
+      if (prefer || !unitPanoMap.has(kBase)) unitPanoMap.set(kBase, p.imageUrl)
+      if (prefer || !unitPanoMap.has(kFull)) unitPanoMap.set(kFull, p.imageUrl)
       let set = panoBasesByTower.get(p.towerId)
       if (!set) {
         set = new Set()
@@ -279,7 +289,8 @@ function mergeConfig(remote: ConvexCfg | null | undefined): MergedConfig {
       }
       set.add(base)
     } else if (/^[A-F]$/.test(p.cornerId)) {
-      cornerPanoMap.set(`${p.towerId}|${p.cornerId}|${p.heightM}`, p.imageUrl)
+      const k = `${p.towerId}|${p.cornerId}|${p.heightM}`
+      if (prefer || !cornerPanoMap.has(k)) cornerPanoMap.set(k, p.imageUrl)
     }
   }
 
@@ -418,51 +429,6 @@ function mergeConfig(remote: ConvexCfg | null | undefined): MergedConfig {
   }
 }
 
-/* ── Skeleton ── */
-
-function LoadingSkeleton() {
-  return (
-    <div>
-      <div
-        className="relative w-full overflow-hidden"
-        style={{ aspectRatio: '21/9', background: '#0E0C0A' }}
-      >
-        <div
-          className="absolute inset-0 animate-pulse"
-          style={{
-            background:
-              'radial-gradient(ellipse at 50% 70%, rgba(212,160,23,0.08) 0%, transparent 60%)',
-          }}
-        />
-      </div>
-      <div className="mx-auto max-w-6xl space-y-px px-6 py-10">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="flex items-center gap-8 py-8 animate-pulse"
-            style={{ borderTop: '1px solid rgba(212,160,23,0.08)' }}
-          >
-            <div
-              className="h-20 w-20 shrink-0 rounded-full"
-              style={{ background: 'rgba(212,160,23,0.06)' }}
-            />
-            <div className="flex-1 space-y-2">
-              <div
-                className="h-5 w-40 rounded"
-                style={{ background: 'rgba(245,243,239,0.05)' }}
-              />
-              <div
-                className="h-3 w-64 rounded"
-                style={{ background: 'rgba(245,243,239,0.03)' }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /* ── Stage ribbon (prod pill chips) ── */
 
 function StageRibbon({
@@ -529,11 +495,14 @@ function StageRibbon({
 function TowerStage({
   cfg,
   onPick,
+  portfolioModelUrl,
 }: {
   cfg: MergedConfig
   onPick: (t: TowerId) => void
+  portfolioModelUrl?: string | null
 }) {
   const [hovered, setHovered] = useState<TowerId | null>(null)
+  const [modelViewerFailed, setModelViewerFailed] = useState(false)
   const viewsCount = Math.max(cfg.heightSamples.length, 1)
 
   return (
@@ -594,6 +563,45 @@ function TowerStage({
           />
         )
       })}
+
+      {/* Portfolio glance card — floating, top-right */}
+      <div
+        className="absolute right-6 top-6 z-10 hidden w-[220px] overflow-hidden rounded-xl lg:block"
+        style={{
+          background: 'rgba(18,16,14,0.72)',
+          border: '1px solid rgba(212,160,23,0.22)',
+          backdropFilter: 'blur(12px)',
+        }}
+      >
+        <div className="relative h-24 w-full">
+          {portfolioModelUrl && !modelViewerFailed ? (
+            <ModelViewerEmbed
+              src={portfolioModelUrl}
+              poster="/legacy-towers/portfolio-towers.webp"
+              alt="ASBL Legacy Towers — live 3D model"
+              onError={() => setModelViewerFailed(true)}
+            />
+          ) : (
+            <Image
+              src="/legacy-towers/portfolio-towers.webp"
+              alt="ASBL Legacy Towers portfolio render"
+              fill
+              className="object-contain object-bottom"
+            />
+          )}
+        </div>
+        <div className="px-3 pb-3 pt-1">
+          <p
+            className="text-[10px] font-bold uppercase tracking-[0.14em]"
+            style={{ color: GOLD, fontFamily: 'var(--font-jakarta)' }}
+          >
+            Portfolio at a glance
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed" style={{ color: '#A8A29E' }}>
+            {cfg.towers.length} towers · {cfg.totalFloors} floors each
+          </p>
+        </div>
+      </div>
 
       {/* Tower cards — overlaid on hero bottom (prod layout) */}
       <div className="absolute bottom-6 left-6 right-6 z-10 mx-auto max-w-7xl">
@@ -1217,6 +1225,26 @@ function ShowcaseInner({ slug }: { slug: string }) {
     [convexCfg],
   )
 
+  // Live GLB for the portfolio-glance embed (separate buildings-table record)
+  const portfolioBuilding = useQuery(api.buildings.getById, {
+    buildingId: 'k173vjcs08rebzdd7fxbefd4h18cdcdj' as Id<'buildings'>,
+  })
+  const portfolioModelUrl =
+    portfolioBuilding?.optimizedModelUrl ?? portfolioBuilding?.modelUrl ?? null
+
+  // Prefer slug-linked building when present; fall back to portfolio GLB id
+  const buildingBySlug = useQuery(api.buildings.getBySlug, { slug })
+  const telemetryBuildingId =
+    (buildingBySlug?._id as Id<'buildings'> | undefined) ??
+    (portfolioBuilding?._id as Id<'buildings'> | undefined) ??
+    null
+  const { visitorId } = useVisitorIdentity()
+  useUTMCapture()
+  const { track: trackBuilding, setSection } = useBuildingAnalytics(
+    telemetryBuildingId,
+    { visitorId }
+  )
+
   const rawStage = searchParams.get('s') || 'tower'
   const stage: Stage =
     rawStage === 'floor' || rawStage === 'view' || rawStage === 'tower'
@@ -1233,6 +1261,30 @@ function ShowcaseInner({ slug }: { slug: string }) {
     floor,
     unitId,
   }
+
+  // Fire floor_select / unit_select only when the URL selection actually changes
+  const lastFloor = useRef<number | null>(null)
+  const lastUnit = useRef<string | null>(null)
+  useEffect(() => {
+    setSection(buildingStageSection(stage, !!sel.unitId))
+  }, [stage, sel.unitId, setSection])
+  useEffect(() => {
+    if (!telemetryBuildingId) return
+    if (stage === 'floor' || stage === 'view') {
+      if (lastFloor.current !== sel.floor) {
+        lastFloor.current = sel.floor
+        trackBuilding({ event: 'floor_select', floor: sel.floor })
+      }
+    }
+    if (stage === 'view' && sel.unitId && lastUnit.current !== sel.unitId) {
+      lastUnit.current = sel.unitId
+      trackBuilding({
+        event: 'unit_select',
+        floor: sel.floor,
+        unitNumber: sel.unitId,
+      })
+    }
+  }, [telemetryBuildingId, stage, sel.floor, sel.unitId, trackBuilding])
 
   const go = (
     nextStage: Stage,
@@ -1402,6 +1454,7 @@ function ShowcaseInner({ slug }: { slug: string }) {
           <TowerStage
             cfg={cfg}
             onPick={(t) => go('floor', t, sel.floor, null)}
+            portfolioModelUrl={portfolioModelUrl}
           />
         )}
         {stage === 'floor' && tower && (

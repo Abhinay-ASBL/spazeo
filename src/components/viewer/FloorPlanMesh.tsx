@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 
 // ---------------------------------------------------------------------------
@@ -106,17 +106,104 @@ export function computeSceneBounds(geometry: FloorPlanGeometry): {
 // Geometry builders
 // ---------------------------------------------------------------------------
 
+const DEFAULT_WALL_COLOR = '#FFFFFF'
+
+type Pt = { x: number; y: number }
+type Room = FloorPlanGeometry['rooms'][number]
+
+function distToSegment(p: Pt, a: Pt, b: Pt): number {
+  const abx = b.x - a.x
+  const aby = b.y - a.y
+  const len2 = abx * abx + aby * aby
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)) : 0
+  return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t))
+}
+
+function pointInPolygon(p: Pt, poly: Pt[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]
+    const b = poly[j]
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/**
+ * Find the room on each side of a wall. "left" is the side of the wall's left
+ * normal (-dirY, dirX), which is the BoxGeometry's local +Z face after the
+ * -angle Y rotation used in buildWalls.
+ *
+ * 1. Edge match: a room polygon edge roughly parallel to the wall (< ~6 deg)
+ *    whose distance to the wall midpoint is <= wall thickness. Tolerance scales
+ *    with thickness so it works for polygons drawn on the wall centerline or on
+ *    its inner faces, in whatever unit the extractor emits.
+ * 2. Fallback: room containing a probe point offset 1.5x thickness from the
+ *    wall midpoint on each side.
+ */
+function findWallRooms(
+  wall: FloorPlanGeometry['walls'][number],
+  thickness: number,
+  rooms: Room[]
+): { left?: Room; right?: Room } {
+  const dx = wall.end.x - wall.start.x
+  const dy = wall.end.y - wall.start.y
+  const len = Math.hypot(dx, dy)
+  if (len === 0) return {}
+  const ux = dx / len
+  const uy = dy / len
+  const mid = { x: (wall.start.x + wall.end.x) / 2, y: (wall.start.y + wall.end.y) / 2 }
+  const off = thickness * 1.5
+  const probeL = { x: mid.x - uy * off, y: mid.y + ux * off }
+  const probeR = { x: mid.x + uy * off, y: mid.y - ux * off }
+  const result: { left?: Room; right?: Room } = {}
+
+  for (const room of rooms) {
+    const poly = room.polygon
+    if (poly.length < 3) continue
+    const edgeMatch = poly.some((a, i) => {
+      const b = poly[(i + 1) % poly.length]
+      const ex = b.x - a.x
+      const ey = b.y - a.y
+      const elen = Math.hypot(ex, ey)
+      if (elen === 0) return false
+      const sinAngle = Math.abs((ux * ey - uy * ex) / elen)
+      return sinAngle < 0.1 && distToSegment(mid, a, b) <= thickness
+    })
+    if (!edgeMatch) continue
+    let side: 'left' | 'right'
+    if (pointInPolygon(probeL, poly)) side = 'left'
+    else if (pointInPolygon(probeR, poly)) side = 'right'
+    else {
+      // Probe missed (thin/odd polygon): pick the side of the vertex average
+      const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length
+      const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length
+      side = (cx - mid.x) * -uy + (cy - mid.y) * ux >= 0 ? 'left' : 'right'
+    }
+    result[side] ??= room
+  }
+
+  result.left ??= rooms.find((r) => r.polygon.length >= 3 && pointInPolygon(probeL, r.polygon))
+  result.right ??= rooms.find((r) => r.polygon.length >= 3 && pointInPolygon(probeR, r.polygon))
+  return result
+}
+
 interface WallMeshData {
   key: string
   geometry: THREE.BoxGeometry
   position: [number, number, number]
   rotationY: number
+  /** [left (+Z face), right (-Z face), ends/top] */
+  colors: [string, string, string]
 }
 
 function buildWalls(
   walls: FloorPlanGeometry['walls'],
   doors: FloorPlanGeometry['doors'],
-  ceilingHeight: number
+  rooms: FloorPlanGeometry['rooms'],
+  overrides: FloorPlan3DOverrides
 ): WallMeshData[] {
   const meshes: WallMeshData[] = []
 
@@ -129,6 +216,21 @@ function buildWalls(
     const wallDoors = doors.filter((d) => d.wallId === wall.id)
     const thickness = wall.thickness > 0 ? wall.thickness : 0.1
 
+    // Height: tallest ceilingHeight override among adjacent rooms, else global.
+    // Color: each face takes its own room's wallColor (BoxGeometry has per-face
+    // material groups, so a shared wall can be two colors). A side with no room
+    // or no override borrows the other side's color, then falls back to white.
+    const { left, right } = findWallRooms(wall, thickness, rooms)
+    const leftO = left ? overrides.roomOverrides[left.id] : undefined
+    const rightO = right ? overrides.roomOverrides[right.id] : undefined
+    const heights = [leftO?.ceilingHeight, rightO?.ceilingHeight].filter(
+      (h): h is number => typeof h === 'number' && h > 0
+    )
+    const ceilingHeight = heights.length ? Math.max(...heights) : overrides.globalCeilingHeight
+    const leftColor = leftO?.wallColor ?? rightO?.wallColor ?? DEFAULT_WALL_COLOR
+    const rightColor = rightO?.wallColor ?? leftO?.wallColor ?? DEFAULT_WALL_COLOR
+    const colors: WallMeshData['colors'] = [leftColor, rightColor, leftColor]
+
     if (wallDoors.length === 0) {
       // No doors — single box for the full wall
       const geo = new THREE.BoxGeometry(wallLength, ceilingHeight, thickness)
@@ -139,6 +241,7 @@ function buildWalls(
         geometry: geo,
         position: [midX, ceilingHeight / 2, midZ],
         rotationY: -angle,
+        colors,
       })
     } else {
       // Door openings: split wall into segments
@@ -175,6 +278,7 @@ function buildWalls(
             geometry: geo,
             position: [cx, ceilingHeight / 2, cz],
             rotationY: -angle,
+            colors,
           })
         }
 
@@ -188,6 +292,7 @@ function buildWalls(
             geometry: hGeo,
             position: [hcx, doorHeight + headerHeight / 2, hcz],
             rotationY: -angle,
+            colors,
           })
         }
 
@@ -205,6 +310,7 @@ function buildWalls(
           geometry: geo,
           position: [cx, ceilingHeight / 2, cz],
           rotationY: -angle,
+          colors,
         })
       }
     }
@@ -271,10 +377,10 @@ export function FloorPlanMesh({ geometry, overrides: overridesProp }: FloorPlanM
   const ceilingHeight = overrides.globalCeilingHeight
 
   // Memoize all geometry so we don't rebuild every frame
-  const geometryKey = JSON.stringify({ geometry, ceilingHeight })
+  const geometryKey = JSON.stringify({ geometry, ceilingHeight, roomOverrides: overrides.roomOverrides })
 
   const wallMeshes = useMemo(() => {
-    return buildWalls(geometry.walls, geometry.doors, ceilingHeight)
+    return buildWalls(geometry.walls, geometry.doors, geometry.rooms, overrides)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geometryKey])
 
@@ -283,21 +389,28 @@ export function FloorPlanMesh({ geometry, overrides: overridesProp }: FloorPlanM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geometryKey])
 
-  const wallMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#FFFFFF',
-        roughness: 0.9,
-        metalness: 0,
-      }),
-    []
-  )
+  // One material per distinct wall color, mapped onto BoxGeometry face groups
+  // (+X, -X, +Y, -Y, +Z, -Z) = (end, end, top, bottom, left, right)
+  const { wallMaterialCache, wallMaterials } = useMemo(() => {
+    const cache = new Map<string, THREE.MeshStandardMaterial>()
+    const get = (color: string) => {
+      let mat = cache.get(color)
+      if (!mat) {
+        mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 })
+        cache.set(color, mat)
+      }
+      return mat
+    }
+    const perMesh = wallMeshes.map(({ colors: [l, r, e] }) =>
+      l === r && r === e ? get(l) : [get(e), get(e), get(e), get(e), get(l), get(r)]
+    )
+    return { wallMaterialCache: cache, wallMaterials: perMesh }
+  }, [wallMeshes])
 
-  // Cleanup on unmount
-  const wallMeshesRef = useRef(wallMeshes)
-  wallMeshesRef.current = wallMeshes
-  const floorMeshesRef = useRef(floorMeshes)
-  floorMeshesRef.current = floorMeshes
+  // Dispose GPU geometry/materials when rebuilt (e.g. override edits) or on unmount
+  useEffect(() => () => wallMeshes.forEach((m) => m.geometry.dispose()), [wallMeshes])
+  useEffect(() => () => floorMeshes.forEach((m) => m.geometry.dispose()), [floorMeshes])
+  useEffect(() => () => wallMaterialCache.forEach((m) => m.dispose()), [wallMaterialCache])
 
   return (
     <group>
@@ -307,11 +420,11 @@ export function FloorPlanMesh({ geometry, overrides: overridesProp }: FloorPlanM
       <directionalLight position={[-5, 8, -5]} intensity={0.3} />
 
       {/* Walls */}
-      {wallMeshes.map(({ key, geometry: geo, position, rotationY }) => (
+      {wallMeshes.map(({ key, geometry: geo, position, rotationY }, i) => (
         <mesh
           key={key}
           geometry={geo}
-          material={wallMaterial}
+          material={wallMaterials[i]}
           position={position}
           rotation={[0, rotationY, 0]}
           castShadow

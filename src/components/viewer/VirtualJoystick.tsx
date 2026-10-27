@@ -20,10 +20,11 @@ export function VirtualJoystick() {
     if (!visible || !containerRef.current) return
 
     let manager: ReturnType<typeof import('nipplejs').create> | null = null
+    let cancelled = false
 
     async function init() {
       const nipplejs = await import('nipplejs')
-      if (!containerRef.current) return
+      if (cancelled || !containerRef.current) return
 
       manager = nipplejs.create({
         zone: containerRef.current,
@@ -52,6 +53,7 @@ export function VirtualJoystick() {
     init()
 
     return () => {
+      cancelled = true
       if (manager) {
         manager.destroy()
         managerRef.current = null

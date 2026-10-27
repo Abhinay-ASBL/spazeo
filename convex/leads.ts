@@ -1,6 +1,10 @@
 import { v } from 'convex/values'
 import { query, mutation, action, internalQuery } from './_generated/server'
+import type { Doc } from './_generated/dataModel'
 import { internal } from './_generated/api'
+import { consumeRateLimit } from './rateLimit'
+import { attachPhoneCore } from './visitors'
+import { toE164 } from './phoneHash'
 
 export const listByTour = query({
   args: { tourId: v.id('tours') },
@@ -84,7 +88,7 @@ export const listAll = query({
 })
 
 function applyFilters(
-  leads: any[],
+  leads: Doc<'leads'>[],
   args: {
     status?: string
     search?: string
@@ -203,16 +207,69 @@ export const capture = mutation({
     ),
     sessionId: v.optional(v.string()),
     customerId: v.optional(v.id('customers')),
+    visitorId: v.optional(v.id('visitors')),
+    phoneVerified: v.optional(v.boolean()),
+    phoneNormalized: v.optional(v.string()),
+    micromarket: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) throw new Error('Tour not found')
+
+    const emailKey = args.email.trim().toLowerCase()
+    await consumeRateLimit(ctx, `leads:email:${emailKey}`, {
+      windowMs: 60 * 60 * 1000,
+      max: 5,
+    })
+    await consumeRateLimit(ctx, `leads:tour:${args.tourId}`, {
+      windowMs: 60 * 60 * 1000,
+      max: 100,
+    })
+    if (args.sessionId) {
+      await consumeRateLimit(ctx, `leads:session:${args.sessionId}`, {
+        windowMs: 60 * 60 * 1000,
+        max: 3,
+      })
+    }
+
+    // Client-supplied ids: keep only ones that resolve to an existing row.
+    const customerIdNorm = args.customerId ? ctx.db.normalizeId('customers', args.customerId) : null
+    const customerId =
+      customerIdNorm && (await ctx.db.get(customerIdNorm)) ? customerIdNorm : undefined
+    const visitorIdNorm = args.visitorId ? ctx.db.normalizeId('visitors', args.visitorId) : null
+    let visitorId =
+      visitorIdNorm && (await ctx.db.get(visitorIdNorm)) ? visitorIdNorm : undefined
+    // Derived server-side only — a client-supplied value would spoof identity matching.
+    let phoneNormalized: string | undefined = undefined
+    if (args.phone) {
+      const e164 = toE164(args.phone)
+      if (!e164) throw new Error('Invalid phone number')
+      phoneNormalized = e164
+      if (visitorId && args.sessionId) {
+        try {
+          const attached = await attachPhoneCore(ctx, {
+            phone: args.phone,
+            sessionId: args.sessionId,
+            currentVisitorId: visitorId,
+          })
+          if (attached) visitorId = attached._id
+        } catch {
+          // Identity attach is best-effort; still save the lead
+        }
+      }
+    }
+
     const leadId = await ctx.db.insert('leads', {
       ...args,
+      customerId,
+      visitorId,
+      phoneNormalized,
+      phoneVerified: false,
       status: 'new',
     })
 
     // Log activity for the tour owner and send email notification
-    const tour = await ctx.db.get(args.tourId)
-    if (tour) {
+    {
       await ctx.runMutation(internal.activity.log, {
         userId: tour.userId,
         type: 'lead_captured',
@@ -331,10 +388,11 @@ export const exportCsv = action({
     if (!identity) throw new Error('Not authenticated')
 
     // Fetch leads through the public query
-    let leads: any[]
+    let leads: Doc<'leads'>[]
     if (args.tourId) {
       leads = await ctx.runQuery(internal.leads.listByTourInternal, {
         tourId: args.tourId,
+        clerkId: identity.subject,
       })
     } else {
       leads = await ctx.runQuery(internal.leads.listAllInternal, {
@@ -344,20 +402,24 @@ export const exportCsv = action({
 
     // Build CSV
     const headers = ['Name', 'Email', 'Phone', 'Message', 'Status', 'Source', 'Date']
-    const rows = leads.map((lead: any) => [
+    const rows = leads.map((lead) => [
       lead.name,
       lead.email,
       lead.phone ?? '',
-      (lead.message ?? '').replace(/"/g, '""'),
+      lead.message ?? '',
       lead.status ?? 'new',
       lead.source ?? '',
       new Date(lead._creationTime).toISOString(),
     ])
 
+    // Visitor-supplied cells: escape quotes and neutralise spreadsheet formulas.
+    const csvCell = (cell: string) =>
+      `"${(/^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell).replace(/"/g, '""')}"`
+
     const csv =
       headers.join(',') +
       '\n' +
-      rows.map((row: string[]) => row.map((cell) => `"${cell}"`).join(',')).join('\n')
+      rows.map((row: string[]) => row.map(csvCell).join(',')).join('\n')
 
     return csv
   },
@@ -365,8 +427,15 @@ export const exportCsv = action({
 
 // Internal queries for export action
 export const listByTourInternal = internalQuery({
-  args: { tourId: v.id('tours') },
+  args: { tourId: v.id('tours'), clerkId: v.string() },
   handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', args.clerkId))
+      .unique()
+    const tour = await ctx.db.get(args.tourId)
+    if (!user || !tour || tour.userId !== user._id) throw new Error('Not authorized')
+
     return await ctx.db
       .query('leads')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -428,10 +497,10 @@ export const getWithActivity = query({
     if (lead.sessionId) {
       const events = await ctx.db
         .query('analytics')
-        .withIndex('by_tourId', (q) => q.eq('tourId', lead.tourId))
+        .withIndex('by_sessionId', (q) => q.eq('sessionId', lead.sessionId!))
         .collect()
       timeline = events
-        .filter((e) => e.sessionId === lead.sessionId)
+        .filter((e) => e.tourId === lead.tourId)
         .sort((a, b) => a.timestamp - b.timestamp)
         .map((e) => ({
           _id: e._id,

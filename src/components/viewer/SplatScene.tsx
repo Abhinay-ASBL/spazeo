@@ -29,9 +29,8 @@ export function SplatScene({ url }: SplatSceneProps) {
     async function init() {
       try {
         // Load patched spark.js from public/ — bypasses Turbopack entirely
-        const spark = await import(
-          /* webpackIgnore: true */ '/lib/spark.module.js'
-        )
+        // @ts-expect-error - runtime-only ESM served from /public, not resolvable by TS module resolution
+        const spark = await import(/* webpackIgnore: true */ '/lib/spark.module.js')
 
         if (cancelled) return
 

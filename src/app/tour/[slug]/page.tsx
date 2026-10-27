@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import type { HotspotData } from '@/components/viewer/PanoramaViewer'
 import { isMasterPlanMapped, type MasterPlanMapping } from '@/components/viewer/MasterPlanOverlay'
 import { useQuery, useMutation, useAction } from 'convex/react'
@@ -18,15 +19,20 @@ import {
   Plus,
   RotateCw,
   Lock,
-  Map,
+  Map as MapIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AnimatePresence } from 'framer-motion'
 import { HotspotInfoPanel } from '@/components/viewer/HotspotInfoPanel'
 import { HotspotVideoModal } from '@/components/viewer/HotspotVideoModal'
+import { TimeOfDaySwitcher, type TimeOfDay } from '@/components/viewer/TimeOfDaySwitcher'
 import { useViewerStore } from '@/hooks/useViewerStore'
 import { useSessionTracker } from '@/hooks/useSessionTracker'
+import { useVisitorIdentity } from '@/hooks/useVisitorIdentity'
 import { usePanoramaTracking } from '@/hooks/usePanoramaTracking'
+import { useUTMCapture, getStoredUTMParams } from '@/hooks/useUTMCapture'
+import { classifyAnalyticsSection } from '@/lib/analyticsAttribution'
+import { resolveMicromarket } from '@/lib/micromarket'
 
 /* ── Lazy-load PanoramaViewer ── */
 const PanoramaViewer = dynamic(
@@ -94,6 +100,46 @@ function proxyUrl(url: string | null | undefined): string | null {
   return url
 }
 
+type SceneLike = {
+  _id: string
+  title: string
+  order?: number
+  imageUrl?: string | null
+  variantKey?: string | null
+  timeOfDay?: TimeOfDay | null
+  isPrimaryVariant?: boolean | null
+  panoramaType?: string | null
+}
+
+function sceneVariantKey(scene: SceneLike): string {
+  return scene.variantKey ?? scene._id
+}
+
+/** One representative scene per variantKey (prefer primary). */
+function primaryScenes(scenes: SceneLike[]): SceneLike[] {
+  const byKey = new Map<string, SceneLike>()
+  for (const scene of scenes) {
+    const key = sceneVariantKey(scene)
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, scene)
+      continue
+    }
+    if (scene.isPrimaryVariant && !existing.isPrimaryVariant) {
+      byKey.set(key, scene)
+    }
+  }
+  return [...byKey.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+}
+
+function variantsForKey(scenes: SceneLike[], key: string): SceneLike[] {
+  return scenes.filter((s) => sceneVariantKey(s) === key)
+}
+
+function distinctVariantCount(scenes: SceneLike[]): number {
+  return new Set(scenes.map(sceneVariantKey)).size
+}
+
 /* ── SceneNavigator (inline for public viewer) ── */
 function SceneNav({
   scenes,
@@ -105,7 +151,6 @@ function SceneNav({
   onChange: (id: string) => void
 }) {
   if (scenes.length <= 1) return null
-  // eslint-disable-next-line @next/next/no-img-element
   return (
     <div className="absolute bottom-0 left-0 right-0 z-10" style={{ padding: '0 16px 16px' }}>
       <div
@@ -144,12 +189,13 @@ function SceneNav({
               }}
             >
               {scene.imageUrl && (
-                <img
+                <Image
                   src={scene.imageUrl}
                   alt=""
+                  fill
+                  sizes="80px"
                   loading="lazy"
-                  fetchPriority="low"
-                  className="absolute inset-0 w-full h-full object-cover"
+                  className="object-cover"
                   style={{ opacity: isActive ? 0.7 : 0.45 }}
                 />
               )}
@@ -176,11 +222,15 @@ export default function PublicTourViewerPage() {
 
   const tourData = useQuery(api.tours.getBySlug, { slug })
   const captureLead = useMutation(api.leads.capture)
+  // Holds the unlock token from verifyPassword once the visitor enters the right password.
+  const [passwordVerified, setPasswordVerified] = useState<string | null>(null)
 
   const hasSplat = !!(tourData && '_id' in tourData && tourData.splatStorageId)
   const splatUrl = useQuery(
     api.tours.getTourSplatUrl,
-    hasSplat && tourData && '_id' in tourData ? { tourId: tourData._id as Id<'tours'> } : 'skip'
+    hasSplat && tourData && '_id' in tourData
+      ? { tourId: tourData._id as Id<'tours'>, unlockToken: passwordVerified ?? undefined }
+      : 'skip'
   )
 
   // Detect floor-plan-derived tours (third renderer branch)
@@ -188,21 +238,24 @@ export default function PublicTourViewerPage() {
   const floorPlanGeometryData = useQuery(
     api.tours.getFloorPlanGeometry,
     hasFloorPlan && tourData && '_id' in tourData
-      ? { tourId: tourData._id as Id<'tours'> }
+      ? { tourId: tourData._id as Id<'tours'>, unlockToken: passwordVerified ?? undefined }
       : 'skip'
   )
 
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
+  const goToScene = useCallback((sceneId: string) => {
+    setActiveSceneId(sceneId)
+  }, [])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [manualRotate, setManualRotate] = useState(true)
   const [idleActive, setIdleActive] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
   /** When mapping exists, plan is ground-pinned by default (ASBL Legacy style) */
   const [masterPlanVisible, setMasterPlanVisible] = useState(true)
+  const [hoverPreloadUrl, setHoverPreloadUrl] = useState<string | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [passwordVerified, setPasswordVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [showPasswordError, setShowPasswordError] = useState(false)
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '' })
@@ -214,12 +267,17 @@ export default function PublicTourViewerPage() {
   const videoModalTitle = useViewerStore((s) => s.videoModalTitle)
   const closeVideoModal = useViewerStore((s) => s.closeVideoModal)
 
-  const verifyPassword = useAction(api.passwordUtils.verifyTourPassword)
+  const verifyPassword = useAction(api.tours.verifyPassword)
 
   const unlockedTour = useQuery(
     api.tours.getBySlugWithScenes,
-    passwordVerified ? { slug } : 'skip'
+    passwordVerified ? { slug, unlockToken: passwordVerified } : 'skip'
   )
+
+  // Stale unlock token (owner changed the password): drop it so the gate shows again.
+  if (passwordVerified && unlockedTour && 'requiresPassword' in unlockedTour && unlockedTour.requiresPassword) {
+    setPasswordVerified(null)
+  }
 
   // Use unlocked tour (post-verification) if available, otherwise use the initial data
   const tour = unlockedTour ?? tourData
@@ -250,15 +308,30 @@ export default function PublicTourViewerPage() {
 
   useEffect(() => {
     if (tour?.scenes && tour.scenes.length > 0 && !activeSceneId) {
-      setActiveSceneId(tour.scenes[0]._id)
+      const primaries = primaryScenes(tour.scenes as SceneLike[])
+      goToScene(primaries[0]?._id ?? tour.scenes[0]._id)
     }
-  }, [tour?.scenes, activeSceneId])
+  }, [tour?.scenes, activeSceneId, goToScene])
 
   const activeScene = tour?.scenes?.find((s: { _id: string }) => s._id === activeSceneId)
     ?? tour?.scenes?.[0]
     ?? null
 
   const activeHotspots = activeScene?.hotspots ?? []
+
+  const activeVariantKey = activeScene
+    ? sceneVariantKey(activeScene as SceneLike)
+    : null
+  const currentVariants =
+    activeVariantKey && tour?.scenes
+      ? variantsForKey(tour.scenes as SceneLike[], activeVariantKey)
+      : []
+  const navScenes = tour?.scenes
+    ? primaryScenes(tour.scenes as SceneLike[])
+    : []
+  const sceneDisplayCount = tour?.scenes
+    ? distinctVariantCount(tour.scenes as SceneLike[])
+    : 0
 
   const activeHotspot = activeHotspotId
     ? (activeHotspots.find((h: { _id: string }) => h._id === activeHotspotId) ?? null)
@@ -270,7 +343,65 @@ export default function PublicTourViewerPage() {
       ? (tour._id as Id<'tours'>)
       : null
 
-  const { sessionId, trackEvent } = useSessionTracker(tourIdForTracking)
+  const { visitorId } = useVisitorIdentity()
+  const { sessionId, trackEvent, setSection } = useSessionTracker(tourIdForTracking, {
+    visitorId,
+  })
+  useUTMCapture()
+
+  const visitorDoc = useQuery(
+    api.visitors.get,
+    visitorId ? { id: visitorId } : 'skip'
+  )
+  const touchScene = useMutation(api.visitors.touchScene)
+  const welcomeBackDoneRef = useRef(false)
+
+  // Soft lead prompt — after_delay default 20s (no OTP gate)
+  const leadCfg =
+    tour && typeof tour === 'object' && 'leadCaptureConfig' in tour
+      ? (tour as { leadCaptureConfig?: { enabled?: boolean; gateBehavior?: string; delaySeconds?: number } })
+          .leadCaptureConfig
+      : undefined
+  const leadCfgEnabled = leadCfg?.enabled
+  const leadCfgBehavior = leadCfg?.gateBehavior
+  const leadCfgDelaySeconds = leadCfg?.delaySeconds
+  // Depend on primitives, not `tour`: every reactive update (e.g. viewCount) yields a new
+  // object and would restart the delay timer.
+  useEffect(() => {
+    if (!tourIdForTracking) return
+    if (leadCfgEnabled === false) return
+    const behavior = leadCfgBehavior ?? 'after_delay'
+    if (behavior !== 'after_delay' && behavior !== 'after_scenes') return
+    const delayMs = (leadCfgDelaySeconds ?? 20) * 1000
+    const t = window.setTimeout(() => {
+      if (!leadFormShownRef.current) setPanelOpen(true)
+    }, delayMs)
+    return () => window.clearTimeout(t)
+  }, [tourIdForTracking, leadCfgEnabled, leadCfgBehavior, leadCfgDelaySeconds])
+
+  // Welcome back + resume last scene when returning identified visitor
+  useEffect(() => {
+    if (welcomeBackDoneRef.current || !visitorDoc || !tour) return
+    if (!visitorDoc.identified || !visitorDoc.lastSceneId) return
+    const scenes = Array.isArray(tour.scenes) ? tour.scenes : []
+    const exists = scenes.some(
+      (s: { _id: string }) => s._id === visitorDoc.lastSceneId
+    )
+    if (!exists) return
+    welcomeBackDoneRef.current = true
+    setActiveSceneId(String(visitorDoc.lastSceneId))
+    toast.success('Welcome back')
+  }, [visitorDoc, tour])
+
+  // Persist last scene for resume
+  useEffect(() => {
+    if (!visitorId || !activeSceneId || !tourIdForTracking) return
+    void touchScene({
+      visitorId,
+      sceneId: activeSceneId as Id<'scenes'>,
+      tourId: tourIdForTracking,
+    }).catch(() => {})
+  }, [visitorId, activeSceneId, tourIdForTracking, touchScene])
 
   const viewDirectionGetterRef = useRef<
     null | (() => { yaw: number; pitch: number; zoom?: number } | null)
@@ -288,13 +419,44 @@ export default function PublicTourViewerPage() {
   })
 
   useEffect(() => {
+    if (hasFloorPlan) {
+      setSection('plans')
+      return
+    }
+    const scene = activeScene as SceneLike | null
+    setSection(classifyAnalyticsSection(scene?.title, scene?.panoramaType))
+  }, [hasFloorPlan, activeScene, setSection])
+
+  const planWasVisibleRef = useRef(false)
+  useEffect(() => {
+    const url =
+      tour &&
+      typeof tour === 'object' &&
+      'masterPlanUrl' in tour &&
+      typeof (tour as { masterPlanUrl?: string | null }).masterPlanUrl === 'string'
+        ? (tour as { masterPlanUrl: string }).masterPlanUrl
+        : null
+    const mapping =
+      tour && typeof tour === 'object' && 'masterPlanMapping' in tour
+        ? (tour as { masterPlanMapping?: MasterPlanMapping | null }).masterPlanMapping
+        : null
+    const showing = !!url && isMasterPlanMapped(mapping) && masterPlanVisible
+    if (showing && !planWasVisibleRef.current) {
+      trackEvent({ event: 'master_plan', metadata: { section: 'plans' } })
+    }
+    planWasVisibleRef.current = showing
+  }, [tour, masterPlanVisible, trackEvent])
+
+  useEffect(() => {
     if (!tourIdForTracking || viewTrackedRef.current) return
     viewTrackedRef.current = true
+    const utm = getStoredUTMParams()
     trackEvent({
       event: 'tour_view',
       metadata: {
         referrer: typeof document !== 'undefined' ? document.referrer : undefined,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        ...(utm ?? {}),
       },
     })
   }, [tourIdForTracking, trackEvent])
@@ -310,6 +472,52 @@ export default function PublicTourViewerPage() {
     setActiveHotspot(null)
   }, [activeSceneId, setActiveHotspot])
 
+  const handleVariantSwitch = useCallback(
+    (sceneId: string, timeOfDay: TimeOfDay) => {
+      goToScene(sceneId)
+      const variantKey =
+        (tour?.scenes as SceneLike[] | undefined)?.find((s) => s._id === sceneId)
+          ?.variantKey ?? undefined
+      trackEvent({
+        event: 'variant_switch',
+        sceneId: sceneId as Id<'scenes'>,
+        variantKey,
+        timeOfDay,
+      })
+      trackEvent({
+        event: 'variant_view',
+        sceneId: sceneId as Id<'scenes'>,
+        variantKey,
+        timeOfDay,
+      })
+    },
+    [trackEvent, tour?.scenes, goToScene]
+  )
+
+  const handleNavSceneChange = useCallback(
+    (sceneId: string) => {
+      const all = (tour?.scenes ?? []) as SceneLike[]
+      const target = all.find((s) => s._id === sceneId)
+      if (!target) {
+        goToScene(sceneId)
+        return
+      }
+      // Prefer matching current time-of-day when entering another room's variants
+      const currentTod = (activeScene as SceneLike | null)?.timeOfDay
+      if (currentTod) {
+        const match = variantsForKey(all, sceneVariantKey(target)).find(
+          (s) => s.timeOfDay === currentTod
+        )
+        if (match) {
+          goToScene(match._id)
+          return
+        }
+      }
+      goToScene(sceneId)
+    },
+    [tour?.scenes, activeScene, goToScene]
+  )
+
   /* ── Hotspot click → navigate scenes, open info panel, or open video modal ── */
   const handleHotspotClick = useCallback(
     (hotspot: { type: string; targetSceneId?: string; _id?: string; content?: string; videoUrl?: string; title?: string; description?: string }) => {
@@ -320,6 +528,9 @@ export default function PublicTourViewerPage() {
           hotspotId: hotspot._id,
           hotspotType: hotspot.type,
           targetSceneId: hotspot.targetSceneId,
+          title: hotspot.title,
+          iconName: (hotspot as { iconName?: string }).iconName,
+          icon: (hotspot as { icon?: string }).icon,
         },
       })
       // Navigation: panel-first if hotspot has title/description; navigate immediately otherwise
@@ -328,7 +539,7 @@ export default function PublicTourViewerPage() {
         if (hasInfoContent && hotspot._id) {
           setActiveHotspot(hotspot._id)   // open panel first — scene transition happens via "Go to" button
         } else {
-          setActiveSceneId(hotspot.targetSceneId)  // no info content — navigate immediately (backward compat)
+          goToScene(hotspot.targetSceneId)  // no info content — navigate immediately (backward compat)
         }
         return
       }
@@ -336,6 +547,16 @@ export default function PublicTourViewerPage() {
       if (hotspot.type === 'media') {
         const videoSrc = (hotspot as Record<string, unknown>).videoUrl as string | undefined || hotspot.content
         if (videoSrc) {
+          trackEvent({
+            event: 'hotspot_media_view',
+            sceneId: activeSceneId as Id<'scenes'> | undefined,
+            metadata: {
+              hotspotId: hotspot._id,
+              hotspotType: 'media',
+              title: hotspot.title,
+              section: 'media',
+            },
+          })
           useViewerStore.getState().openVideoModal(videoSrc, hotspot.title)
           return
         }
@@ -345,16 +566,16 @@ export default function PublicTourViewerPage() {
         setActiveHotspot(hotspot._id)
       }
     },
-    [setActiveHotspot, trackEvent, activeSceneId]
+    [setActiveHotspot, trackEvent, activeSceneId, goToScene]
   )
 
   /* ── Fullscreen toggle ── */
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true))
+      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false))
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
     }
   }, [])
 
@@ -381,7 +602,8 @@ export default function PublicTourViewerPage() {
   /* ── Share ── */
   const handleShare = useCallback(() => {
     navigator.clipboard.writeText(window.location.href)
-    toast.success('Link copied!')
+      .then(() => toast.success('Link copied!'))
+      .catch(() => toast.error('Could not copy link'))
   }, [])
 
   /* ── Loading ── */
@@ -412,15 +634,16 @@ export default function PublicTourViewerPage() {
     )
   }
 
+  
   /* ── Password gate ── */
   const handlePasswordSubmit = async () => {
     if (!password.trim() || verifying) return
     setVerifying(true)
     setShowPasswordError(false)
     try {
-      const ok = await verifyPassword({ slug, password: password.trim() })
-      if (ok) {
-        setPasswordVerified(true)
+      const token = await verifyPassword({ slug, password: password.trim() })
+      if (token) {
+        setPasswordVerified(token)
       } else {
         setShowPasswordError(true)
       }
@@ -538,7 +761,7 @@ export default function PublicTourViewerPage() {
       {/* ── Viewer: Floor Plan 3D, Gaussian Splat, or 360 Panorama ── */}
       {hasFloorPlan && floorPlanGeometryData ? (
         <FloorPlanViewer
-          geometry={floorPlanGeometryData.geometry as import('@/components/viewer/FloorPlanMesh').FloorPlanGeometry}
+          geometry={floorPlanGeometryData.geometry as unknown as import('@/components/viewer/FloorPlanMesh').FloorPlanGeometry}
           overrides={floorPlanGeometryData.overrides as import('@/components/viewer/FloorPlanMesh').FloorPlan3DOverrides}
           tourTitle={typeof currentTour === 'object' && currentTour && 'title' in currentTour ? String(currentTour.title) : undefined}
           tourSlug={typeof currentTour === 'object' && currentTour && 'slug' in currentTour ? String(currentTour.slug) : undefined}
@@ -567,10 +790,19 @@ export default function PublicTourViewerPage() {
           }}
           onDragStart={panoOnDragStart}
           onDragEnd={panoOnDragEnd}
-          preloadUrls={(scenes as Array<{ _id: string; imageUrl?: string | null }>)
-            .filter((s) => s._id !== activeSceneId && s.imageUrl)
-            .map((s) => proxyUrl(s.imageUrl as string))
-            .filter((u): u is string => !!u)}
+          preloadUrls={[
+            ...(scenes as Array<{ _id: string; imageUrl?: string | null }>)
+              .filter((s) => s._id !== activeSceneId && s.imageUrl)
+              .map((s) => proxyUrl(s.imageUrl as string))
+              .filter((u): u is string => !!u),
+            ...(hoverPreloadUrl
+              ? [proxyUrl(hoverPreloadUrl)].filter((u): u is string => !!u)
+              : []),
+            ...currentVariants
+              .filter((s) => s._id !== activeSceneId && s.imageUrl)
+              .map((s) => proxyUrl(s.imageUrl as string))
+              .filter((u): u is string => !!u),
+          ]}
           masterPlanUrl={proxyUrl(masterPlanUrl) ?? masterPlanUrl}
           masterPlanMapping={masterPlanMapping}
           masterPlanVisible={showMasterPlan}
@@ -613,7 +845,7 @@ export default function PublicTourViewerPage() {
               fontFamily: 'var(--font-dmsans)',
             }}
           >
-            {scenes.length} Scene{scenes.length !== 1 ? 's' : ''}
+            {sceneDisplayCount} Scene{sceneDisplayCount !== 1 ? 's' : ''}
           </span>
         </div>
 
@@ -643,7 +875,17 @@ export default function PublicTourViewerPage() {
 
       {/* ── Viewer Controls (bottom center, above scene nav) — panorama only ── */}
       {!splatUrl && !hasFloorPlan &&
-      <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10 pb-[env(safe-area-inset-bottom,0px)]">
+      <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 z-10 pb-[env(safe-area-inset-bottom,0px)] flex flex-col items-center gap-2">
+        <TimeOfDaySwitcher
+          variants={currentVariants.map((v) => ({
+            _id: v._id,
+            timeOfDay: v.timeOfDay,
+            imageUrl: v.imageUrl,
+          }))}
+          activeTimeOfDay={(activeScene as SceneLike | null)?.timeOfDay}
+          onSwitch={handleVariantSwitch}
+          onHoverVariant={(url) => setHoverPreloadUrl(url)}
+        />
         <div
           className="rounded-full px-4 py-2 flex items-center gap-2"
           style={{
@@ -710,7 +952,7 @@ export default function PublicTourViewerPage() {
                 style={{ color: showMasterPlan ? '#D4A017' : '#A8A29E' }}
                 title="Master Plan"
               >
-                <Map size={16} strokeWidth={1.5} />
+                <MapIcon size={16} strokeWidth={1.5} />
               </button>
             </>
           )}
@@ -719,9 +961,16 @@ export default function PublicTourViewerPage() {
 
       {/* ── Scene Navigator (bottom) — panorama only ── */}
       {!splatUrl && !hasFloorPlan && <SceneNav
-        scenes={scenes}
-        activeId={activeSceneId}
-        onChange={setActiveSceneId}
+        scenes={navScenes}
+        activeId={
+          // Highlight the primary nav tile for the active variant group
+          navScenes.find(
+            (s) =>
+              activeVariantKey != null &&
+              sceneVariantKey(s) === activeVariantKey
+          )?._id ?? activeSceneId
+        }
+        onChange={handleNavSceneChange}
       />}
 
       {/* ── Hotspot Info Panel (outside Canvas, driven by Zustand) ── */}
@@ -737,7 +986,7 @@ export default function PublicTourViewerPage() {
               hotspot={activeHotspot as Parameters<typeof HotspotInfoPanel>[0]['hotspot']}
               onClose={() => setActiveHotspot(null)}
               onNavigate={(targetSceneId) => {
-                setActiveSceneId(targetSceneId)
+                goToScene(targetSceneId)
                 // NOTE: do NOT call setActiveHotspot(null) here
                 // The existing useEffect at ~line 297 calls setActiveHotspot(null) on activeSceneId change
               }}
@@ -807,7 +1056,7 @@ export default function PublicTourViewerPage() {
             {([
               { label: 'Full Name', key: 'name' as const, type: 'text', placeholder: 'John Doe' },
               { label: 'Email', key: 'email' as const, type: 'email', placeholder: 'john@example.com' },
-              { label: 'Phone', key: 'phone' as const, type: 'tel', placeholder: '+1 (555) 123-4567' },
+              { label: 'Phone', key: 'phone' as const, type: 'tel', placeholder: '+91 98765 43210' },
             ]).map((field) => (
               <div key={field.key} className="flex flex-col gap-1.5">
                 <label className="text-xs" style={{ color: '#A8A29E' }}>
@@ -826,6 +1075,11 @@ export default function PublicTourViewerPage() {
                     fontFamily: 'var(--font-dmsans)',
                   }}
                 />
+                {field.key === 'phone' && (
+                  <p className="text-[11px] leading-snug" style={{ color: '#6B6560' }}>
+                    We will share this with the property owner so they can contact you.
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -836,6 +1090,11 @@ export default function PublicTourViewerPage() {
               if (!tour?._id || leadSubmitting) return
               setLeadSubmitting(true)
               try {
+                const utm = getStoredUTMParams()
+                const mm = resolveMicromarket({
+                  qrMm: utm?.mm,
+                  tourAddress: tour.address,
+                })
                 await captureLead({
                   tourId: tour._id as Id<'tours'>,
                   name: leadForm.name.trim(),
@@ -843,6 +1102,8 @@ export default function PublicTourViewerPage() {
                   phone: leadForm.phone.trim() || undefined,
                   source: 'tour_viewer',
                   sessionId,
+                  visitorId: visitorId ?? undefined,
+                  micromarket: mm?.micromarket,
                 })
                 trackEvent({ event: 'lead_form_submitted' })
                 toast.success('Thank you! We will be in touch shortly.')

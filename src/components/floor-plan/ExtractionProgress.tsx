@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -41,14 +41,28 @@ export function ExtractionProgress({
 }: ExtractionProgressProps) {
   const job = useQuery(api.floorPlanJobs.getByFloorPlan, { floorPlanId })
   const floorPlan = useQuery(api.floorPlanDetails.getById, { floorPlanId })
+  // State, not a ref: render reads it to decide the timeout view. The ref keeps
+  // the effects one-shot without waiting for the state update to land.
   const hasCompletedRef = useRef(false)
-  const mountedAtRef = useRef(Date.now())
+  // Job id we already reported a failure for — the reactive query re-emits
+  // the same failed job on unrelated updates, so fire onError once per job.
+  const reportedFailedJobRef = useRef<string | null>(null)
+  const [hasCompleted, setHasCompleted] = useState(false)
+  // Two-minute stall guard, armed on mount (the clock can't be read during render).
+  const [mountTimeoutElapsed, setMountTimeoutElapsed] = useState(false)
+
+  useEffect(() => {
+    const id = setTimeout(() => setMountTimeoutElapsed(true), 120_000)
+    return () => clearTimeout(id)
+  }, [])
 
   // If floor plan already completed (e.g., job finished before navigating here)
   useEffect(() => {
     if (hasCompletedRef.current) return
     if (floorPlan && floorPlan.extractionStatus === 'completed' && floorPlan.geometry) {
       hasCompletedRef.current = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasCompleted(true)
       toast.success('Floor plan extracted successfully')
       onComplete(floorPlan.geometry as FloorPlanGeometry)
     }
@@ -59,12 +73,15 @@ export function ExtractionProgress({
 
     if (job.status === 'completed' && job.output) {
       hasCompletedRef.current = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasCompleted(true)
       toast.success('Floor plan extracted successfully')
       const geometry = job.output as FloorPlanGeometry
       onComplete(geometry)
     }
 
-    if (job.status === 'failed') {
+    if (job.status === 'failed' && reportedFailedJobRef.current !== job._id) {
+      reportedFailedJobRef.current = job._id
       onError()
     }
   }, [job, onComplete, onError])
@@ -73,7 +90,8 @@ export function ExtractionProgress({
   const noJobExists = job === null && floorPlan !== undefined && floorPlan !== null
   const stuckPending = noJobExists && (floorPlan.extractionStatus === 'pending' || floorPlan.extractionStatus === 'failed')
   // Timeout: if stuck in processing for over 2 minutes
-  const timedOut = !hasCompletedRef.current && job?.status === 'processing' && (Date.now() - mountedAtRef.current > 120_000)
+  const timedOut =
+    !hasCompleted && job?.status === 'processing' && mountTimeoutElapsed
 
   const statusText =
     job?.status === 'processing'

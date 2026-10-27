@@ -3,6 +3,7 @@
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { AttentionHeatmap } from '@/components/analytics/AttentionHeatmap'
 import {
   Eye,
   MousePointerClick,
@@ -68,6 +69,16 @@ export function LeadActivityDrawer({ leadId }: Props) {
   const yawSamples = timeline.filter((e) => e.event === 'view_direction').length
   const visible = timeline.filter((e) => e.event !== 'view_direction')
   const dwellMax = Math.max(1, ...Object.values(dwellByScene))
+  const heatmapScenes = Array.from(
+    new Set(
+      timeline
+        .filter((e) => e.event === 'view_direction' && e.sceneId)
+        .map((e) => e.sceneId as string)
+    )
+  )
+  const sessionStartedAt = timeline.length
+    ? Math.min(...timeline.map((e) => e.timestamp))
+    : undefined
 
   return (
     <div className="rounded-xl border border-[#2E2A24] bg-[#12100E] p-4">
@@ -99,6 +110,22 @@ export function LeadActivityDrawer({ leadId }: Props) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {heatmapScenes.length > 0 && lead.sessionId && (
+        <div className="mb-4 space-y-3">
+          {heatmapScenes.slice(0, 4).map((sid) => (
+            <div key={sid}>
+              <p className="mb-1 text-xs text-[#A8A29E]">{sceneTitles[sid] ?? sid.slice(-6)}</p>
+              <AttentionHeatmap
+                sceneId={sid as Id<'scenes'>}
+                sessionId={lead.sessionId}
+                sessionStartedAt={sessionStartedAt}
+                showDurationFilter
+              />
+            </div>
+          ))}
         </div>
       )}
 

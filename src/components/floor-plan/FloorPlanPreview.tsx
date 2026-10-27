@@ -25,7 +25,6 @@ function formatBytes(bytes: number): string {
 
 function PreviewCard({
   fpFile,
-  index,
   onRotate,
   onUpdateFloor,
   onUpdateLabel,
@@ -71,6 +70,9 @@ function PreviewCard({
         style={{ minHeight: 200, backgroundColor: '#12100E' }}
       >
         {previewUrl ? (
+          // Local object URL for a not-yet-uploaded file — nothing for the
+          // image optimizer to fetch.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={previewUrl}
             alt={`Floor ${fpFile.floorNumber} preview`}

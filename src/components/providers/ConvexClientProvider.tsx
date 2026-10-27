@@ -13,6 +13,12 @@ export const isProvidersConfigured =
 
 const convex = isProvidersConfigured ? new ConvexReactClient(convexUrl as string) : null
 
+if (!isProvidersConfigured && process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+  console.warn(
+    '[Spazeo] NEXT_PUBLIC_CONVEX_URL / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY missing or invalid: rendering without Convex/Clerk providers. Any useQuery/useMutation will throw.'
+  )
+}
+
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   if (!convex || !isProvidersConfigured) {
     return <>{children}</>

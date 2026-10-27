@@ -12,6 +12,9 @@ import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSessionTracker } from '@/hooks/useSessionTracker'
 import { usePanoramaTracking } from '@/hooks/usePanoramaTracking'
+import { useUTMCapture } from '@/hooks/useUTMCapture'
+import { useVisitorIdentity } from '@/hooks/useVisitorIdentity'
+import { classifyAnalyticsSection } from '@/lib/analyticsAttribution'
 import { useViewerStore } from '@/hooks/useViewerStore'
 import { PhoneInput } from '@/components/sales/PhoneInput'
 import { CustomerCard } from '@/components/sales/CustomerCard'
@@ -81,7 +84,11 @@ export default function SalesModePage() {
 
   // Tracking — only active during tour
   const trackingTourId = viewState === 'tour_active' ? tourId : null
-  const { sessionId, trackEvent } = useSessionTracker(trackingTourId)
+  const { visitorId } = useVisitorIdentity()
+  const { sessionId, trackEvent, setSection } = useSessionTracker(trackingTourId, {
+    visitorId,
+  })
+  useUTMCapture()
 
   const viewDirectionGetterRef = useRef<
     null | (() => { yaw: number; pitch: number; zoom?: number } | null)
@@ -96,6 +103,16 @@ export default function SalesModePage() {
     getViewDirection,
     trackEvent,
   })
+
+  useEffect(() => {
+    if (viewState !== 'tour_active') return
+    setSection(
+      classifyAnalyticsSection(
+        activeScene?.title,
+        (activeScene as { panoramaType?: string } | null)?.panoramaType
+      )
+    )
+  }, [viewState, activeScene, setSection])
 
   useEffect(() => {
     if (scenes.length > 0 && !activeSceneId) {
@@ -219,6 +236,9 @@ export default function SalesModePage() {
           hotspotId: hotspot._id,
           hotspotType: hotspot.type,
           targetSceneId: hotspot.targetSceneId,
+          title: hotspot.title,
+          iconName: (hotspot as { iconName?: string }).iconName,
+          icon: (hotspot as { icon?: string }).icon,
           salesMode: true,
         },
       })
@@ -235,6 +255,16 @@ export default function SalesModePage() {
       if (hotspot.type === 'media') {
         const videoSrc = (hotspot as Record<string, unknown>).videoUrl as string | undefined || hotspot.content
         if (videoSrc) {
+          trackEvent({
+            event: 'hotspot_media_view',
+            sceneId: activeSceneId as Id<'scenes'> | undefined,
+            metadata: {
+              hotspotId: hotspot._id,
+              hotspotType: 'media',
+              title: hotspot.title,
+              section: 'media',
+            },
+          })
           useViewerStore.getState().openVideoModal(videoSrc, hotspot.title)
           return
         }

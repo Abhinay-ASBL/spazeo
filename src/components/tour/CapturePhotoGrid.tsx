@@ -1,7 +1,7 @@
 'use client'
 
 /* eslint-disable @next/next/no-img-element */
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { X } from 'lucide-react'
 
 interface CapturePhotoGridProps {
@@ -16,6 +16,9 @@ export function CapturePhotoGrid({ files, onRemove }: CapturePhotoGridProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [files, files.length]
   )
+
+  // Release blob URLs when the file list changes or the grid unmounts
+  useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews])
 
   if (files.length === 0) return null
 

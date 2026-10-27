@@ -137,8 +137,6 @@ export default function BillingPage() {
     return { label: 'Upgrade', disabled: false, style: 'upgrade' as const }
   }
 
-  const formatLimit = (limit: number) => (limit === -1 ? 'Unlimited' : `${limit}`)
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">

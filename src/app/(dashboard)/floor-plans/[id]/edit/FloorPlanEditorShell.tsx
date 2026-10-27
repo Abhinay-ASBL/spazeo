@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
 import type { FloorPlanGeometry } from '@/stores/floorPlanEditorStore'
 import { useFloorPlanEditorStore } from '@/stores/floorPlanEditorStore'
 
@@ -69,12 +68,15 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
     [floorPlans, activeFloorIndex]
   )
 
-  // Determine page state from floor plan data
+  // Queries still in flight — render the loading view without touching state.
+  const queriesLoading = project === undefined || floorPlans === undefined
+
+  // Determine page state from floor plan data. The state machine is advanced
+  // here (not derived in render) because it latches: once the user moves into
+  // build-up or editing, later query updates must not pull them back.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (project === undefined || floorPlans === undefined) {
-      setPageState('loading')
-      return
-    }
+    if (project === undefined || floorPlans === undefined) return
 
     if (project === null) {
       router.replace('/floor-plans')
@@ -105,6 +107,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
       setPageState('error')
     }
   }, [project, floorPlans, activeFloorIndex, router, editingGeometry])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleExtractionComplete = useCallback(
     (geometry: FloorPlanGeometry) => {
@@ -162,7 +165,7 @@ export function FloorPlanEditorShell({ projectId }: FloorPlanEditorShellProps) {
   }, [pageState])
 
   // Loading state
-  if (pageState === 'loading') {
+  if (queriesLoading || pageState === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">

@@ -1,21 +1,31 @@
 import { v } from 'convex/values'
-import { query, mutation, action, internalMutation } from './_generated/server'
-import { api as _api, internal as _internal } from './_generated/api'
+import {
+  query,
+  mutation,
+  action,
+  internalMutation,
+  type QueryCtx,
+  type MutationCtx,
+} from './_generated/server'
+import type { Id } from './_generated/dataModel'
+import { api as _api } from './_generated/api'
+import { deleteOptimizedModel } from './buildings'
 
 // Cast to break circular type reference (api.d.ts imports this module's types)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = _api as any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const internal = _internal as any
 
 // --- Queries ---
 
-async function requireBuildingOwner(ctx: any, buildingId: any) {
+async function requireBuildingOwner(
+  ctx: QueryCtx | MutationCtx,
+  buildingId: Id<'buildings'>
+) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) return null
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   const building = await ctx.db.get(buildingId)
   if (!user || !building || building.userId !== user._id) return null
@@ -27,11 +37,14 @@ export const listByBuilding = query({
   handler: async (ctx, args) => {
     if (!(await requireBuildingOwner(ctx, args.buildingId))) return []
 
+    // Capped: unbounded .collect() caused the OOM crash-loop incident
+    // (2026-08-26). A building's most-recent 200 conversion attempts is
+    // plenty for this list view.
     return await ctx.db
       .query('conversionJobs')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
       .order('desc')
-      .collect()
+      .take(200)
   },
 })
 
@@ -121,7 +134,13 @@ export const complete = internalMutation({
       textureCount: args.textureCount,
     })
 
-    // Update the building's optimizedModelStorageId
+    // Replace the building's optimizedModelStorageId, deleting the previous
+    // optimized file (and detaching it from the job that produced it).
+    const building = await ctx.db.get(job.buildingId)
+    const previous = building?.optimizedModelStorageId
+    if (previous && previous !== args.outputStorageId && previous !== building?.modelStorageId) {
+      await deleteOptimizedModel(ctx, job.buildingId, previous)
+    }
     await ctx.db.patch(job.buildingId, {
       optimizedModelStorageId: args.outputStorageId,
     })

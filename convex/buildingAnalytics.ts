@@ -1,5 +1,19 @@
 import { v } from 'convex/values'
 import { query, mutation } from './_generated/server'
+import { consumeRateLimit } from './rateLimit'
+
+/**
+ * A view that bumps buildings.viewCount and getOverview.totalViews alike.
+ * The viewer emits `building_view` (plus a `linked: true` re-send once the
+ * visitor is identified, which must not double count); `model_view` is legacy.
+ */
+function isCountedView(
+  event: string,
+  metadata: Record<string, string | number | boolean | null> | undefined
+): boolean {
+  if (event !== 'model_view' && event !== 'building_view') return false
+  return metadata?.linked !== true
+}
 
 export const track = mutation({
   args: {
@@ -11,18 +25,81 @@ export const track = mutation({
     viewPositionId: v.optional(v.id('viewPositions')),
     device: v.optional(v.string()),
     duration: v.optional(v.number()),
+    visitorId: v.optional(v.id('visitors')),
+    timeOfDay: v.optional(
+      v.union(
+        v.literal('morning'),
+        v.literal('afternoon'),
+        v.literal('evening'),
+        v.literal('sunset'),
+        v.literal('night')
+      )
+    ),
+    metadata: v.optional(
+      v.record(
+        v.string(),
+        v.union(v.string(), v.number(), v.boolean(), v.null())
+      )
+    ),
   },
   handler: async (ctx, args) => {
+    const building = await ctx.db.get(args.buildingId)
+    if (!building) return
+
+    await consumeRateLimit(ctx, `buildingAnalytics:session:${args.sessionId}`, {
+      windowMs: 60_000,
+      max: 120,
+    })
+    await consumeRateLimit(ctx, `buildingAnalytics:building:${args.buildingId}`, {
+      windowMs: 60_000,
+      max: 2000,
+    })
+
+    const visitorId = args.visitorId
+      ? ctx.db.normalizeId('visitors', args.visitorId) ?? undefined
+      : undefined
+
     await ctx.db.insert('buildingAnalytics', {
       ...args,
+      visitorId,
       timestamp: Date.now(),
     })
 
-    if (args.event === 'model_view') {
-      const building = await ctx.db.get(args.buildingId)
-      if (building) {
-        await ctx.db.patch(args.buildingId, {
-          viewCount: building.viewCount + 1,
+    if (isCountedView(args.event, args.metadata)) {
+      await ctx.db.patch(args.buildingId, {
+        viewCount: building.viewCount + 1,
+      })
+    }
+
+    if (visitorId) {
+      const visitor = await ctx.db.get(visitorId)
+      if (visitor && visitor.mergedInto === undefined) {
+        const added =
+          args.event === 'section_dwell' &&
+          typeof args.duration === 'number' &&
+          args.duration > 0
+            ? args.duration
+            : 0
+        const mm =
+          args.metadata && typeof args.metadata.mm === 'string'
+            ? args.metadata.mm
+            : undefined
+        const city =
+          args.metadata && typeof args.metadata.city === 'string'
+            ? args.metadata.city
+            : undefined
+        const country =
+          args.metadata && typeof args.metadata.country === 'string'
+            ? args.metadata.country
+            : undefined
+        await ctx.db.patch(visitorId, {
+          lastSeenAt: Date.now(),
+          totalSecondsViewed: visitor.totalSecondsViewed + added,
+          ...(city && !visitor.city ? { city } : {}),
+          ...(country && !visitor.countryCode ? { countryCode: country } : {}),
+          ...(mm
+            ? { micromarket: mm, micromarketSource: 'qr_campaign' as const }
+            : {}),
         })
       }
     }
@@ -48,6 +125,9 @@ export const getByBuilding = query({
     const building = await ctx.db.get(args.buildingId)
     if (!building || building.userId !== user._id) return []
 
+    // Capped: unbounded .collect() over buildingAnalytics caused the OOM
+    // crash-loop incident (2026-08-26) when a building's event history grew
+    // large. Most recent 10k events is plenty for this dashboard view.
     const events = await ctx.db
       .query('buildingAnalytics')
       .withIndex('by_buildingId_timestamp', (q) =>
@@ -57,7 +137,7 @@ export const getByBuilding = query({
           .lte('timestamp', args.endDate ?? Infinity)
       )
       .order('desc')
-      .collect()
+      .take(10000)
 
     return events
   },
@@ -78,12 +158,16 @@ export const getOverview = query({
     const building = await ctx.db.get(args.buildingId)
     if (!building || building.userId !== user._id) return null
 
+    // Capped: unbounded .collect() over buildingAnalytics caused the OOM
+    // crash-loop incident (2026-08-26). 10k most-recent events bounds the
+    // worst case while leaving normal-sized buildings unaffected.
     const events = await ctx.db
       .query('buildingAnalytics')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
-      .collect()
+      .order('desc')
+      .take(10000)
 
-    const totalViews = events.filter((e) => e.event === 'model_view').length
+    const totalViews = events.filter((e) => isCountedView(e.event, e.metadata)).length
     const uniqueSessions = new Set(events.map((e) => e.sessionId)).size
 
     // Most clicked floor
@@ -150,10 +234,14 @@ export const getFloorHeatmap = query({
     const building = await ctx.db.get(args.buildingId)
     if (!building || building.userId !== user._id) return []
 
+    // Capped: unbounded .collect() over buildingAnalytics caused the OOM
+    // crash-loop incident (2026-08-26). 10k most-recent events bounds the
+    // worst case while leaving normal-sized buildings unaffected.
     const events = await ctx.db
       .query('buildingAnalytics')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
-      .collect()
+      .order('desc')
+      .take(10000)
 
     const floorViews: Record<number, number> = {}
     for (const e of events) {
@@ -183,10 +271,14 @@ export const getUnitInteractions = query({
     const building = await ctx.db.get(args.buildingId)
     if (!building || building.userId !== user._id) return []
 
+    // Capped: unbounded .collect() over buildingAnalytics caused the OOM
+    // crash-loop incident (2026-08-26). 10k most-recent events bounds the
+    // worst case while leaving normal-sized buildings unaffected.
     const events = await ctx.db
       .query('buildingAnalytics')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
-      .collect()
+      .order('desc')
+      .take(10000)
 
     const unitClicks: Record<string, number> = {}
     for (const e of events) {
@@ -216,10 +308,14 @@ export const getViewComparisons = query({
     const building = await ctx.db.get(args.buildingId)
     if (!building || building.userId !== user._id) return []
 
+    // Capped: unbounded .collect() over buildingAnalytics caused the OOM
+    // crash-loop incident (2026-08-26). 10k most-recent events bounds the
+    // worst case while leaving normal-sized buildings unaffected.
     const events = await ctx.db
       .query('buildingAnalytics')
       .withIndex('by_buildingId', (q) => q.eq('buildingId', args.buildingId))
-      .collect()
+      .order('desc')
+      .take(10000)
 
     const comparisonEvents = events.filter((e) => e.event === 'comparison_view')
 

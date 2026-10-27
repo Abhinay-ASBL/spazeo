@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Check, Loader2, Map, X } from 'lucide-react'
 import { CORNER_LABELS } from '@/components/viewer/MasterPlanOverlay'
 import { MasterPlanAdjustControls } from '@/components/tour/MasterPlanAdjustControls'
@@ -83,10 +84,12 @@ export function MasterPlanMappingPanel({
             border: '1px solid rgba(212,160,23,0.15)',
           }}
         >
-          <img
+          <Image
             src={masterPlanUrl}
             alt="Master plan reference"
-            className="absolute inset-0 h-full w-full object-contain"
+            fill
+            sizes="(max-width: 768px) 100vw, 400px"
+            className="object-contain"
             style={{
               transform: `rotate(${masterPlanRotation}deg)`,
               transformOrigin: 'center center',

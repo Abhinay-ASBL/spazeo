@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, Component } from 'react'
+import { useEffect, useRef, useState, Component } from 'react'
 import type { ReactNode } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useConvexAuth } from 'convex/react'
 import { useAuth } from '@clerk/nextjs'
 import { Loader2, AlertTriangle } from 'lucide-react'
@@ -92,6 +93,7 @@ function DashboardLayoutInner({
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
   const { isLoaded: isClerkLoaded, isSignedIn } = useAuth()
   const { isLoading: isConvexAuthLoading, isAuthenticated } = useConvexAuth()
   const user = useQuery(api.users.getCurrent)
@@ -99,6 +101,15 @@ function DashboardLayoutInner({
   const ensuredRef = useRef(false)
   const reactivateAccount = useMutation(api.users.reactivateAccount)
   const { showOverlay, closeOverlay } = useKeyboardShortcuts()
+
+  // Belt-and-suspenders: middleware should already redirect unauthenticated
+  // visitors, but the dashboard shell must never render for a signed-out
+  // visitor regardless of what the edge middleware does.
+  useEffect(() => {
+    if (isClerkLoaded && !isSignedIn) {
+      router.replace('/sign-in')
+    }
+  }, [isClerkLoaded, isSignedIn, router])
 
   // Auto-create Convex user record when signed in via Clerk but not yet in DB
   useEffect(() => {
@@ -112,6 +123,12 @@ function DashboardLayoutInner({
 
   // Wait for Clerk first — ConvexProviderWithClerk won't connect until then
   if (!isClerkLoaded || isConvexAuthLoading) {
+    return <WorkspaceLoading />
+  }
+
+  // Signed out — redirect is in flight (see effect above). Never render the
+  // dashboard shell for an unauthenticated visitor.
+  if (!isSignedIn) {
     return <WorkspaceLoading />
   }
 
@@ -177,13 +194,21 @@ function DeletionBanner({
   onReactivate: () => void
 }) {
   const deletionDate = new Date(deletionRequestedAt + 30 * 24 * 60 * 60 * 1000)
-  const daysRemaining = Math.max(
-    0,
-    Math.ceil((deletionDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
-  )
+  // The clock is read after mount — render itself must stay pure. Null until then,
+  // which also keeps server and client markup identical.
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null)
+
+  useEffect(() => {
+    const deadline = deletionRequestedAt + 30 * 24 * 60 * 60 * 1000
+    // The wall clock is an external source; sampled after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDaysRemaining(
+      Math.max(0, Math.ceil((deadline - Date.now()) / (24 * 60 * 60 * 1000)))
+    )
+  }, [deletionRequestedAt])
 
   // Only show if within 30-day grace period
-  if (daysRemaining <= 0) return null
+  if (daysRemaining === null || daysRemaining <= 0) return null
 
   return (
     <div

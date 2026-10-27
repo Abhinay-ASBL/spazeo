@@ -25,6 +25,8 @@ export function ConnectionStatus() {
   useEffect(() => {
     // Check initial state
     if (!navigator.onLine) {
+      // navigator.onLine is client-only; sampled once on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState('offline')
       offlineSinceRef.current = Date.now()
     }

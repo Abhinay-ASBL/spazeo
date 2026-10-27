@@ -21,7 +21,14 @@ export const submitToRunPod = internalAction({
     const downloadUrls: string[] = []
     for (const storageId of job.inputStorageIds) {
       const url = await ctx.storage.getUrl(storageId)
-      if (!url) throw new Error(`Storage URL not found for: ${storageId}`)
+      if (!url) {
+        // Fail the job instead of throwing, which would leave it stuck in 'uploading'
+        await ctx.runMutation(internal.reconstructionJobs.failById, {
+          jobId: args.jobId,
+          error: `Input file not found in storage: ${storageId}`,
+        })
+        return
+      }
       downloadUrls.push(url)
     }
 
@@ -147,7 +154,7 @@ export const pollStaleReconstructionJobs = internalAction({
 
     for (const job of staleJobs) {
       // Force-fail jobs older than 2 hours
-      if (job.startedAt && Date.now() - job.startedAt > TWO_HOURS_MS) {
+      if (Date.now() - (job.startedAt ?? job._creationTime) > TWO_HOURS_MS) {
         console.log(`Job ${job._id} timed out (>2 hours), marking as failed`)
         await ctx.runMutation(internal.reconstructionJobs.failById, {
           jobId: job._id,
@@ -215,7 +222,11 @@ export const pollStaleReconstructionJobs = internalAction({
               processingTimeMs: result.executionTime ?? 0,
             },
           })
-        } else if (result.status === 'FAILED') {
+        } else if (
+          result.status === 'FAILED' ||
+          result.status === 'CANCELLED' ||
+          result.status === 'TIMED_OUT'
+        ) {
           console.log(
             `Job ${job._id} failed on RunPod: ${result.output?.error ?? 'Unknown error'}`
           )

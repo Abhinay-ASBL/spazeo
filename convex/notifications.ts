@@ -15,7 +15,8 @@ export const list = query({
       .unique()
     if (!user) return []
 
-    const limit = args.limit ?? 20
+    // Client-supplied; clamp so a huge value can't force an unbounded read.
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 100)
 
     const notifications = await ctx.db
       .query('notifications')
@@ -39,10 +40,14 @@ export const unreadCount = query({
       .unique()
     if (!user) return 0
 
+    // Capped: unbounded .collect() over a per-user table caused the OOM
+    // crash-loop incident (2026-08-26). 1000 most-recent notifications is
+    // more than enough for an unread badge count.
     const unread = await ctx.db
       .query('notifications')
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
+      .order('desc')
+      .take(1000)
 
     return unread.filter((n) => !n.read).length
   },
@@ -79,10 +84,13 @@ export const markAllRead = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
+    // Capped: unbounded .collect() + per-row patch caused the OOM crash-loop
+    // incident (2026-08-26). Bound to 1000 most-recent notifications per call.
     const unread = await ctx.db
       .query('notifications')
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
-      .collect()
+      .order('desc')
+      .take(1000)
 
     for (const notification of unread) {
       if (!notification.read) {

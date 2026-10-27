@@ -667,8 +667,13 @@ export default function BuildingsPage() {
             </div>
           ) : totalBuildings === 0 ? (
             <div className="rounded-2xl border border-dashed border-[rgba(212,160,23,0.18)] bg-[#12100E] px-6 py-12 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(212,160,23,0.08)]">
-                <Building2 size={22} className="text-[#D4A017]" strokeWidth={1.5} />
+              <div className="relative mx-auto mb-4 h-32 w-full max-w-xs">
+                <Image
+                  src="/buildings/empty-state-towers.webp"
+                  alt=""
+                  fill
+                  className="object-contain opacity-90 [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"
+                />
               </div>
               <h3
                 className="text-lg font-semibold text-[#F5F3EF]"

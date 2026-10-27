@@ -23,7 +23,6 @@ import {
   ChevronDown,
   X,
   MapPin,
-  Users,
   Clock,
   AlertTriangle,
   Sparkles,
@@ -1566,6 +1565,8 @@ function ToursPageContent() {
   // ─── Persist view mode ───────────────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem('spazeo-tours-viewmode')
+    // localStorage can't be read during render/SSR without a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved === 'grid' || saved === 'list') setViewMode(saved)
   }, [])
 
@@ -1576,15 +1577,21 @@ function ToursPageContent() {
   // ─── Auto-open create dialog from URL param ─────────────────────
   useEffect(() => {
     if (searchParams.get('create') === 'true' || searchParams.get('upload') === 'true') {
+      // Paired with the router.replace below — both belong in an effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowCreateDialog(true)
       router.replace('/tours', { scroll: false })
     }
   }, [searchParams, router])
 
   // ─── Clear selection on filter change ────────────────────────────
-  useEffect(() => {
+  // Adjusted during render so a stale selection never paints.
+  const filterKey = `${activeStatus}|${debouncedSearch}|${sortOption}`
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey)
     setSelectedIds(new Set())
-  }, [activeStatus, debouncedSearch, sortOption])
+  }
 
   // ─── Handlers ────────────────────────────────────────────────────
   const toggleSelect = useCallback((id: string) => {
@@ -1597,7 +1604,9 @@ function ToursPageContent() {
   }, [])
 
   const handleCopyLink = useCallback((tour: Tour) => {
-    navigator.clipboard.writeText(`https://spazeo.io/tour/${tour.slug}`)
+    navigator.clipboard.writeText(`${window.location.origin}/tour/${tour.slug}`).catch(() => {
+      toast.error('Could not copy link')
+    })
     setCopiedId(tour._id)
     setTimeout(() => setCopiedId(null), 2000)
   }, [])

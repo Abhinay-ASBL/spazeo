@@ -111,6 +111,9 @@ export function UploadZone({ onUpload, maxFiles, className }: UploadZoneProps) {
               }}
             >
               <div className="aspect-video">
+                {/* Local object URL for a not-yet-uploaded file — nothing for
+                    the image optimizer to fetch. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={item.preview}
                   alt={item.file.name}

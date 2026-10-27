@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
-import { query, mutation, action } from './_generated/server'
-import { api } from './_generated/api'
+import { query, mutation, action, internalQuery } from './_generated/server'
+import { api, internal } from './_generated/api'
+import type { Id } from './_generated/dataModel'
 import { requireAdmin } from './authHelpers'
 
 export const list = query({
@@ -288,7 +289,25 @@ export const setGlbStorageId = mutation({
     if (!item) throw new Error('Furniture item not found')
 
     await ctx.db.patch(args.itemId, { glbStorageId: args.glbStorageId })
+
+    // Drop the replaced model unless another catalog item still points at it.
+    const previous = item.glbStorageId
+    if (previous && previous !== args.glbStorageId) {
+      const stillUsed = await ctx.db
+        .query('furnitureItems')
+        .filter((q) => q.eq(q.field('glbStorageId'), previous))
+        .first()
+      if (!stillUsed) await ctx.storage.delete(previous)
+    }
     return { success: true }
+  },
+})
+
+/** Throws unless the caller is an admin. Lets actions check before doing work. */
+export const assertAdmin = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx)
   },
 })
 
@@ -296,8 +315,8 @@ export const setGlbStorageId = mutation({
 export const uploadTestGlbs = action({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity().catch(() => null)
-    if (!identity) throw new Error('Not authenticated')
+    // Fail before uploading anything rather than at setGlbStorageId.
+    await ctx.runQuery(internal.furnitureItems.assertAdmin, {})
 
     const testGlbs = ['cube.glb', 'cylinder.glb', 'sphere.glb']
 
@@ -350,7 +369,7 @@ export const uploadTestGlbs = action({
 
       // Assign to the item
       await ctx.runMutation(api.furnitureItems.setGlbStorageId, {
-        itemId: itemsWithoutGlb[i]._id as any,
+        itemId: itemsWithoutGlb[i]._id as Id<'furnitureItems'>,
         glbStorageId: storageId,
       })
 

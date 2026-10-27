@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import { query } from './_generated/server'
+import type { Doc } from './_generated/dataModel'
 
 export const list = query({
   args: {
@@ -10,7 +11,9 @@ export const list = query({
     if (args.propertyType) {
       demos = await ctx.db
         .query('demoTours')
-        .withIndex('by_propertyType', (q) => q.eq('propertyType', args.propertyType as any))
+        .withIndex('by_propertyType', (q) =>
+          q.eq('propertyType', args.propertyType as Doc<'demoTours'>['propertyType'])
+        )
         .collect()
     } else {
       demos = await ctx.db.query('demoTours').collect()
@@ -45,7 +48,7 @@ export const getBySlug = query({
       : null
 
     // If linked to an actual tour, get scenes
-    let scenes: any[] = []
+    let scenes: Doc<'scenes'>[] = []
     if (demo.tourId) {
       const tourScenes = await ctx.db
         .query('scenes')

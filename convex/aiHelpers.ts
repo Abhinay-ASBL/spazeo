@@ -24,6 +24,15 @@ export const checkCredits = internalQuery({
   },
 })
 
+export const getSceneForTour = internalQuery({
+  args: { sceneId: v.id('scenes'), tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const scene = await ctx.db.get(args.sceneId)
+    if (!scene || scene.tourId !== args.tourId) return null
+    return scene
+  },
+})
+
 export const createJob = internalMutation({
   args: {
     tourId: v.id('tours'),
@@ -79,6 +88,14 @@ export const retryJob = mutation({
 
     const job = await ctx.db.get(args.jobId)
     if (!job) throw new Error('Job not found')
+
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const tour = await ctx.db.get(job.tourId)
+    if (!user || !tour || tour.userId !== user._id) throw new Error('Not authorized')
+
     if (job.status !== 'failed') throw new Error('Only failed jobs can be retried')
 
     await ctx.db.patch(args.jobId, {
@@ -88,38 +105,42 @@ export const retryJob = mutation({
     })
 
     // Re-schedule the appropriate action based on job type
+    // Throwing below rolls back the 'pending' patch, so a job we can't re-run
+    // stays 'failed' instead of sitting in 'pending' forever.
     if (job.type === 'scene_analysis' && job.sceneId) {
       const scene = await ctx.db.get(job.sceneId)
-      if (scene) {
-        await ctx.scheduler.runAfter(0, internal.aiActions.processAnalyzeScene, {
-          jobId: args.jobId,
-          sceneStorageId: scene.imageStorageId,
-        })
-      }
+      if (!scene?.imageStorageId) throw new Error('Scene image no longer exists')
+      await ctx.scheduler.runAfter(0, internal.aiActions.processAnalyzeScene, {
+        jobId: args.jobId,
+        sceneStorageId: scene.imageStorageId,
+        sceneId: job.sceneId,
+        tourId: job.tourId,
+        userId: job.userId,
+      })
     } else if (job.type === 'staging' && job.sceneId) {
       const scene = await ctx.db.get(job.sceneId)
-      if (scene) {
-        await ctx.scheduler.runAfter(0, internal.aiActions.processStageScene, {
-          jobId: args.jobId,
-          sceneStorageId: scene.imageStorageId,
-          style: job.input?.style ?? 'modern',
-        })
-      }
+      if (!scene?.imageStorageId) throw new Error('Scene image no longer exists')
+      await ctx.scheduler.runAfter(0, internal.aiActions.processStageScene, {
+        jobId: args.jobId,
+        sceneStorageId: scene.imageStorageId,
+        style: job.input?.style ?? 'modern',
+      })
     } else if (job.type === 'enhancement' && job.sceneId) {
       const scene = await ctx.db.get(job.sceneId)
-      if (scene) {
-        await ctx.scheduler.runAfter(0, internal.aiActions.processEnhanceImage, {
-          jobId: args.jobId,
-          sceneStorageId: scene.imageStorageId,
-        })
-      }
-    } else if (job.type === 'description') {
+      if (!scene?.imageStorageId) throw new Error('Scene image no longer exists')
+      await ctx.scheduler.runAfter(0, internal.aiActions.processEnhanceImage, {
+        jobId: args.jobId,
+        sceneStorageId: scene.imageStorageId,
+      })
+    } else if (job.type === 'description' && job.input?.tourTitle) {
       await ctx.scheduler.runAfter(0, internal.aiActions.processGenerateDescription, {
         jobId: args.jobId,
         tourTitle: job.input?.tourTitle ?? '',
         sceneAnalyses: job.input?.sceneAnalyses ?? [],
         tone: job.input?.tone ?? 'professional',
       })
+    } else {
+      throw new Error('This job type cannot be retried')
     }
   },
 })

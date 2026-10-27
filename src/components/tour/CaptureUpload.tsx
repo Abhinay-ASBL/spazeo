@@ -78,10 +78,12 @@ export function CaptureUpload({ tourId }: CaptureUploadProps) {
     video.src = objectUrl
     videoRef.current = video
 
-    const handleLoadedData = () => {
+    // 'loadedmetadata' fires with preload='metadata' on every browser; Safari
+    // may never fire 'loadeddata' until playback. The seek then decodes a frame.
+    const handleLoadedMetadata = () => {
       setVideoDuration(video.duration)
-      // Seek to 1 second for thumbnail
-      video.currentTime = Math.min(1, video.duration)
+      // Seek to 1 second (or mid-clip for very short videos) for thumbnail
+      video.currentTime = Math.min(1, video.duration / 2)
     }
 
     const handleSeeked = () => {
@@ -96,11 +98,11 @@ export function CaptureUpload({ tourId }: CaptureUploadProps) {
       URL.revokeObjectURL(objectUrl)
     }
 
-    video.addEventListener('loadeddata', handleLoadedData)
+    video.addEventListener('loadedmetadata', handleLoadedMetadata)
     video.addEventListener('seeked', handleSeeked)
 
     return () => {
-      video.removeEventListener('loadeddata', handleLoadedData)
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata)
       video.removeEventListener('seeked', handleSeeked)
       video.pause()
       URL.revokeObjectURL(objectUrl)

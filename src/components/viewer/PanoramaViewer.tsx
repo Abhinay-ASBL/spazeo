@@ -6,7 +6,7 @@ import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMap
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { HotspotMarker } from './HotspotMarker'
-import { MasterPlanOverlay, type MasterPlanMapping, type MasterPlanCorner, yawPitchToPosition } from './MasterPlanOverlay'
+import { MasterPlanOverlay, type MasterPlanMapping, type MasterPlanCorner } from './MasterPlanOverlay'
 import { ImageOff, Loader2 } from 'lucide-react'
 
 /* ── Error Boundary ── */
@@ -200,17 +200,6 @@ function rayHitOnSphere(event: ThreeEvent<PointerEvent | MouseEvent>, radius = 4
   const len = Math.sqrt(hitX * hitX + hitY * hitY + hitZ * hitZ) || 1
   const k = radius / len
   return { x: hitX * k, y: hitY * k, z: hitZ * k }
-}
-
-function positionToYawPitch(position: { x: number; y: number; z: number }) {
-  const len = Math.sqrt(position.x ** 2 + position.y ** 2 + position.z ** 2) || 1
-  const nx = position.x / len
-  const ny = position.y / len
-  const nz = position.z / len
-  return {
-    yaw: (Math.atan2(nx, -nz) * 180) / Math.PI,
-    pitch: (Math.asin(Math.max(-1, Math.min(1, ny))) * 180) / Math.PI,
-  }
 }
 
 /** Build a spherical rectangle mapping from two corners (degrees). */
@@ -494,7 +483,6 @@ export function PanoramaViewer({
   masterPlanMapping,
   masterPlanVisible = true,
   masterPlanEditing = false,
-  masterPlanPinCorners = [],
 }: Props) {
   const [texture, setTexture] = useState<Texture | null>(null)
   const [fadeOpacity, setFadeOpacity] = useState(1)
@@ -504,25 +492,30 @@ export function PanoramaViewer({
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null)
 
   useEffect(() => {
+    // WebGL probing needs a real canvas — client-only, post-mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWebglSupported(isWebGLAvailable())
   }, [])
 
   // Refs to avoid stale closures in setTimeout callbacks
-  const isTransitioningRef = useRef(false)
   const isFirstLoadRef = useRef(true)
   const currentUrlRef = useRef<string>('')
   // Texture cache: url → processed {texture, polarLimits}
   const textureCacheRef = useRef<Map<string, CachedEntry>>(new Map())
 
+  // Free cached panorama textures (GPU memory) when the viewer unmounts
+  useEffect(() => {
+    const cache = textureCacheRef.current
+    return () => {
+      cache.forEach((entry) => entry.texture.dispose())
+      cache.clear()
+    }
+  }, [])
+
   const applyEntry = useCallback(({ texture: t, minPolar, maxPolar }: CachedEntry) => {
     setTexture(t)
     setPolarLimits({ min: minPolar, max: maxPolar })
   }, [])
-
-  // Legacy helper used by TextureLoader callbacks
-  const applyTexture = useCallback((t: Texture) => {
-    applyEntry(processRawTexture(t))
-  }, [applyEntry])
 
   // Background preload: fires after first scene finishes loading
   useEffect(() => {
@@ -541,6 +534,8 @@ export function PanoramaViewer({
 
   useEffect(() => {
     if (!imageUrl) {
+      // Texture loading is an external subscription; the loading flag tracks it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(false)
       return
     }
@@ -562,30 +557,30 @@ export function PanoramaViewer({
         setIsLoading(false)
         return
       }
-      if (isTransitioningRef.current) return
-      isTransitioningRef.current = true
       setFadeOpacity(0)
-      setTimeout(() => {
+      const cachedTimer = setTimeout(() => {
         applyEntry(cached)
         setResetTrigger((n) => n + 1)
         setFadeOpacity(1)
         setIsLoading(false)
-        setTimeout(() => { isTransitioningRef.current = false }, 420)
       }, 400)
-      return
+      return () => clearTimeout(cachedTimer)
     }
 
     if (isFirstLoadRef.current) {
       // First load — no transition, just load directly
       isFirstLoadRef.current = false
       setIsLoading(true)
+      const firstUrl = imageUrl
       const loader = new TextureLoader()
       loader.crossOrigin = 'anonymous'
       loader.load(
-        imageUrl,
+        firstUrl,
         (t) => {
           const entry = processRawTexture(t)
-          textureCacheRef.current.set(imageUrl, entry)
+          textureCacheRef.current.set(firstUrl, entry)
+          // A newer scene was requested while this one loaded — keep it cached only
+          if (currentUrlRef.current !== firstUrl) return
           applyEntry(entry)
           setFadeOpacity(1)
           setIsLoading(false)
@@ -593,15 +588,11 @@ export function PanoramaViewer({
         undefined,
         (err) => {
           console.error('[PanoramaViewer] texture load error:', err)
-          setIsLoading(false)
+          if (currentUrlRef.current === firstUrl) setIsLoading(false)
         }
       )
       return
     }
-
-    // Block overlapping transitions
-    if (isTransitioningRef.current) return
-    isTransitioningRef.current = true
 
     // Step 1: Fade out
     setFadeOpacity(0)
@@ -617,18 +608,19 @@ export function PanoramaViewer({
         (t) => {
           const entry = processRawTexture(t)
           textureCacheRef.current.set(capturedUrl, entry)
+          // Stale load (user switched scenes again) — cache it, don't apply
+          if (currentUrlRef.current !== capturedUrl) return
           applyEntry(entry)
           setResetTrigger((n) => n + 1)
           setIsLoading(false)
           setFadeOpacity(1)
-          setTimeout(() => { isTransitioningRef.current = false }, 420)
         },
         undefined,
         (err) => {
           console.error('[PanoramaViewer] texture load error:', err)
+          if (currentUrlRef.current !== capturedUrl) return
           setIsLoading(false)
           setFadeOpacity(1)
-          setTimeout(() => { isTransitioningRef.current = false }, 420)
         }
       )
     }, 400) // wait for fade-out to complete

@@ -46,6 +46,11 @@ export const getVersion = query({
       .withIndex('by_floorPlanId', (q) => q.eq('floorPlanId', args.floorPlanId))
       .collect()
 
-    return versions.find((v) => v.versionNumber === args.versionNumber) ?? null
+    // Version numbers can collide (concurrent saves); the newest one wins.
+    const matches = versions.filter((v) => v.versionNumber === args.versionNumber)
+    return matches.reduce<(typeof matches)[number] | null>(
+      (latest, v) => (!latest || v._creationTime > latest._creationTime ? v : latest),
+      null
+    )
   },
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/Footer'
 import { ArrowRight, Sparkles } from 'lucide-react'
@@ -206,16 +206,13 @@ function DemoCard({ tour }: { tour: DemoTour }) {
 
 export default function DemoPage() {
   const [activeFilter, setActiveFilter] = useState<PropertyType>('all')
-  const [filteredTours, setFilteredTours] = useState<DemoTour[]>(DEMO_TOURS)
-
-  useEffect(() => {
-    if (activeFilter === 'all') {
-      setFilteredTours(DEMO_TOURS)
-    } else if (activeFilter === 'ai-enhanced') {
-      setFilteredTours(DEMO_TOURS.filter((tour) => tour.aiFeatures.length >= 2))
-    } else {
-      setFilteredTours(DEMO_TOURS.filter((tour) => tour.propertyType === activeFilter))
+  // Derived from the filter — no state, no effect.
+  const filteredTours = useMemo<DemoTour[]>(() => {
+    if (activeFilter === 'all') return DEMO_TOURS
+    if (activeFilter === 'ai-enhanced') {
+      return DEMO_TOURS.filter((tour) => tour.aiFeatures.length >= 2)
     }
+    return DEMO_TOURS.filter((tour) => tour.propertyType === activeFilter)
   }, [activeFilter])
 
   return (

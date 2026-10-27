@@ -1,5 +1,13 @@
 import { v } from 'convex/values'
-import { query, mutation, internalMutation, internalQuery } from './_generated/server'
+import {
+  query,
+  mutation,
+  internalMutation,
+  internalQuery,
+  type QueryCtx,
+  type MutationCtx,
+} from './_generated/server'
+import type { Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 
 /** Monthly reconstruction limits per plan tier */
@@ -12,16 +20,13 @@ const RECONSTRUCTION_LIMITS: Record<string, number> = {
 }
 
 // Helper to get the authenticated user
-async function getAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> }
-  db: any
-}) {
+async function getAuthUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity().catch(() => null)
   if (!identity) throw new Error('Not authenticated')
 
   const user = await ctx.db
     .query('users')
-    .withIndex('by_clerkId', (q: any) => q.eq('clerkId', identity.subject))
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
     .unique()
   if (!user) throw new Error('User not found')
   return user
@@ -31,20 +36,36 @@ async function getAuthUser(ctx: {
  * Count non-failed, non-cancelled reconstruction jobs for a user in the current calendar month.
  */
 async function countMonthlyJobs(
-  db: any,
-  userId: string
+  db: QueryCtx['db'],
+  userId: Id<'users'>
 ): Promise<number> {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
 
   const jobs = await db
     .query('reconstructionJobs')
-    .withIndex('by_userId', (q: any) =>
+    .withIndex('by_userId', (q) =>
       q.eq('userId', userId).gte('_creationTime', startOfMonth)
     )
     .collect()
 
-  return jobs.filter((j: any) => j.status !== 'failed' && j.status !== 'cancelled').length
+  return jobs.filter((j) => j.status !== 'failed' && j.status !== 'cancelled').length
+}
+
+/**
+ * True when the signed-in caller owns the tour. Returns false (never throws)
+ * for anonymous callers so the dashboard can render before auth resolves.
+ */
+async function callerOwnsTour(ctx: QueryCtx, tourId: Id<'tours'>): Promise<boolean> {
+  const identity = await ctx.auth.getUserIdentity().catch(() => null)
+  if (!identity) return false
+  const user = await ctx.db
+    .query('users')
+    .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+    .unique()
+  if (!user) return false
+  const tour = await ctx.db.get(tourId)
+  return !!tour && tour.userId === user._id
 }
 
 // --- Internal Queries ---
@@ -69,6 +90,7 @@ export const getStaleJobs = internalQuery({
     const THIRTY_MINUTES_MS = 30 * 60 * 1000
     const cutoff = Date.now() - THIRTY_MINUTES_MS
     const activeStatuses = [
+      'uploading',
       'queued',
       'extracting_frames',
       'reconstructing',
@@ -86,7 +108,9 @@ export const getStaleJobs = internalQuery({
 
     return byStatus
       .flat()
-      .filter((j) => j.startedAt !== undefined && j.startedAt < cutoff)
+      // startedAt is only set once RunPod accepts the job; fall back to creation
+      // time so jobs whose submission never completed are still swept.
+      .filter((j) => (j.startedAt ?? j._creationTime) < cutoff)
   },
 })
 
@@ -220,6 +244,12 @@ export const complete = internalMutation({
       .withIndex('by_runpodJobId', (q) => q.eq('runpodJobId', args.runpodJobId))
       .unique()
     if (!job) throw new Error(`No reconstruction job found for runpodJobId: ${args.runpodJobId}`)
+    // A user-cancelled job must stay cancelled even if RunPod finishes later;
+    // drop the just-stored output so it does not orphan in storage.
+    if (job.status === 'cancelled') {
+      await ctx.storage.delete(args.outputStorageId)
+      return
+    }
 
     await ctx.db.patch(job._id, {
       status: 'completed' as const,
@@ -281,6 +311,9 @@ export const cancel = mutation({
     const job = await ctx.db.get(args.jobId)
     if (!job) throw new Error('Reconstruction job not found')
     if (job.userId !== user._id) throw new Error('Not authorized')
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      throw new Error('Job has already finished')
+    }
 
     await ctx.db.patch(args.jobId, {
       status: 'cancelled' as const,
@@ -322,11 +355,12 @@ export const acceptResult = mutation({
 
 /**
  * Get the most recent reconstruction job for a tour.
- * No auth required — used by the public viewer to show reconstruction status.
+ * Owner only — returns null for anyone who does not own the tour.
  */
 export const getByTourId = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    if (!(await callerOwnsTour(ctx, args.tourId))) return null
     const jobs = await ctx.db
       .query('reconstructionJobs')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -338,11 +372,12 @@ export const getByTourId = query({
 
 /**
  * Get the active (in-progress) reconstruction job for a tour.
- * Returns null if no active job exists.
+ * Returns null if no active job exists or the caller does not own the tour.
  */
 export const getActiveByTourId = query({
   args: { tourId: v.id('tours') },
   handler: async (ctx, args) => {
+    if (!(await callerOwnsTour(ctx, args.tourId))) return null
     const jobs = await ctx.db
       .query('reconstructionJobs')
       .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
@@ -381,8 +416,10 @@ export const getByUserId = query({
 export const getSplatUrl = query({
   args: { jobId: v.id('reconstructionJobs') },
   handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx)
     const job = await ctx.db.get(args.jobId)
-    if (!job || !job.outputStorageId) return null
+    if (!job || job.userId !== user._id) throw new Error('Not authorized')
+    if (!job.outputStorageId) return null
     const url = await ctx.storage.getUrl(job.outputStorageId)
     return url
   },

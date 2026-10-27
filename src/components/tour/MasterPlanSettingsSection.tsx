@@ -70,6 +70,9 @@ export function MasterPlanSettingsSection({
         }}
       >
         {masterPlanUrl ? (
+          // Intrinsically sized: the box grows to the plan's own aspect ratio,
+          // which next/image can't express without knowing the dimensions.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={masterPlanUrl}
             alt="Master plan preview"

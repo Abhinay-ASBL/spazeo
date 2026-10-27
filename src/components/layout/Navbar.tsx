@@ -33,10 +33,9 @@ export function Navbar() {
 
   // Track which section is currently in view for hash-based links
   useEffect(() => {
-    if (pathname !== '/') {
-      setActiveHash('')
-      return
-    }
+    // Off the landing page there are no sections to observe. No need to clear
+    // activeHash — isLinkActive already ignores it unless pathname is '/'.
+    if (pathname !== '/') return
     const sectionIds = NAV_LINKS
       .filter((l) => l.href.startsWith('/#'))
       .map((l) => l.href.slice(2))
@@ -86,9 +85,12 @@ export function Navbar() {
     return pathname.startsWith(href)
   }
 
-  useEffect(() => {
+  // Close the mobile drawer on navigation — adjusted during render, not in an effect.
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
     setMobileOpen(false)
-  }, [pathname])
+  }
 
   useEffect(() => {
     if (mobileOpen) {

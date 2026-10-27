@@ -1,7 +1,8 @@
 'use client'
 
+
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 /* eslint-disable @next/next/no-img-element */
@@ -129,7 +130,6 @@ const EDITOR_ICON_OPTIONS = [
 /* ── Page ── */
 export default function TourEditorPage() {
   const params = useParams()
-  const router = useRouter()
   const tourId = params.id as Id<'tours'>
 
   const tour = useQuery(api.tours.getById, { tourId })
@@ -167,15 +167,20 @@ export default function TourEditorPage() {
   >(null)
   const [savingMapping, setSavingMapping] = useState(false)
   const defaultMappingAppliedRef = useRef(false)
+  const [activeSceneId, setActiveSceneId] = useState<Id<'scenes'> | null>(null)
 
-  /** Active mapping: local edits win, then saved server mapping — always shown when valid */
+  /** Active mapping: local edits win, then saved server mapping — scoped to the active scene */
   const resolvedMasterPlanMapping = useMemo(() => {
     const server =
-      masterPlanData?.mapping && isMasterPlanMapped(masterPlanData.mapping)
+      masterPlanData?.mapping &&
+      isMasterPlanMapped(masterPlanData.mapping) &&
+      (!masterPlanData.mapping.sceneId || masterPlanData.mapping.sceneId === activeSceneId)
         ? masterPlanData.mapping
         : null
-    if (localMapping && isMasterPlanMapped(localMapping)) return localMapping
-    if (localMapping && server) {
+    if (localMapping && localMapping.sceneId === activeSceneId && isMasterPlanMapped(localMapping)) {
+      return localMapping
+    }
+    if (localMapping && localMapping.sceneId === activeSceneId && server) {
       return {
         ...server,
         ...localMapping,
@@ -183,15 +188,14 @@ export default function TourEditorPage() {
       }
     }
     return server
-  }, [localMapping, masterPlanData?.mapping])
+  }, [localMapping, masterPlanData?.mapping, activeSceneId])
 
   // AI analysis disabled
 
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<string[]>([])
   const [publishing, setPublishing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [activeSceneId, setActiveSceneId] = useState<Id<'scenes'> | null>(null)
+  const [, setSaving] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [titleEditing, setTitleEditing] = useState(false)
@@ -267,9 +271,6 @@ export default function TourEditorPage() {
   // Preview mode
   const [previewMode, setPreviewMode] = useState(false)
 
-  // Mobile scene drawer
-  const [mobileSceneDrawerOpen, setMobileSceneDrawerOpen] = useState(false)
-
   // Mobile properties drawer
   const [mobilePropsDrawerOpen, setMobilePropsDrawerOpen] = useState(false)
 
@@ -327,6 +328,9 @@ export default function TourEditorPage() {
     } else {
       setSceneDescription('')
     }
+    // Deliberately keyed on scene id only — re-syncing on every description change
+    // would clobber in-progress edits to the description field.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeScene?._id])
 
   // AI analysis disabled in v1
@@ -342,21 +346,6 @@ export default function TourEditorPage() {
     setCustomSlug(tour.slug ?? '')
     setSettingsInitialized(true)
   }
-
-  /* ── Toggle a tour setting ── */
-  const handleToggleSetting = useCallback(
-    async (key: keyof typeof tourSettings) => {
-      const updated = { ...tourSettings, [key]: !tourSettings[key] }
-      setTourSettings(updated)
-      try {
-        await updateTour({ tourId, settings: updated })
-      } catch {
-        toast.error('Failed to save setting')
-        setTourSettings(tourSettings)
-      }
-    },
-    [tourSettings, updateTour, tourId]
-  )
 
   /* ── Master plan upload / remove ── */
   const handleMasterPlanUpload = useCallback(
@@ -456,12 +445,14 @@ export default function TourEditorPage() {
     input.click()
   }, [handleMasterPlanUpload])
 
-  // Sync mapping from server when loaded / changed (don't overwrite while pinning)
+  // Sync mapping from server when loaded / changed (don't overwrite while pinning).
+  // Corners are placed against one scene's panorama, so only rehydrate when the
+  // saved mapping belongs to the currently active scene — otherwise start blank.
   useEffect(() => {
     if (!masterPlanData) return
     if (mappingMasterPlan) return
-    if (masterPlanData.mapping) {
-      const m = masterPlanData.mapping
+    const m = masterPlanData.mapping
+    if (m && (!m.sceneId || m.sceneId === activeSceneId)) {
       setLocalMapping({
         corners: m.corners,
         yaw: m.yaw,
@@ -473,12 +464,26 @@ export default function TourEditorPage() {
         sceneId: m.sceneId,
       })
       setPinCorners(m.corners ?? [])
-    } else if (!masterPlanData.url) {
+    } else {
       setLocalMapping(null)
       setPinCorners([])
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only rehydrate from server payload
-  }, [masterPlanData?.url, masterPlanData?.mapping, mappingMasterPlan])
+  }, [masterPlanData?.url, masterPlanData?.mapping, mappingMasterPlan, activeSceneId])
+
+  // Switching the active scene mid-placement must not carry partial corner
+  // pins from the previous scene's panorama onto the newly selected one.
+  const prevSceneIdForMappingRef = useRef<Id<'scenes'> | null>(null)
+  useEffect(() => {
+    if (
+      prevSceneIdForMappingRef.current !== null &&
+      prevSceneIdForMappingRef.current !== activeSceneId
+    ) {
+      setMappingMasterPlan(false)
+      setPinCorners([])
+    }
+    prevSceneIdForMappingRef.current = activeSceneId
+  }, [activeSceneId])
 
   // Existing uploads without mapping: place default on the plot once
   useEffect(() => {
@@ -926,18 +931,6 @@ export default function TourEditorPage() {
     hotspotAccentColor,
     hotspotLineHeight,
   ])
-
-  /* ── Update hotspot tooltip ── */
-  const handleUpdateHotspotTooltip = useCallback(
-    async (hotspotId: Id<'hotspots'>, tooltip: string) => {
-      try {
-        await updateHotspot({ hotspotId, tooltip })
-      } catch {
-        toast.error('Failed to update hotspot')
-      }
-    },
-    [updateHotspot]
-  )
 
   /* ── Delete hotspot ── */
   const handleDeleteHotspot = useCallback(
@@ -2828,7 +2821,7 @@ export default function TourEditorPage() {
                     updateTour({
                       tourId,
                       settings: { ...tour?.settings, autoRotate: newSettings.autoRotate }
-                    }).catch(err => {
+                    }).catch(() => {
                       toast.error('Failed to update settings')
                       setTourSettings(tourSettings)
                     })
@@ -2870,7 +2863,7 @@ export default function TourEditorPage() {
                     updateTour({
                       tourId,
                       settings: { ...tour?.settings, showMiniMap: newSettings.showMiniMap }
-                    }).catch(err => {
+                    }).catch(() => {
                       toast.error('Failed to update settings')
                       setTourSettings(tourSettings)
                     })
@@ -2912,7 +2905,7 @@ export default function TourEditorPage() {
                     updateTour({
                       tourId,
                       settings: { ...tour?.settings, allowFullscreen: newSettings.allowFullscreen }
-                    }).catch(err => {
+                    }).catch(() => {
                       toast.error('Failed to update settings')
                       setTourSettings(tourSettings)
                     })
@@ -2954,7 +2947,7 @@ export default function TourEditorPage() {
                     updateTour({
                       tourId,
                       settings: { ...tour?.settings, brandingEnabled: newSettings.brandingEnabled }
-                    }).catch(err => {
+                    }).catch(() => {
                       toast.error('Failed to update settings')
                       setTourSettings(tourSettings)
                     })
@@ -3092,7 +3085,7 @@ export default function TourEditorPage() {
                       tourId,
                       privacy: newPrivacy,
                       ...(newPrivacy !== 'password_protected' ? { password: undefined } : {})
-                    }).catch(err => {
+                    }).catch(() => {
                       toast.error('Failed to update privacy')
                     })
                   }}
@@ -3178,7 +3171,8 @@ export default function TourEditorPage() {
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(tour.embedCode ?? '')
-                      toast.success('Embed code copied!')
+                        .then(() => toast.success('Embed code copied!'))
+                        .catch(() => toast.error('Could not copy embed code'))
                     }}
                     className="flex items-center gap-1.5 rounded-lg text-xs font-medium transition-colors"
                     style={{
@@ -3201,6 +3195,7 @@ export default function TourEditorPage() {
                   Publish your tour to generate the embed code.
                 </p>
               )}
+
             </div>
             )}
 
@@ -3419,7 +3414,7 @@ export default function TourEditorPage() {
                           updateTour({
                             tourId,
                             settings: { ...tour?.settings, autoRotate: newSettings.autoRotate }
-                          }).catch(err => {
+                          }).catch(() => {
                             toast.error('Failed to update settings')
                             setTourSettings(tourSettings)
                           })
@@ -3461,7 +3456,7 @@ export default function TourEditorPage() {
                           updateTour({
                             tourId,
                             settings: { ...tour?.settings, showMiniMap: newSettings.showMiniMap }
-                          }).catch(err => {
+                          }).catch(() => {
                             toast.error('Failed to update settings')
                             setTourSettings(tourSettings)
                           })
@@ -3503,7 +3498,7 @@ export default function TourEditorPage() {
                           updateTour({
                             tourId,
                             settings: { ...tour?.settings, allowFullscreen: newSettings.allowFullscreen }
-                          }).catch(err => {
+                          }).catch(() => {
                             toast.error('Failed to update settings')
                             setTourSettings(tourSettings)
                           })
@@ -3545,7 +3540,7 @@ export default function TourEditorPage() {
                           updateTour({
                             tourId,
                             settings: { ...tour?.settings, brandingEnabled: newSettings.brandingEnabled }
-                          }).catch(err => {
+                          }).catch(() => {
                             toast.error('Failed to update settings')
                             setTourSettings(tourSettings)
                           })
@@ -3626,7 +3621,8 @@ export default function TourEditorPage() {
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(tour.embedCode ?? '')
-                              toast.success('Embed code copied!')
+                                .then(() => toast.success('Embed code copied!'))
+                                .catch(() => toast.error('Could not copy embed code'))
                             }}
                             className="flex items-center gap-1.5 text-xs font-medium transition-colors"
                             style={{

@@ -1,6 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
 
 const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 const isClerkConfigured = clerkKey && clerkKey.startsWith('pk_')
@@ -15,6 +14,12 @@ const isProtectedRoute = createRouteMatcher([
   '/billing(.*)',
   '/onboarding(.*)',
   '/tour/(.*)/sales(.*)',
+  // Dashboard building routes; /buildings/:id/view and /buildings/legacy-towers/view stay public
+  '/buildings',
+  '/buildings/(.*)/exterior(.*)',
+  '/buildings/(.*)/map(.*)',
+  '/buildings/legacy-towers/admin(.*)',
+  '/buildings/legacy-towers/edit-markers(.*)',
 ])
 
 // When Clerk is properly configured, use Clerk middleware for route protection
@@ -25,7 +30,7 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
 })
 
 // When Clerk is NOT configured (placeholder keys), allow all routes through
-function passthroughHandler(req: NextRequest) {
+function passthroughHandler() {
   return NextResponse.next()
 }
 

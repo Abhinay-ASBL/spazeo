@@ -179,6 +179,11 @@ export const savePanorama = mutation({
   handler: async (ctx, args) => {
     await requireBuildingOwner(ctx, args.buildingId)
 
+    const viewPosition = await ctx.db.get(args.viewPositionId)
+    if (!viewPosition || viewPosition.buildingId !== args.buildingId) {
+      throw new Error('View position does not belong to this building')
+    }
+
     return await ctx.db.insert('exteriorPanoramas', {
       viewPositionId: args.viewPositionId,
       buildingId: args.buildingId,

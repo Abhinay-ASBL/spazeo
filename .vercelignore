@@ -1,0 +1,7 @@
+tmp
+.playwright-cli
+.serena
+.superpowers
+.gstack
+# Vercel Hobby limit is 100MB per file. Local 3D preview only.
+public/buildings/all-towers.glb

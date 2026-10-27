@@ -37,6 +37,9 @@ export const create = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+
     // Generate slug from title + random suffix
     const baseSlug = args.title
       .toLowerCase()
@@ -74,6 +77,19 @@ export const getBySlug = query({
     // Get the parent tour for context (title, slug, splatStorageId)
     const tour = await ctx.db.get(room.tourId)
     if (!tour) return null
+
+    // Only expose the 3D model of a published, non-password tour — unless the
+    // caller owns it (editor preview).
+    if (tour.status !== 'published' || tour.privacy === 'password_protected') {
+      const identity = await ctx.auth.getUserIdentity().catch(() => null)
+      const user = identity
+        ? await ctx.db
+            .query('users')
+            .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+            .unique()
+        : null
+      if (!user || user._id !== tour.userId) return null
+    }
 
     // Resolve splat URL if available
     const splatUrl = tour.splatStorageId

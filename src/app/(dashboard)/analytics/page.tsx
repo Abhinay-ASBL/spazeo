@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -11,24 +11,24 @@ import {
   TourPeopleReach,
 } from '@/components/analytics/AnalyticsTotals'
 import { AnalyticsMetricGlossary } from '@/components/analytics/AnalyticsMetricGlossary'
+import { VisitorsTable } from '@/components/analytics/VisitorsTable'
 import {
-  Calendar,
   Download,
   Search,
   Monitor,
-  Smartphone,
-  Tablet,
   Loader2,
   BarChart3,
   QrCode,
   Sun,
   Eye,
+  Users,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ─── Types ─────────────────────────────────────────────────────
 
 type Period = '7d' | '30d' | '90d' | 'all'
+type AnalyticsTab = 'overview' | 'visitors'
 
 const PERIOD_OPTIONS: { label: string; value: Period }[] = [
   { label: '7D', value: '7d' },
@@ -56,28 +56,40 @@ function formatDuration(seconds: number): string {
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>('30d')
+  const [tab, setTab] = useState<AnalyticsTab>('overview')
   const [tourSearch, setTourSearch] = useState('')
   const [exporting, setExporting] = useState(false)
   const [selectedTourId, setSelectedTourId] = useState<Id<'tours'> | null>(null)
   const exportCsv = useAction(api.analytics.exportCsv)
+  const periodStartTs = useMemo(() => {
+    if (period === 'all') return 0
+    const days = period === '7d' ? 7 : period === '90d' ? 90 : 30
+    return Date.now() - days * 24 * 60 * 60 * 1000
+  }, [period])
 
-  const overview = useQuery(api.analytics.getDashboardOverview, { period })
-  const tourPerformance = useQuery(api.analytics.getTourPerformance, { period })
+  const overview = useQuery(
+    api.analytics.getDashboardOverview,
+    tab === 'overview' ? { period } : 'skip'
+  )
+  const tourPerformance = useQuery(
+    api.analytics.getTourPerformance,
+    tab === 'overview' ? { period } : 'skip'
+  )
   const selectedTourScenes = useQuery(
     api.scenes.listByTour,
-    selectedTourId ? { tourId: selectedTourId } : 'skip'
+    tab === 'overview' && selectedTourId ? { tourId: selectedTourId } : 'skip'
   )
   const visitorStats = useQuery(
     api.analytics.getUniqueVisitorStats,
-    selectedTourId ? { tourId: selectedTourId, period } : 'skip'
+    tab === 'overview' && selectedTourId ? { tourId: selectedTourId, period } : 'skip'
   )
   const variantEngagement = useQuery(
     api.analytics.getVariantEngagement,
-    selectedTourId ? { tourId: selectedTourId, period } : 'skip'
+    tab === 'overview' && selectedTourId ? { tourId: selectedTourId, period } : 'skip'
   )
   const qrAttribution = useQuery(
     api.analytics.getQrAttribution,
-    selectedTourId ? { tourId: selectedTourId, period } : 'skip'
+    tab === 'overview' && selectedTourId ? { tourId: selectedTourId, period } : 'skip'
   )
 
   const isLoading = overview === undefined || tourPerformance === undefined
@@ -87,41 +99,43 @@ export default function AnalyticsPage() {
     t.title.toLowerCase().includes(tourSearch.toLowerCase())
   )
 
-  if (isLoading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: 400,
-          color: '#A8A29E',
-          gap: 10,
-          fontFamily: 'var(--font-dmsans)',
-        }}
-      >
-        <Loader2 size={20} className="animate-spin" />
-        Loading analytics...
-      </div>
-    )
-  }
+  if (tab === 'overview') {
+    if (isLoading) {
+      return (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 400,
+            color: '#A8A29E',
+            gap: 10,
+            fontFamily: 'var(--font-dmsans)',
+          }}
+        >
+          <Loader2 size={20} className="animate-spin" />
+          Loading analytics...
+        </div>
+      )
+    }
 
-  if (!overview) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: 400,
-          color: '#6B6560',
-          fontFamily: 'var(--font-dmsans)',
-          fontSize: 14,
-        }}
-      >
-        Sign in to view analytics
-      </div>
-    )
+    if (!overview) {
+      return (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 400,
+            color: '#6B6560',
+            fontFamily: 'var(--font-dmsans)',
+            fontSize: 14,
+          }}
+        >
+          Sign in to view analytics
+        </div>
+      )
+    }
   }
 
   const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? '30D'
@@ -159,6 +173,56 @@ export default function AnalyticsPage() {
           <p style={{ fontSize: 14, color: '#A8A29E', margin: '6px 0 0 0' }}>
             Devices, estimated people, and known contacts — not a single unique-visitor count.
           </p>
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              marginTop: 16,
+              backgroundColor: '#1B1916',
+              border: '1px solid rgba(212,160,23,0.12)',
+              borderRadius: 8,
+              padding: 3,
+              width: 'fit-content',
+            }}
+            role="tablist"
+            aria-label="Analytics sections"
+          >
+            {(
+              [
+                { id: 'overview', label: 'Overview', icon: BarChart3 },
+                { id: 'visitors', label: 'Visitors', icon: Users },
+              ] as const
+            ).map((item) => {
+              const Icon = item.icon
+              const active = tab === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(item.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    border: 'none',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-dmsans)',
+                    backgroundColor: active ? '#12100E' : 'transparent',
+                    color: active ? '#F5F3EF' : '#6B6560',
+                  }}
+                >
+                  <Icon size={14} />
+                  {item.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           {/* Period Selector */}
@@ -236,6 +300,10 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {tab === 'visitors' ? (
+        <VisitorsTable period={period} />
+      ) : overview ? (
+        <>
       <AnalyticsTotals
         periodLabel={periodLabel as '7D' | '30D' | '90D' | 'All'}
         devices={overview.uniqueDevices ?? 0}
@@ -844,7 +912,10 @@ export default function AnalyticsPage() {
                 {selectedTourScenes.map((s) => (
                   <div key={s._id}>
                     <p style={{ fontSize: 12, color: '#A8A29E', marginBottom: 4 }}>{s.title}</p>
-                    <AttentionHeatmap sceneId={s._id} />
+                    <AttentionHeatmap
+                      sceneId={s._id}
+                      startTs={periodStartTs}
+                    />
                   </div>
                 ))}
               </div>
@@ -852,6 +923,8 @@ export default function AnalyticsPage() {
           )}
         </div>
       )}
+        </>
+      ) : null}
     </div>
   )
 }

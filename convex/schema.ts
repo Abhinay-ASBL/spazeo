@@ -63,6 +63,8 @@ export default defineSchema({
     userId: v.id('users'),
     title: v.string(),
     description: v.optional(v.string()),
+    // Set by update/publish/unpublish; list 'modified' sort falls back to _creationTime.
+    updatedAt: v.optional(v.number()),
     slug: v.string(),
     status: v.union(v.literal('draft'), v.literal('published'), v.literal('archived')),
     settings: v.optional(
@@ -104,11 +106,16 @@ export default defineSchema({
         gateBehavior: v.union(
           v.literal('before_tour'),
           v.literal('after_delay'),
+          v.literal('after_scenes'),
           v.literal('optional_sidebar')
         ),
         delaySeconds: v.optional(v.number()),
+        afterScenes: v.optional(v.number()),
       })
     ),
+    // Denormalised scene/variant counts (Feature 17)
+    sceneCount: v.optional(v.number()),
+    variantCount: v.optional(v.number()),
     brandingConfig: v.optional(
       v.object({
         logoStorageId: v.optional(v.id('_storage')),
@@ -212,7 +219,32 @@ export default defineSchema({
     ),
     stagedImageStorageId: v.optional(v.id('_storage')),
     description: v.optional(v.string()),
-  }).index('by_tourId', ['tourId']),
+    // Feature 17 — scene variants / time-of-day
+    variantKey: v.optional(v.string()),
+    variantType: v.optional(
+      v.union(
+        v.literal('default'),
+        v.literal('timeOfDay'),
+        v.literal('staged'),
+        v.literal('seasonal')
+      )
+    ),
+    timeOfDay: v.optional(
+      v.union(
+        v.literal('morning'),
+        v.literal('afternoon'),
+        v.literal('evening'),
+        v.literal('sunset'),
+        v.literal('night')
+      )
+    ),
+    isPrimaryVariant: v.optional(v.boolean()),
+  })
+    .index('by_tourId', ['tourId'])
+    .index('by_tourId_variantKey', ['tourId', 'variantKey'])
+    // tours.duplicate shares image/thumbnail files between scenes
+    .index('by_imageStorageId', ['imageStorageId'])
+    .index('by_thumbnailStorageId', ['thumbnailStorageId']),
 
   hotspots: defineTable({
     sceneId: v.id('scenes'),
@@ -297,10 +329,17 @@ export default defineSchema({
     ),
     sessionId: v.optional(v.string()),
     customerId: v.optional(v.id('customers')),
+    visitorId: v.optional(v.id('visitors')),
+    phoneVerified: v.optional(v.boolean()), // unused — no OTP
+    phoneNormalized: v.optional(v.string()),
+    micromarket: v.optional(v.string()),
   })
     .index('by_tourId', ['tourId'])
     .index('by_email', ['email'])
-    .index('by_sessionId', ['sessionId']),
+    .index('by_sessionId', ['sessionId'])
+    .index('by_visitorId', ['visitorId'])
+    .index('by_phone', ['phone'])
+    .index('by_phoneNormalized', ['phoneNormalized']),
 
   analytics: defineTable({
     tourId: v.id('tours'),
@@ -316,12 +355,25 @@ export default defineSchema({
     country: v.optional(v.string()),
     city: v.optional(v.string()),
     duration: v.optional(v.number()),
+    visitorId: v.optional(v.id('visitors')),
+    variantKey: v.optional(v.string()),
+    timeOfDay: v.optional(
+      v.union(
+        v.literal('morning'),
+        v.literal('afternoon'),
+        v.literal('evening'),
+        v.literal('sunset'),
+        v.literal('night')
+      )
+    ),
   })
     .index('by_tourId', ['tourId'])
     .index('by_event', ['event'])
     .index('by_timestamp', ['timestamp'])
     .index('by_tourId_timestamp', ['tourId', 'timestamp'])
-    .index('by_sessionId', ['sessionId']),
+    .index('by_sessionId', ['sessionId'])
+    .index('by_visitorId', ['visitorId'])
+    .index('by_tourId_visitorId', ['tourId', 'visitorId']),
 
   dailyAnalytics: defineTable({
     tourId: v.id('tours'),
@@ -339,6 +391,11 @@ export default defineSchema({
       })
     ),
     topCountries: v.optional(v.any()), // Record<country, count>
+    uniqueVisitorsVerified: v.optional(v.number()), // legacy
+    uniqueVisitorsIdentified: v.optional(v.number()), // phoneHash present
+    uniqueVisitorsEstimated: v.optional(v.number()), // confidence >= 70
+    uniqueDevices: v.optional(v.number()),
+    returningVisitors: v.optional(v.number()),
   }).index('by_tourId_date', ['tourId', 'date']),
 
   customers: defineTable({
@@ -545,6 +602,7 @@ export default defineSchema({
     timeOfDay: v.union(
       v.literal('morning'),
       v.literal('afternoon'),
+      v.literal('evening'),
       v.literal('sunset'),
       v.literal('night')
     ),
@@ -552,7 +610,8 @@ export default defineSchema({
     generatedAt: v.number(),
   })
     .index('by_viewPositionId', ['viewPositionId'])
-    .index('by_buildingId', ['buildingId']),
+    .index('by_buildingId', ['buildingId'])
+    .index('by_viewPositionId_timeOfDay', ['viewPositionId', 'timeOfDay']),
 
   buildingUnits: defineTable({
     buildingId: v.id('buildings'),
@@ -614,10 +673,28 @@ export default defineSchema({
     device: v.optional(v.string()),
     duration: v.optional(v.number()),
     timestamp: v.number(),
+    visitorId: v.optional(v.id('visitors')),
+    timeOfDay: v.optional(
+      v.union(
+        v.literal('morning'),
+        v.literal('afternoon'),
+        v.literal('evening'),
+        v.literal('sunset'),
+        v.literal('night')
+      )
+    ),
+    metadata: v.optional(
+      v.record(
+        v.string(),
+        v.union(v.string(), v.number(), v.boolean(), v.null())
+      )
+    ),
   })
     .index('by_buildingId', ['buildingId'])
     .index('by_event', ['event'])
-    .index('by_buildingId_timestamp', ['buildingId', 'timestamp']),
+    .index('by_buildingId_timestamp', ['buildingId', 'timestamp'])
+    .index('by_visitorId', ['visitorId'])
+    .index('by_sessionId', ['sessionId']),
 
   // --- Phase 2: 3D Reconstruction Job Queue ---
 
@@ -902,7 +979,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_read', ['read']),
+    .index('by_read', ['read'])
+    .index('by_tourId', ['tourId']),
 
   contactSubmissions: defineTable({
     name: v.string(),
@@ -1010,4 +1088,124 @@ export default defineSchema({
     ),
     updatedAt: v.number(),
   }).index('by_slug', ['slug']),
+
+  // ── Feature 16: Visitor identity ────────────────────────────
+  visitors: defineTable({
+    phoneHash: v.optional(v.string()),
+    phoneFirstSeenAt: v.optional(v.number()),
+    phoneSubmitCount: v.optional(v.number()),
+    phoneVerifiedAt: v.optional(v.number()), // legacy; prefer phoneFirstSeenAt
+    phoneCountryCode: v.optional(v.string()),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    totalSessions: v.number(),
+    totalToursViewed: v.number(),
+    totalSecondsViewed: v.number(),
+    confidence: v.number(),
+    identityTier: v.union(
+      v.literal('session'),
+      v.literal('device'),
+      v.literal('fingerprint'),
+      v.literal('identified'), // phone-anchored, unverified
+      v.literal('verified') // legacy alias — treat as identified
+    ),
+    mergedInto: v.optional(v.id('visitors')),
+    mergedAt: v.optional(v.number()),
+    householdId: v.optional(v.id('households')),
+    micromarket: v.optional(v.string()),
+    micromarketSource: v.optional(
+      v.union(
+        v.literal('declared'),
+        v.literal('qr_campaign'),
+        v.literal('tour_intent'),
+        v.literal('geolocation'),
+        v.literal('ip')
+      )
+    ),
+    city: v.optional(v.string()),
+    countryCode: v.optional(v.string()),
+    lastSceneId: v.optional(v.id('scenes')),
+    lastTourId: v.optional(v.id('tours')),
+  })
+    .index('by_phoneHash', ['phoneHash'])
+    .index('by_householdId', ['householdId'])
+    .index('by_lastSeenAt', ['lastSeenAt'])
+    .index('by_mergedInto', ['mergedInto']),
+
+  visitorIdentities: defineTable({
+    visitorId: v.id('visitors'),
+    kind: v.union(
+      v.literal('device'),
+      v.literal('fingerprint'),
+      v.literal('network'),
+      v.literal('phone')
+    ),
+    value: v.string(),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    seenCount: v.number(),
+    sourceConfidence: v.optional(v.number()),
+  })
+    .index('by_visitorId', ['visitorId'])
+    .index('by_kind_value', ['kind', 'value'])
+    .index('by_value', ['value']),
+
+  households: defineTable({
+    networkKey: v.string(),
+    type: v.union(v.literal('residential'), v.literal('carrier_gateway')),
+    visitorCount: v.number(),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    city: v.optional(v.string()),
+    asn: v.optional(v.string()),
+    isp: v.optional(v.string()),
+  }).index('by_networkKey', ['networkKey']),
+
+  visitorMerges: defineTable({
+    winnerId: v.id('visitors'),
+    loserId: v.id('visitors'),
+    reason: v.union(
+      v.literal('phone_match_corroborated'),
+      v.literal('manual')
+    ),
+    corroboratedBy: v.optional(
+      v.union(v.literal('device'), v.literal('fingerprint'))
+    ),
+    movedIdentities: v.number(),
+    movedAnalytics: v.number(),
+    movedLeads: v.number(),
+    mergedAt: v.number(),
+    revertedAt: v.optional(v.number()),
+  })
+    .index('by_winnerId', ['winnerId'])
+    .index('by_loserId', ['loserId']),
+
+  visitorConsents: defineTable({
+    visitorId: v.optional(v.id('visitors')),
+    sessionId: v.string(),
+    deviceId: v.optional(v.string()),
+    purpose: v.union(
+      v.literal('essential'),
+      v.literal('analytics'),
+      v.literal('fingerprinting'),
+      v.literal('geolocation'),
+      v.literal('marketing')
+    ),
+    granted: v.boolean(),
+    policyVersion: v.string(),
+    grantedAt: v.number(),
+    withdrawnAt: v.optional(v.number()),
+    ipHash: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+  })
+    .index('by_sessionId', ['sessionId'])
+    .index('by_visitorId', ['visitorId'])
+    .index('by_visitorId_purpose', ['visitorId', 'purpose']),
+
+  // Public-mutation abuse control (analytics.track, leads.capture, future OTP)
+  rateLimitBuckets: defineTable({
+    key: v.string(),
+    count: v.number(),
+    windowStart: v.number(),
+  }).index('by_key', ['key']),
 })

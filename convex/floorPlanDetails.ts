@@ -29,6 +29,15 @@ export const create = mutation({
       .unique()
     if (!user) throw new Error('User not found')
 
+    if (args.projectId) {
+      const project = await ctx.db.get(args.projectId)
+      if (!project || project.userId !== user._id) throw new Error('Not authorized')
+    }
+    if (args.tourId) {
+      const tour = await ctx.db.get(args.tourId)
+      if (!tour || tour.userId !== user._id) throw new Error('Not authorized')
+    }
+
     const now = Date.now()
     return await ctx.db.insert('floorPlanDetails', {
       ...args,
@@ -132,6 +141,9 @@ export const listByFlexibleIdWithUrls = query({
     // Try as floorPlanProjects ID
     const projectId = ctx.db.normalizeId('floorPlanProjects', args.id)
     if (projectId) {
+      const project = await ctx.db.get(projectId)
+      if (!project || project.userId !== user._id) return []
+
       const floorPlans = await ctx.db
         .query('floorPlanDetails')
         .withIndex('by_projectId', (q) => q.eq('projectId', projectId))
@@ -245,7 +257,10 @@ export const resetToAiVersion = mutation({
       .withIndex('by_floorPlanId', (q) => q.eq('floorPlanId', args.floorPlanId))
       .collect()
 
-    const aiVersion = versions.find((v) => v.versionNumber === 1 && v.source === 'ai')
+    // Re-extraction inserts another AI v1, so take the most recent one
+    const aiVersion = versions
+      .filter((v) => v.versionNumber === 1 && v.source === 'ai')
+      .pop()
     if (!aiVersion) throw new Error('No AI version found to reset to')
 
     const newVersion = (floorPlan.currentVersion ?? 0) + 1
