@@ -33,5 +33,11 @@ crons.daily(
   internal.analytics.purgeRateLimitBuckets,
 )
 
+// Permanently delete tours/scenes that have been in the trash for 30 days
+crons.daily(
+  'purge expired trash',
+  { hourUTC: 3, minuteUTC: 30 },
+  internal.tours.purgeExpiredTrash,
+)
 
 export default crons
