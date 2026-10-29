@@ -198,11 +198,68 @@ export const getById = query({
   },
 })
 
+/**
+ * Backfill for scenes uploaded before client-side optimization: swaps in the
+ * optimized display image + preview thumbnail. The previous image file is left
+ * in storage on purpose (it may be the only full-resolution copy).
+ */
+export const setOptimizedImage = mutation({
+  args: {
+    sceneId: v.id('scenes'),
+    imageStorageId: v.id('_storage'),
+    thumbnailStorageId: v.id('_storage'),
+  },
+  handler: async (ctx, args) => {
+    const { scene } = await requireSceneOwner(ctx, args.sceneId)
+    // Another tab already optimized this scene — drop the duplicate uploads
+    if (scene.thumbnailStorageId) {
+      if (args.imageStorageId !== scene.imageStorageId) await ctx.storage.delete(args.imageStorageId)
+      await ctx.storage.delete(args.thumbnailStorageId)
+      return
+    }
+    await ctx.db.patch(args.sceneId, {
+      imageStorageId: args.imageStorageId,
+      thumbnailStorageId: args.thumbnailStorageId,
+    })
+  },
+})
+
+const vec3 = v.object({ x: v.number(), y: v.number(), z: v.number() })
+
+/**
+ * Marks (or clears, with ref = null) the shared landmark in a scene. The first
+ * scene marked defines the tour's target direction, so it stays unrotated.
+ */
+export const setAlignment = mutation({
+  args: { sceneId: v.id('scenes'), ref: v.union(vec3, v.null()) },
+  handler: async (ctx, { sceneId, ref }) => {
+    const { tour } = await requireSceneOwner(ctx, sceneId)
+    if (ref) {
+      const len = Math.hypot(ref.x, ref.y, ref.z)
+      if (!len) throw new Error('Invalid landmark direction')
+      const unit = { x: ref.x / len, y: ref.y / len, z: ref.z / len }
+      await ctx.db.patch(sceneId, { alignRef: unit })
+      if (!tour.alignTarget) await ctx.db.patch(tour._id, { alignTarget: unit })
+      return
+    }
+    await ctx.db.patch(sceneId, { alignRef: undefined })
+    const stillAligned = (
+      await ctx.db
+        .query('scenes')
+        .withIndex('by_tourId', (q) => q.eq('tourId', tour._id))
+        .collect()
+    ).some((s) => s._id !== sceneId && s.alignRef)
+    // Last aligned scene cleared — next mark starts a fresh reference
+    if (!stillAligned) await ctx.db.patch(tour._id, { alignTarget: undefined })
+  },
+})
+
 export const create = mutation({
   args: {
     tourId: v.id('tours'),
     title: v.string(),
     imageStorageId: v.id('_storage'),
+    thumbnailStorageId: v.optional(v.id('_storage')),
     order: v.number(),
     panoramaType: v.optional(
       v.union(v.literal('equirectangular'), v.literal('cubemap'), v.literal('gaussian'))
@@ -248,6 +305,7 @@ export const create = mutation({
       tourId: args.tourId,
       title: args.title,
       imageStorageId: args.imageStorageId,
+      ...(args.thumbnailStorageId ? { thumbnailStorageId: args.thumbnailStorageId } : {}),
       order: args.order,
       panoramaType: args.panoramaType ?? 'equirectangular',
       ...(args.variantKey !== undefined ? { variantKey: args.variantKey } : {}),

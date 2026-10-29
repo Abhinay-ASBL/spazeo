@@ -381,8 +381,11 @@ export const getBySlug = query({
         const imageUrl = scene.imageStorageId
           ? await ctx.storage.getUrl(scene.imageStorageId)
           : null
+        const thumbnailUrl = scene.thumbnailStorageId
+          ? await ctx.storage.getUrl(scene.thumbnailStorageId)
+          : null
 
-        return { ...scene, hotspots, imageUrl }
+        return { ...scene, hotspots, imageUrl, thumbnailUrl }
       })
     )
 
@@ -460,7 +463,10 @@ export const getBySlugWithScenes = query({
         const imageUrl = scene.imageStorageId
           ? await ctx.storage.getUrl(scene.imageStorageId)
           : null
-        return { ...scene, hotspots, imageUrl }
+        const thumbnailUrl = scene.thumbnailStorageId
+          ? await ctx.storage.getUrl(scene.thumbnailStorageId)
+          : null
+        return { ...scene, hotspots, imageUrl, thumbnailUrl }
       })
     )
 
@@ -843,6 +849,7 @@ export const duplicate = mutation({
       leadCaptureConfig: tour.leadCaptureConfig,
       brandingConfig: tour.brandingConfig,
       seoConfig: tour.seoConfig,
+      alignTarget: tour.alignTarget,
     })
 
     const scenes = await ctx.db
@@ -858,6 +865,7 @@ export const duplicate = mutation({
         title: scene.title,
         imageStorageId: scene.imageStorageId,
         thumbnailStorageId: scene.thumbnailStorageId,
+        alignRef: scene.alignRef,
         order: scene.order,
         panoramaType: scene.panoramaType,
         roomType: scene.roomType,

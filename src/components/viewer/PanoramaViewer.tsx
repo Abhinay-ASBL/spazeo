@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useCallback, useState, useRef, Component, type ReactNode } from 'react'
+import { useEffect, useCallback, useMemo, useState, useRef, Component, type ReactNode } from 'react'
 import { Canvas, useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
-import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh, Vector3, MeshBasicMaterial } from 'three'
+import { PerspectiveCamera, TextureLoader, Texture, SRGBColorSpace, LinearMipMapLinearFilter, Mesh, Vector3, MeshBasicMaterial, Quaternion } from 'three'
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { HotspotMarker } from './HotspotMarker'
 import { MasterPlanOverlay, type MasterPlanMapping, type MasterPlanCorner } from './MasterPlanOverlay'
 import { ImageOff, Loader2 } from 'lucide-react'
+import { unrotate, type SceneRotation, type Vec3 } from '../../../convex/sceneAlignment'
 
 /* ── Error Boundary ── */
 class PanoramaErrorBoundary extends Component<
@@ -67,9 +68,18 @@ interface Props {
   height?: string
   hotspots?: HotspotData[]
   onHotspotClick?: (hotspot: HotspotData) => void
-  onSphereClick?: (position: { x: number; y: number; z: number }) => void
+  /** `position` is in the scene's image frame (hotspots); `world` in the aligned frame (master plan) */
+  onSphereClick?: (position: Vec3, world: Vec3) => void
   isEditing?: boolean
   autoRotate?: boolean
+  /** Scene alignment — rotates the image and its hotspots onto the tour's shared frame */
+  rotation?: SceneRotation | null
+  /** Alignment landmark of this scene (image frame), shown as a marker */
+  landmark?: Vec3 | null
+  /** Text of the editing indicator */
+  editingHint?: string
+  /** Center crosshair guide (alignment) */
+  showCrosshair?: boolean
   zoomLevel?: number
   previewPosition?: { x: number; y: number; z: number } | null
   onViewDirectionReady?: (
@@ -89,6 +99,8 @@ interface Props {
   azimuthHalfArc?: number
   /** URLs to preload in the background after the first scene loads */
   preloadUrls?: string[]
+  /** Small preview of imageUrl, shown while the full image downloads */
+  previewUrl?: string | null
   /** Master plan image mapped onto the panorama sphere */
   masterPlanUrl?: string | null
   masterPlanMapping?: MasterPlanMapping | null
@@ -125,38 +137,49 @@ interface NormalizeResult {
   maxPolarAngle: number // radians — top of valid content
 }
 
+// Uploading a very large <img> straight to WebGL fails with GL_INVALID_VALUE in
+// some engines (12000x6000 → black sphere) even under MAX_TEXTURE_SIZE.
+// Larger panoramas go through a downscaled canvas instead.
+// ponytail: fixed cap, read renderer.capabilities.maxTextureSize if 8K looks soft
+const MAX_PANO_WIDTH = 8192
+
 function normalizeEquirectangular(img: HTMLImageElement): NormalizeResult | null {
   const w = img.naturalWidth
   const h = img.naturalHeight
   if (!w || !h) return null
 
   const ar = w / h
-  // Already close to 2:1 — no padding needed
-  if (ar >= 1.95 && ar <= 2.05) return null
+  const isTwoToOne = ar >= 1.95 && ar <= 2.05
+  // Already close to 2:1 and small enough to upload directly
+  if (isTwoToOne && w <= MAX_PANO_WIDTH) return null
 
-  const canvas = document.createElement('canvas')
-  let yOff = 0
-
-  if (ar > 2.0) {
+  // Target size before downscaling
+  let cw = w
+  let ch = h
+  if (!isTwoToOne && ar > 2.0) {
     // Wider than 2:1 → keep width, expand height to width/2 (black bars top/bottom)
-    canvas.width = w
-    canvas.height = Math.round(w / 2)
-    yOff = Math.round((canvas.height - h) / 2)
-  } else {
+    ch = Math.round(w / 2)
+  } else if (!isTwoToOne) {
     // Narrower than 2:1 → keep height, expand width to height*2 (black bars left/right)
-    canvas.width = Math.round(h * 2)
-    canvas.height = h
-    // No vertical padding, so full polar range is valid
+    cw = Math.round(h * 2)
   }
+
+  const scale = Math.min(1, MAX_PANO_WIDTH / cw)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(cw * scale)
+  canvas.height = Math.round(ch * scale)
+  const dw = Math.round(w * scale)
+  const dh = Math.round(h * scale)
+  const xOff = Math.round((canvas.width - dw) / 2)
+  const yOff = Math.round((canvas.height - dh) / 2)
 
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  // Fill black, then center the original image
+  // Fill black, then center the (scaled) original image
   ctx.fillStyle = '#000000'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  const xOff = Math.round((canvas.width - w) / 2)
-  ctx.drawImage(img, xOff, yOff)
+  ctx.drawImage(img, xOff, yOff, dw, dh)
 
   const tex = new Texture(canvas)
   tex.colorSpace = SRGBColorSpace
@@ -171,8 +194,11 @@ function normalizeEquirectangular(img: HTMLImageElement): NormalizeResult | null
   // After flipY: validVMax_uv (zenith side) = 1 - yOff/H
   //              validVMin_uv (nadir side)  = 1 - (yOff+h)/H
   // Polar angle: phi = V_uv * π
+  // No vertical padding → full polar range is valid
+  if (yOff === 0) return { texture: tex, minPolarAngle: 0, maxPolarAngle: Math.PI }
+
   const H = canvas.height
-  const validVMin = 1 - (yOff + h) / H  // UV V at bottom of original image
+  const validVMin = 1 - (yOff + dh) / H // UV V at bottom of original image
   const validVMax = 1 - yOff / H         // UV V at top of original image
   const BUFFER = 0.01                    // small margin to avoid hard seams
 
@@ -231,19 +257,21 @@ function PanoramaSphere({
   texture,
   onSphereClick,
   isEditing,
+  rotation,
 }: {
   texture: Texture
-  onSphereClick?: (position: { x: number; y: number; z: number }) => void
+  onSphereClick?: (position: Vec3, world: Vec3) => void
   isEditing?: boolean
+  rotation?: SceneRotation | null
 }) {
   const handleClick = useCallback(
     (event: ThreeEvent<MouseEvent>) => {
       if (!isEditing || !onSphereClick) return
       event.stopPropagation()
       const hit = rayHitOnSphere(event)
-      if (hit) onSphereClick(hit)
+      if (hit) onSphereClick(unrotate(hit, rotation ?? null), hit)
     },
-    [isEditing, onSphereClick]
+    [isEditing, onSphereClick, rotation]
   )
 
   return (
@@ -466,6 +494,10 @@ export function PanoramaViewer({
   onSphereClick,
   isEditing = false,
   autoRotate = false,
+  rotation = null,
+  landmark = null,
+  editingHint = 'Click to place hotspot',
+  showCrosshair = false,
   zoomLevel = 1,
   previewPosition = null,
   onViewDirectionReady,
@@ -479,6 +511,7 @@ export function PanoramaViewer({
   initialPitch,
   azimuthHalfArc,
   preloadUrls,
+  previewUrl,
   masterPlanUrl,
   masterPlanMapping,
   masterPlanVisible = true,
@@ -490,6 +523,15 @@ export function PanoramaViewer({
   const [resetTrigger, setResetTrigger] = useState(0)
   const [polarLimits, setPolarLimits] = useState({ min: 0, max: Math.PI })
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null)
+  // Same composition as sceneAlignment.rotate: yaw about +Y first, then tilt
+  const alignQuaternion = useMemo(() => {
+    const q = new Quaternion()
+    if (!rotation) return q
+    const { tiltAxis: a } = rotation
+    return q
+      .setFromAxisAngle(new Vector3(a.x, a.y, a.z), rotation.tilt)
+      .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rotation.yaw))
+  }, [rotation])
 
   useEffect(() => {
     // WebGL probing needs a real canvas — client-only, post-mount.
@@ -502,6 +544,9 @@ export function PanoramaViewer({
   const currentUrlRef = useRef<string>('')
   // Texture cache: url → processed {texture, polarLimits}
   const textureCacheRef = useRef<Map<string, CachedEntry>>(new Map())
+  // imageUrl whose preview is on screen, and the preview texture to free once the full one lands
+  const previewAppliedRef = useRef<string | null>(null)
+  const previewTextureRef = useRef<Texture | null>(null)
 
   // Free cached panorama textures (GPU memory) when the viewer unmounts
   useEffect(() => {
@@ -600,7 +645,7 @@ export function PanoramaViewer({
     const capturedUrl = imageUrl
     const timer = setTimeout(() => {
       // Step 2: Load new texture while invisible
-      setIsLoading(true)
+      if (previewAppliedRef.current !== capturedUrl) setIsLoading(true)
       const loader = new TextureLoader()
       loader.crossOrigin = 'anonymous'
       loader.load(
@@ -611,7 +656,7 @@ export function PanoramaViewer({
           // Stale load (user switched scenes again) — cache it, don't apply
           if (currentUrlRef.current !== capturedUrl) return
           applyEntry(entry)
-          setResetTrigger((n) => n + 1)
+          if (previewAppliedRef.current !== capturedUrl) setResetTrigger((n) => n + 1)
           setIsLoading(false)
           setFadeOpacity(1)
         },
@@ -627,6 +672,41 @@ export function PanoramaViewer({
 
     return () => clearTimeout(timer)
   }, [imageUrl, applyEntry])
+
+  // Progressive load: show the small preview while the full image downloads.
+  // Declared after the main effect so currentUrlRef already points at imageUrl.
+  useEffect(() => {
+    if (!previewUrl || !imageUrl || textureCacheRef.current.has(imageUrl)) return
+    let cancelled = false
+    const loader = new TextureLoader()
+    loader.crossOrigin = 'anonymous'
+    loader.load(previewUrl, (t) => {
+      // Scene changed, or the full image already won the race
+      if (cancelled || currentUrlRef.current !== imageUrl || textureCacheRef.current.has(imageUrl)) {
+        t.dispose()
+        return
+      }
+      const entry = processRawTexture(t)
+      previewTextureRef.current?.dispose()
+      previewTextureRef.current = entry.texture
+      previewAppliedRef.current = imageUrl
+      applyEntry(entry)
+      setResetTrigger((n) => n + 1)
+      setFadeOpacity(1)
+      setIsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [imageUrl, previewUrl, applyEntry])
+
+  // Free the preview texture once something else is on screen
+  useEffect(() => {
+    if (previewTextureRef.current && texture !== previewTextureRef.current) {
+      previewTextureRef.current.dispose()
+      previewTextureRef.current = null
+    }
+  }, [texture])
 
   return (
     <div
@@ -707,13 +787,36 @@ export function PanoramaViewer({
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
               />
-              {texture && (
-                <PanoramaSphere
-                  texture={texture}
-                  onSphereClick={onSphereClick}
-                  isEditing={isEditing}
-                />
-              )}
+              {/* Image + its hotspots rotate together; master plan stays in the shared frame */}
+              <group quaternion={alignQuaternion}>
+                {texture && (
+                  <PanoramaSphere
+                    texture={texture}
+                    onSphereClick={onSphereClick}
+                    isEditing={isEditing}
+                    rotation={rotation}
+                  />
+                )}
+
+                {/* Render hotspot markers */}
+                {hotspots.map((hotspot) => (
+                  <HotspotMarker
+                    key={hotspot._id}
+                    hotspot={hotspot}
+                    onClick={() => onHotspotClick?.(hotspot)}
+                  />
+                ))}
+
+                {/* Pending placement preview */}
+                {previewPosition && <PreviewMarker position={previewPosition} />}
+
+                {/* Alignment landmark of this scene */}
+                {landmark && (
+                  <PreviewMarker
+                    position={{ x: landmark.x * 480, y: landmark.y * 480, z: landmark.z * 480 }}
+                  />
+                )}
+              </group>
 
               {masterPlanUrl && masterPlanMapping && (
                 <MasterPlanOverlay
@@ -723,18 +826,6 @@ export function PanoramaViewer({
                   showGuides={false}
                 />
               )}
-
-              {/* Render hotspot markers */}
-              {hotspots.map((hotspot) => (
-                <HotspotMarker
-                  key={hotspot._id}
-                  hotspot={hotspot}
-                  onClick={() => onHotspotClick?.(hotspot)}
-                />
-              ))}
-
-              {/* Pending placement preview */}
-              {previewPosition && <PreviewMarker position={previewPosition} />}
             </Canvas>
           </PanoramaErrorBoundary>
         ) : null}
@@ -754,6 +845,24 @@ export function PanoramaViewer({
         </div>
       )}
 
+      {/* Crosshair guide — line the landmark up with the center */}
+      {showCrosshair && (
+        <div className="absolute inset-0 z-10 pointer-events-none" aria-hidden="true">
+          <div
+            className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2"
+            style={{ backgroundColor: '#2DD4BF', boxShadow: '0 0 0 1px rgba(10,9,8,0.35)' }}
+          />
+          <div
+            className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2"
+            style={{ backgroundColor: '#2DD4BF', boxShadow: '0 0 0 1px rgba(10,9,8,0.35)' }}
+          />
+          <div
+            className="absolute left-1/2 top-1/2 w-6 h-6 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ border: '2px solid #2DD4BF' }}
+          />
+        </div>
+      )}
+
       {/* Editing indicator */}
       {isEditing && !isLoading && !masterPlanEditing && (
         <div
@@ -766,7 +875,7 @@ export function PanoramaViewer({
           }}
         >
           <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#2DD4BF' }} />
-          Click to place hotspot
+          {editingHint}
         </div>
       )}
       {masterPlanEditing && !isLoading && (

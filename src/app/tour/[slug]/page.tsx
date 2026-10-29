@@ -9,6 +9,7 @@ import { isMasterPlanMapped, type MasterPlanMapping } from '@/components/viewer/
 import { useQuery, useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
+import { sceneRotation, type Vec3 } from '../../../../convex/sceneAlignment'
 import {
   Maximize2,
   Minimize2,
@@ -780,6 +781,11 @@ export default function PublicTourViewerPage() {
       ) : activeScene?.imageUrl ? (
         <PanoramaViewer
           imageUrl={proxyUrl(activeScene.imageUrl as string) ?? ''}
+          previewUrl={activeScene.thumbnailUrl ? proxyUrl(activeScene.thumbnailUrl as string) : null}
+          rotation={sceneRotation(
+            (activeScene as { alignRef?: Vec3 }).alignRef,
+            (currentTour as { alignTarget?: Vec3 } | null | undefined)?.alignTarget
+          )}
           height="100vh"
           hotspots={activeHotspots as HotspotData[]}
           onHotspotClick={handleHotspotClick as (hotspot: HotspotData) => void}
