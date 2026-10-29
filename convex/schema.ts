@@ -65,6 +65,8 @@ export default defineSchema({
     description: v.optional(v.string()),
     // Set by update/publish/unpublish; list 'modified' sort falls back to _creationTime.
     updatedAt: v.optional(v.number()),
+    // Soft delete: set by tours.remove (status forced to 'archived'), purged after 30 days.
+    deletedAt: v.optional(v.number()),
     slug: v.string(),
     status: v.union(v.literal('draft'), v.literal('published'), v.literal('archived')),
     settings: v.optional(
@@ -196,6 +198,7 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_slug', ['slug'])
     .index('by_status', ['status'])
+    .index('by_deletedAt', ['deletedAt'])
     .searchIndex('search_tours', {
       searchField: 'title',
       filterFields: ['userId', 'status'],
@@ -243,6 +246,26 @@ export default defineSchema({
     .index('by_tourId', ['tourId'])
     .index('by_tourId_variantKey', ['tourId', 'variantKey'])
     // tours.duplicate shares image/thumbnail files between scenes
+    .index('by_imageStorageId', ['imageStorageId'])
+    .index('by_thumbnailStorageId', ['thumbnailStorageId']),
+
+  // Scene trash: scenes.remove moves the scene + its hotspots here (files kept),
+  // scenes.restore puts them back, crons purge rows older than 30 days.
+  deletedScenes: defineTable({
+    tourId: v.id('tours'),
+    title: v.string(),
+    originalSceneId: v.string(),
+    // Scene doc minus system fields, and its hotspots minus _id/_creationTime/sceneId.
+    scene: v.any(),
+    hotspots: v.array(v.any()),
+    wasCover: v.boolean(),
+    imageStorageId: v.optional(v.id('_storage')),
+    thumbnailStorageId: v.optional(v.id('_storage')),
+    stagedImageStorageId: v.optional(v.id('_storage')),
+    deletedAt: v.number(),
+  })
+    .index('by_tourId', ['tourId'])
+    .index('by_deletedAt', ['deletedAt'])
     .index('by_imageStorageId', ['imageStorageId'])
     .index('by_thumbnailStorageId', ['thumbnailStorageId']),
 

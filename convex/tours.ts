@@ -10,7 +10,7 @@ import {
 } from './_generated/server'
 import { internal } from './_generated/api'
 import { Id, Doc } from './_generated/dataModel'
-import { deleteSceneFileIfUnused } from './scenes'
+import { deleteSceneFileIfUnused, purgeDeletedScene } from './scenes'
 
 // spazeo.io DNS isn't live yet — fall back to the actual deployed URL so links aren't dead.
 const SITE_URL = process.env.SITE_URL ?? 'https://spazeo.vercel.app'
@@ -75,6 +75,7 @@ async function canViewTour(ctx: QueryCtx, tour: Doc<'tours'>, unlockToken?: stri
 }
 
 const DELETE_BATCH = 1000
+const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
  * Deletes a tour and every row/file that hangs off it. Used by remove,
@@ -106,6 +107,12 @@ export async function deleteTourCascade(ctx: MutationCtx, tourId: Id<'tours'>): 
     }
     await ctx.db.delete(scene._id)
   }
+
+  const trashedScenes = await ctx.db
+    .query('deletedScenes')
+    .withIndex('by_tourId', (q) => q.eq('tourId', tourId))
+    .collect()
+  for (const trash of trashedScenes) await purgeDeletedScene(ctx, trash)
 
   const leads = await ctx.db
     .query('leads')
@@ -222,7 +229,12 @@ async function assertTourLimit(
 export const list = query({
   args: {
     status: v.optional(
-      v.union(v.literal('draft'), v.literal('published'), v.literal('archived'))
+      v.union(
+        v.literal('draft'),
+        v.literal('published'),
+        v.literal('archived'),
+        v.literal('deleted')
+      )
     ),
     search: v.optional(v.string()),
     sortBy: v.optional(
@@ -250,8 +262,11 @@ export const list = query({
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
       .collect()
 
-    if (args.status) {
-      tours = tours.filter((t) => t.status === args.status)
+    if (args.status === 'deleted') {
+      tours = tours.filter((t) => t.deletedAt)
+    } else {
+      tours = tours.filter((t) => !t.deletedAt)
+      if (args.status) tours = tours.filter((t) => t.status === args.status)
     }
 
     if (args.search) {
@@ -623,6 +638,7 @@ export const update = mutation({
     const tour = await ctx.db.get(args.tourId)
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
+    if (tour.deletedAt) throw new Error('Tour is deleted. Restore it first.')
 
     const { tourId, password: _ignoredPassword, ...updates } = args
     // NOTE: `password` is accepted in args for backward compat but is intentionally
@@ -664,6 +680,7 @@ export const publish = mutation({
     const tour = await ctx.db.get(args.tourId)
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
+    if (tour.deletedAt) throw new Error('Tour is deleted. Restore it first.')
 
     const scenes = await ctx.db
       .query('scenes')
@@ -701,6 +718,7 @@ export const unpublish = mutation({
     const tour = await ctx.db.get(args.tourId)
     if (!tour) throw new Error('Tour not found')
     if (tour.userId !== user._id) throw new Error('Not authorized')
+    if (tour.deletedAt) throw new Error('Tour is deleted. Restore it first.')
     if (tour.status === 'archived') await assertTourLimit(ctx, user)
 
     await ctx.db.patch(args.tourId, { status: 'draft', updatedAt: Date.now() })
@@ -748,7 +766,7 @@ export const bulkPublish = mutation({
 
     for (const tourId of args.tourIds) {
       const tour = await ctx.db.get(tourId)
-      if (!tour || tour.userId !== user._id) continue
+      if (!tour || tour.userId !== user._id || tour.deletedAt) continue
       if (tour.status === 'published') continue
 
       const scenes = await ctx.db
@@ -770,8 +788,8 @@ export const bulkDelete = mutation({
 
     for (const tourId of args.tourIds) {
       const tour = await ctx.db.get(tourId)
-      if (!tour || tour.userId !== user._id) continue
-      await deleteTourCascade(ctx, tourId)
+      if (!tour || tour.userId !== user._id || tour.deletedAt) continue
+      await ctx.db.patch(tourId, { deletedAt: Date.now(), status: 'archived' })
     }
   },
 })
@@ -922,12 +940,14 @@ export const getStats = query({
       .unique()
     if (!user) return null
 
-    const tours = await ctx.db
+    const allTours = await ctx.db
       .query('tours')
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
       .collect()
+    const tours = allTours.filter((t) => !t.deletedAt)
 
     return {
+      deleted: allTours.length - tours.length,
       total: tours.length,
       draft: tours.filter((t) => t.status === 'draft').length,
       published: tours.filter((t) => t.status === 'published').length,
@@ -952,6 +972,7 @@ export const getRecent = query({
       .query('tours')
       .withIndex('by_userId', (q) => q.eq('userId', user._id))
       .order('desc')
+      .filter((q) => q.eq(q.field('deletedAt'), undefined))
       .take(6)
 
     return tours
@@ -973,7 +994,42 @@ export const remove = mutation({
       message: `Deleted tour "${tour.title}"`,
     })
 
-    await deleteTourCascade(ctx, args.tourId)
+    // Soft delete: hidden from the dashboard and offline (archived); purged after 30 days.
+    await ctx.db.patch(args.tourId, { deletedAt: Date.now(), status: 'archived' })
+  },
+})
+
+/** Undo remove. The tour comes back archived; the owner republishes it. */
+export const restore = mutation({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx)
+
+    const tour = await ctx.db.get(args.tourId)
+    if (!tour) throw new Error('Tour not found')
+    if (tour.userId !== user._id) throw new Error('Not authorized')
+
+    await ctx.db.patch(args.tourId, { deletedAt: undefined, updatedAt: Date.now() })
+  },
+})
+
+/** Cron: permanently delete tours and scenes that have been in the trash for 30 days. */
+export const purgeExpiredTrash = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - TRASH_RETENTION_MS
+    // ponytail: a few tours per run keeps the cascade inside mutation limits; more wait for tomorrow.
+    const tours = await ctx.db
+      .query('tours')
+      .withIndex('by_deletedAt', (q) => q.gt('deletedAt', 0).lt('deletedAt', cutoff))
+      .take(5)
+    for (const tour of tours) await deleteTourCascade(ctx, tour._id)
+
+    const scenes = await ctx.db
+      .query('deletedScenes')
+      .withIndex('by_deletedAt', (q) => q.lt('deletedAt', cutoff))
+      .take(100)
+    for (const trash of scenes) await purgeDeletedScene(ctx, trash)
   },
 })
 

@@ -26,11 +26,12 @@ import {
   Clock,
   AlertTriangle,
   Sparkles,
+  RotateCcw,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-type StatusFilter = 'all' | 'draft' | 'published' | 'archived'
+type StatusFilter = 'all' | 'draft' | 'published' | 'archived' | 'deleted'
 type SortOption = 'created' | 'modified' | 'views' | 'alpha'
 type ViewMode = 'grid' | 'list'
 type TourType = 'residential' | 'commercial' | 'vacation_rental' | 'restaurant' | 'other'
@@ -41,6 +42,7 @@ interface Tour {
   description?: string
   slug: string
   status: 'draft' | 'published' | 'archived'
+  deletedAt?: number
   viewCount: number
   _creationTime: number
   tourType?: string
@@ -54,6 +56,7 @@ const STATUS_FILTERS: { label: string; value: StatusFilter }[] = [
   { label: 'Draft', value: 'draft' },
   { label: 'Published', value: 'published' },
   { label: 'Archived', value: 'archived' },
+  { label: 'Recently deleted', value: 'deleted' },
 ]
 
 const SORT_OPTIONS: { label: string; value: SortOption }[] = [
@@ -190,6 +193,7 @@ function TourActionMenu({
   onDuplicate,
   onArchive,
   onDelete,
+  onRestore,
 }: {
   tour: Tour
   onEdit: () => void
@@ -198,6 +202,7 @@ function TourActionMenu({
   onDuplicate: () => void
   onArchive: () => void
   onDelete: () => void
+  onRestore: () => void
 }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -213,18 +218,21 @@ function TourActionMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  const items = [
-    { label: 'Edit', icon: Pencil, action: onEdit },
-    { label: 'Preview', icon: ExternalLink, action: onPreview },
-    { label: 'Copy Link', icon: Link2, action: onCopyLink },
-    { label: 'Duplicate', icon: Copy, action: onDuplicate },
-    {
-      label: tour.status === 'archived' ? 'Unarchive' : 'Archive',
-      icon: Archive,
-      action: onArchive,
-    },
-    { label: 'Delete', icon: Trash2, action: onDelete, destructive: true },
-  ]
+  const items: { label: string; icon: typeof Pencil; action: () => void; destructive?: boolean }[] =
+    tour.deletedAt
+      ? [{ label: 'Restore', icon: RotateCcw, action: onRestore }]
+      : [
+          { label: 'Edit', icon: Pencil, action: onEdit },
+          { label: 'Preview', icon: ExternalLink, action: onPreview },
+          { label: 'Copy Link', icon: Link2, action: onCopyLink },
+          { label: 'Duplicate', icon: Copy, action: onDuplicate },
+          {
+            label: tour.status === 'archived' ? 'Unarchive' : 'Archive',
+            icon: Archive,
+            action: onArchive,
+          },
+          { label: 'Delete', icon: Trash2, action: onDelete, destructive: true },
+        ]
 
   return (
     <div ref={menuRef} className="relative">
@@ -311,6 +319,7 @@ function TourCard({
   onDuplicate,
   onArchive,
   onDelete,
+  onRestore,
 }: {
   tour: Tour
   isSelected: boolean
@@ -321,6 +330,7 @@ function TourCard({
   onDuplicate: () => void
   onArchive: () => void
   onDelete: () => void
+  onRestore: () => void
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -417,6 +427,7 @@ function TourCard({
             onDuplicate={onDuplicate}
             onArchive={onArchive}
             onDelete={onDelete}
+            onRestore={onRestore}
           />
         </div>
 
@@ -467,6 +478,7 @@ function TourRow({
   onDuplicate,
   onArchive,
   onDelete,
+  onRestore,
 }: {
   tour: Tour
   isSelected: boolean
@@ -477,6 +489,7 @@ function TourRow({
   onDuplicate: () => void
   onArchive: () => void
   onDelete: () => void
+  onRestore: () => void
 }) {
   return (
     <div
@@ -568,6 +581,7 @@ function TourRow({
           onDuplicate={onDuplicate}
           onArchive={onArchive}
           onDelete={onDelete}
+          onRestore={onRestore}
         />
       </div>
     </div>
@@ -654,6 +668,11 @@ function EmptyState({
     archived: {
       title: 'No Archived Tours',
       subtitle: 'Tours you archive will appear here.',
+      showCTA: false,
+    },
+    deleted: {
+      title: 'Nothing Recently Deleted',
+      subtitle: 'Deleted tours stay here for 30 days, then are removed for good.',
       showCTA: false,
     },
   }
@@ -1179,7 +1198,7 @@ function DeleteTourDialog({
               }}
             >
               Are you sure you want to delete <strong style={{ color: '#F5F3EF' }}>{tour.title}</strong>?
-              This action cannot be undone. All scenes, hotspots, leads, and analytics data will be permanently removed.
+              It moves to Recently deleted and goes offline. You can restore it for 30 days, then it and all its scenes, hotspots, leads, and analytics are removed for good.
             </p>
 
             {/* Tour info */}
@@ -1550,6 +1569,7 @@ function ToursPageContent() {
   })
   const stats = useQuery(api.tours.getStats)
   const removeTour = useMutation(api.tours.remove)
+  const restoreTour = useMutation(api.tours.restore)
   const archiveTour = useMutation(api.tours.archive)
   const duplicateTour = useMutation(api.tours.duplicate)
   const bulkArchiveMutation = useMutation(api.tours.bulkArchive)
@@ -1644,12 +1664,24 @@ function ToursPageContent() {
     if (!tourToDelete) return
     try {
       await removeTour({ tourId: tourToDelete._id })
-      toast.success('Tour deleted')
+      toast.success('Tour moved to Recently deleted')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete tour')
     }
     setTourToDelete(null)
   }, [tourToDelete, removeTour])
+
+  const handleRestore = useCallback(
+    async (tourId: Id<'tours'>) => {
+      try {
+        await restoreTour({ tourId })
+        toast.success('Tour restored to Archived')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to restore tour')
+      }
+    },
+    [restoreTour]
+  )
 
   const handleBulkArchive = useCallback(async () => {
     const ids = Array.from(selectedIds) as Id<'tours'>[]
@@ -1667,7 +1699,7 @@ function ToursPageContent() {
     try {
       await bulkDeleteMutation({ tourIds: ids })
       setSelectedIds(new Set())
-      toast.success(`${ids.length} tours deleted`)
+      toast.success(`${ids.length} tours moved to Recently deleted`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete tours')
     }
@@ -1696,7 +1728,7 @@ function ToursPageContent() {
   // ─── Computed ────────────────────────────────────────────────────
   const isLoading = tours === undefined
   const tourList = (tours ?? []) as Tour[]
-  const filterCounts = stats ?? { total: 0, draft: 0, published: 0, archived: 0 }
+  const filterCounts = stats ?? { total: 0, draft: 0, published: 0, archived: 0, deleted: 0 }
 
   function getFilterCount(filter: StatusFilter): number {
     if (filter === 'all') return filterCounts.total
@@ -1949,6 +1981,7 @@ function ToursPageContent() {
               onDuplicate={() => handleDuplicate(tour._id)}
               onArchive={() => handleArchive(tour._id)}
               onDelete={() => handleDelete(tour)}
+              onRestore={() => handleRestore(tour._id)}
             />
           ))}
         </div>
@@ -2039,6 +2072,7 @@ function ToursPageContent() {
               onDuplicate={() => handleDuplicate(tour._id)}
               onArchive={() => handleArchive(tour._id)}
               onDelete={() => handleDelete(tour)}
+              onRestore={() => handleRestore(tour._id)}
             />
           ))}
         </div>

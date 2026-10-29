@@ -3,31 +3,52 @@ import { query, mutation, internalMutation } from './_generated/server'
 import { internal as _internal } from './_generated/api'
 import { requireAdminKey } from './authHelpers'
 import type { QueryCtx, MutationCtx } from './_generated/server'
-import type { Id } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
 
 // Cast to break circular type reference (api.d.ts imports this module's types)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const internal = _internal as any
 
 /**
- * Deletes a scene image/thumbnail file unless another scene still uses it
- * (tours.duplicate copies storage ids instead of files).
+ * Deletes a scene image/thumbnail file unless another scene, or a scene in the
+ * trash, still uses it (tours.duplicate copies storage ids instead of files).
+ * `self` is the scene or trash row being removed.
  */
 export async function deleteSceneFileIfUnused(
   ctx: MutationCtx,
   storageId: Id<'_storage'>,
-  sceneId: Id<'scenes'>
+  self: Id<'scenes'> | Id<'deletedScenes'>
 ) {
-  const byImage = await ctx.db
-    .query('scenes')
-    .withIndex('by_imageStorageId', (q) => q.eq('imageStorageId', storageId))
-    .take(2)
-  const byThumb = await ctx.db
-    .query('scenes')
-    .withIndex('by_thumbnailStorageId', (q) => q.eq('thumbnailStorageId', storageId))
-    .take(2)
-  if ([...byImage, ...byThumb].some((s) => s._id !== sceneId)) return
+  const users = await Promise.all([
+    ctx.db
+      .query('scenes')
+      .withIndex('by_imageStorageId', (q) => q.eq('imageStorageId', storageId))
+      .take(2),
+    ctx.db
+      .query('scenes')
+      .withIndex('by_thumbnailStorageId', (q) => q.eq('thumbnailStorageId', storageId))
+      .take(2),
+    ctx.db
+      .query('deletedScenes')
+      .withIndex('by_imageStorageId', (q) => q.eq('imageStorageId', storageId))
+      .take(2),
+    ctx.db
+      .query('deletedScenes')
+      .withIndex('by_thumbnailStorageId', (q) => q.eq('thumbnailStorageId', storageId))
+      .take(2),
+  ])
+  if (users.flat().some((d) => d._id !== self)) return
   await ctx.storage.delete(storageId)
+}
+
+/** Permanently deletes a trashed scene and any files nothing else uses. */
+export async function purgeDeletedScene(ctx: MutationCtx, trash: Doc<'deletedScenes'>) {
+  await ctx.db.delete(trash._id)
+  if (trash.imageStorageId) await deleteSceneFileIfUnused(ctx, trash.imageStorageId, trash._id)
+  if (trash.thumbnailStorageId) {
+    await deleteSceneFileIfUnused(ctx, trash.thumbnailStorageId, trash._id)
+  }
+  if (trash.stagedImageStorageId) await ctx.storage.delete(trash.stagedImageStorageId)
 }
 
 const SCENE_LIMITS: Record<string, number> = {
@@ -408,53 +429,123 @@ export const generateUploadUrlAdmin = mutation({
 export const remove = mutation({
   args: { sceneId: v.id('scenes') },
   handler: async (ctx, args) => {
-    const { user } = await requireSceneOwner(ctx, args.sceneId)
+    const { scene, tour, user } = await requireSceneOwner(ctx, args.sceneId)
 
     const hotspots = await ctx.db
       .query('hotspots')
       .withIndex('by_sceneId', (q) => q.eq('sceneId', args.sceneId))
       .collect()
 
+    // Move to trash instead of deleting; files stay in storage until purge.
+    const { _id, _creationTime, ...sceneFields } = scene
+    await ctx.db.insert('deletedScenes', {
+      tourId: scene.tourId,
+      title: scene.title,
+      originalSceneId: _id,
+      scene: sceneFields,
+      hotspots: hotspots.map(({ _id, _creationTime, sceneId: _sceneId, ...rest }) => rest),
+      wasCover: tour.coverSceneId === _id,
+      imageStorageId: scene.imageStorageId,
+      thumbnailStorageId: scene.thumbnailStorageId,
+      stagedImageStorageId: scene.stagedImageStorageId,
+      deletedAt: Date.now(),
+    })
+
     for (const hotspot of hotspots) {
       await ctx.db.delete(hotspot._id)
     }
-
-    const scene = await ctx.db.get(args.sceneId)
-    let tourId: Id<'tours'> | null = null
-    if (scene) {
-      tourId = scene.tourId
-      if (scene.imageStorageId !== undefined) {
-        await deleteSceneFileIfUnused(ctx, scene.imageStorageId, scene._id)
-      }
-      if (scene.thumbnailStorageId !== undefined) {
-        await deleteSceneFileIfUnused(ctx, scene.thumbnailStorageId, scene._id)
-      }
-      if (scene.stagedImageStorageId !== undefined) {
-        await ctx.storage.delete(scene.stagedImageStorageId)
-      }
-
-      // If this scene was the cover, clear cover
-      const tour = await ctx.db.get(scene.tourId)
-      if (tour && tour.coverSceneId === args.sceneId) {
-        await ctx.db.patch(scene.tourId, { coverSceneId: undefined })
-      }
-
-      // Log activity
-      if (user) {
-        await ctx.runMutation(internal.activity.log, {
-          userId: user._id,
-          type: 'scene_removed',
-          tourId: scene.tourId,
-          message: `Removed scene "${scene.title}" from tour`,
-        })
-      }
+    if (tour.coverSceneId === _id) {
+      await ctx.db.patch(scene.tourId, { coverSceneId: undefined })
     }
+
+    await ctx.runMutation(internal.activity.log, {
+      userId: user._id,
+      type: 'scene_removed',
+      tourId: scene.tourId,
+      message: `Removed scene "${scene.title}" from tour`,
+    })
 
     await ctx.db.delete(args.sceneId)
+    await refreshTourSceneCounts(ctx, scene.tourId)
+  },
+})
 
-    if (tourId) {
-      await refreshTourSceneCounts(ctx, tourId)
+export const listDeleted = query({
+  args: { tourId: v.id('tours') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) return []
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const tour = await ctx.db.get(args.tourId)
+    if (!user || !tour || tour.userId !== user._id) return []
+
+    const rows = await ctx.db
+      .query('deletedScenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', args.tourId))
+      .collect()
+    return rows
+      .sort((a, b) => b.deletedAt - a.deletedAt)
+      .map((r) => ({ _id: r._id, title: r.title, deletedAt: r.deletedAt }))
+  },
+})
+
+export const restore = mutation({
+  args: { deletedSceneId: v.id('deletedScenes') },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity().catch(() => null)
+    if (!identity) throw new Error('Not authenticated')
+    const trash = await ctx.db.get(args.deletedSceneId)
+    if (!trash) throw new Error('Deleted scene not found')
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerkId', (q) => q.eq('clerkId', identity.subject))
+      .unique()
+    const tour = await ctx.db.get(trash.tourId)
+    if (!user || !tour || tour.userId !== user._id) throw new Error('Not authorized')
+    if (tour.deletedAt) throw new Error('Restore the tour first')
+
+    const existingScenes = await ctx.db
+      .query('scenes')
+      .withIndex('by_tourId', (q) => q.eq('tourId', trash.tourId))
+      .collect()
+    const sceneLimit = SCENE_LIMITS[user.plan] ?? 10
+    const variantKey: string | undefined = trash.scene.variantKey
+    const isNewKey = !variantKey || !existingScenes.some((s) => s.variantKey === variantKey)
+    if (sceneLimit !== -1 && isNewKey && countDistinctVariantKeys(existingScenes) >= sceneLimit) {
+      throw new Error(
+        `Scene limit reached. Your ${user.plan} plan allows ${sceneLimit} scenes per tour.`
+      )
     }
+
+    // ponytail: restored scene gets a new id; analytics/aiJobs rows keep pointing at the old one.
+    const sceneId = await ctx.db.insert('scenes', trash.scene)
+    for (const hotspot of trash.hotspots) {
+      await ctx.db.insert('hotspots', { ...hotspot, sceneId })
+    }
+
+    // Re-link navigation hotspots in other scenes that pointed at the old id.
+    for (const other of existingScenes) {
+      const links = await ctx.db
+        .query('hotspots')
+        .withIndex('by_sceneId', (q) => q.eq('sceneId', other._id))
+        .collect()
+      for (const link of links) {
+        if (link.targetSceneId === trash.originalSceneId) {
+          await ctx.db.patch(link._id, { targetSceneId: sceneId })
+        }
+      }
+    }
+
+    if (trash.wasCover && !tour.coverSceneId) {
+      await ctx.db.patch(trash.tourId, { coverSceneId: sceneId })
+    }
+
+    await ctx.db.delete(trash._id)
+    await refreshTourSceneCounts(ctx, trash.tourId)
+    return sceneId
   },
 })
 

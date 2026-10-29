@@ -65,6 +65,8 @@ import toast from 'react-hot-toast'
 import { CaptureUpload } from '@/components/tour/CaptureUpload'
 import { MasterPlanMappingPanel } from '@/components/tour/MasterPlanMappingPanel'
 import { MasterPlanSettingsSection } from '@/components/tour/MasterPlanSettingsSection'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 
 /* ── Lazy-load PanoramaViewer (Three.js — client only) ── */
 const PanoramaViewer = dynamic(
@@ -145,6 +147,8 @@ export default function TourEditorPage() {
   const createScene = useMutation(api.scenes.create)
   const updateScene = useMutation(api.scenes.update)
   const removeScene = useMutation(api.scenes.remove)
+  const restoreScene = useMutation(api.scenes.restore)
+  const deletedScenes = useQuery(api.scenes.listDeleted, { tourId })
   const reorderScenes = useMutation(api.scenes.reorder)
   const updateTour = useMutation(api.tours.update)
   const updateSlug = useMutation(api.tours.updateSlug)
@@ -168,6 +172,9 @@ export default function TourEditorPage() {
   const [savingMapping, setSavingMapping] = useState(false)
   const defaultMappingAppliedRef = useRef(false)
   const [activeSceneId, setActiveSceneId] = useState<Id<'scenes'> | null>(null)
+  const [sceneToDelete, setSceneToDelete] = useState<{ _id: Id<'scenes'>; title: string } | null>(
+    null
+  )
 
   /** Active mapping: local edits win, then saved server mapping — scoped to the active scene */
   const resolvedMasterPlanMapping = useMemo(() => {
@@ -616,12 +623,24 @@ export default function TourEditorPage() {
       try {
         await removeScene({ sceneId })
         if (activeSceneId === sceneId) setActiveSceneId(null)
-        toast.success('Scene deleted')
+        toast.success('Scene moved to Recently deleted')
       } catch {
         toast.error('Failed to delete scene')
       }
     },
     [removeScene, activeSceneId]
+  )
+
+  const handleRestoreScene = useCallback(
+    async (deletedSceneId: Id<'deletedScenes'>) => {
+      try {
+        await restoreScene({ deletedSceneId })
+        toast.success('Scene restored')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to restore scene')
+      }
+    },
+    [restoreScene]
   )
 
   /* ── Reorder Scenes ── */
@@ -1322,7 +1341,7 @@ export default function TourEditorPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          handleDeleteScene(scene._id)
+                          setSceneToDelete(scene)
                         }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded"
                         style={{ color: '#F87171' }}
@@ -1347,6 +1366,38 @@ export default function TourEditorPage() {
                   {msg}
                 </div>
               ))}
+
+              {/* Recently deleted (scene trash, purged after 30 days) */}
+              {deletedScenes && deletedScenes.length > 0 && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(212,160,23,0.12)' }}>
+                  <p
+                    className="px-2 pb-1 text-[11px] uppercase tracking-wide"
+                    style={{ color: '#6B6560', fontFamily: 'var(--font-dmsans)' }}
+                  >
+                    Recently deleted
+                  </p>
+                  {deletedScenes.map((d) => (
+                    <div key={d._id} className="flex items-center gap-2 px-2 py-1.5">
+                      <span
+                        className="flex-1 truncate text-[12px]"
+                        style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}
+                        title={`Deleted ${new Date(d.deletedAt).toLocaleString()}`}
+                      >
+                        {d.title}
+                      </span>
+                      <button
+                        onClick={() => handleRestoreScene(d._id)}
+                        className="flex items-center gap-1 text-[12px] px-2 py-1 rounded"
+                        style={{ color: '#2DD4BF', fontFamily: 'var(--font-dmsans)' }}
+                        aria-label={`Restore ${d.title}`}
+                      >
+                        <RotateCcw size={12} />
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Add Scene Button */}
@@ -3382,7 +3433,7 @@ export default function TourEditorPage() {
 
                     {/* Delete Scene Button */}
                     <button
-                      onClick={() => handleDeleteScene(activeScene._id)}
+                      onClick={() => setSceneToDelete(activeScene)}
                       className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                       style={{
                         backgroundColor: 'rgba(251,122,84,0.1)',
@@ -3661,6 +3712,34 @@ export default function TourEditorPage() {
         )}
         </div>
       )}
+
+      <Modal
+        isOpen={sceneToDelete !== null}
+        onClose={() => setSceneToDelete(null)}
+        title="Delete scene?"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setSceneToDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (sceneToDelete) handleDeleteScene(sceneToDelete._id)
+                setSceneToDelete(null)
+              }}
+            >
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm" style={{ color: '#A8A29E', fontFamily: 'var(--font-dmsans)' }}>
+          <strong style={{ color: '#F5F3EF' }}>{sceneToDelete?.title}</strong> and its hotspots
+          move to Recently deleted. You can restore it for 30 days.
+        </p>
+      </Modal>
     </div>
   )
 }

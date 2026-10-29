@@ -29,6 +29,6 @@ export const searchTours = query({
       })
 
     const results = await searchQuery.take(20)
-    return results
+    return results.filter((t) => !t.deletedAt)
   },
 })
