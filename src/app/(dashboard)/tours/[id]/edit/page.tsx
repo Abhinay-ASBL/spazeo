@@ -20,6 +20,7 @@ import { api } from '../../../../../../convex/_generated/api'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import {
   ArrowLeft,
+  Crosshair,
   Eye,
   Globe,
   Plus,
@@ -67,6 +68,8 @@ import { MasterPlanMappingPanel } from '@/components/tour/MasterPlanMappingPanel
 import { MasterPlanSettingsSection } from '@/components/tour/MasterPlanSettingsSection'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { optimizePanorama } from '@/lib/optimizePanorama'
+import { sceneRotation, unrotate, type Vec3 } from '../../../../../../convex/sceneAlignment'
 
 /* ── Lazy-load PanoramaViewer (Three.js — client only) ── */
 const PanoramaViewer = dynamic(
@@ -145,6 +148,8 @@ export default function TourEditorPage() {
   )
   const generateUploadUrl = useMutation(api.tours.generateUploadUrl)
   const createScene = useMutation(api.scenes.create)
+  const setOptimizedImage = useMutation(api.scenes.setOptimizedImage)
+  const setSceneAlignment = useMutation(api.scenes.setAlignment)
   const updateScene = useMutation(api.scenes.update)
   const removeScene = useMutation(api.scenes.remove)
   const restoreScene = useMutation(api.scenes.restore)
@@ -165,6 +170,9 @@ export default function TourEditorPage() {
   const [masterPlanUploading, setMasterPlanUploading] = useState(false)
   const [editorZoom, setEditorZoom] = useState(1)
   const [mappingMasterPlan, setMappingMasterPlan] = useState(false)
+  const [markingLandmark, setMarkingLandmark] = useState(false)
+  const [showAlignGuides, setShowAlignGuides] = useState(false)
+  const viewDirectionRef = useRef<(() => { yaw: number; pitch: number } | null) | null>(null)
   const [pinCorners, setPinCorners] = useState<Array<{ yaw: number; pitch: number }>>([])
   const [localMapping, setLocalMapping] = useState<
     (MasterPlanMapping & { sceneId?: Id<'scenes'> }) | null
@@ -178,10 +186,15 @@ export default function TourEditorPage() {
 
   /** Active mapping: local edits win, then saved server mapping — scoped to the active scene */
   const resolvedMasterPlanMapping = useMemo(() => {
+    // Aligned scenes share one frame, so a mapping authored on any aligned scene fits all of them
+    const isAligned = (id?: string) => !!scenes?.find((s) => s._id === id)?.alignRef
+    const mappedSceneId = masterPlanData?.mapping?.sceneId
+    const fitsActiveScene =
+      !mappedSceneId ||
+      mappedSceneId === activeSceneId ||
+      (!!tour?.alignTarget && isAligned(mappedSceneId) && isAligned(activeSceneId ?? scenes?.[0]?._id))
     const server =
-      masterPlanData?.mapping &&
-      isMasterPlanMapped(masterPlanData.mapping) &&
-      (!masterPlanData.mapping.sceneId || masterPlanData.mapping.sceneId === activeSceneId)
+      masterPlanData?.mapping && isMasterPlanMapped(masterPlanData.mapping) && fitsActiveScene
         ? masterPlanData.mapping
         : null
     if (localMapping && localMapping.sceneId === activeSceneId && isMasterPlanMapped(localMapping)) {
@@ -195,7 +208,7 @@ export default function TourEditorPage() {
       }
     }
     return server
-  }, [localMapping, masterPlanData?.mapping, activeSceneId])
+  }, [localMapping, masterPlanData?.mapping, activeSceneId, scenes, tour?.alignTarget])
 
   // AI analysis disabled
 
@@ -309,6 +322,34 @@ export default function TourEditorPage() {
     }
     return url
   }, [])
+
+  // Never carry landmark mode into another scene
+  useEffect(() => {
+    setMarkingLandmark(false)
+  }, [activeScene?._id])
+
+  const activeRotation = useMemo(
+    () => sceneRotation(activeScene?.alignRef, tour?.alignTarget),
+    [activeScene?.alignRef, tour?.alignTarget]
+  )
+
+  /** Marks the landmark at the crosshair (camera center) instead of a clicked point */
+  const markLandmarkAtCenter = useCallback(() => {
+    const view = viewDirectionRef.current?.()
+    if (!view || !activeScene) return
+    const yaw = (view.yaw * Math.PI) / 180
+    const pitch = (view.pitch * Math.PI) / 180
+    // Inverse of the viewer's yaw = atan2(x, -z), pitch = asin(y)
+    const world = {
+      x: Math.sin(yaw) * Math.cos(pitch),
+      y: Math.sin(pitch),
+      z: -Math.cos(yaw) * Math.cos(pitch),
+    }
+    setMarkingLandmark(false)
+    setSceneAlignment({ sceneId: activeScene._id, ref: unrotate(world, activeRotation) })
+      .then(() => toast.success('Landmark marked'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Could not save landmark'))
+  }, [activeScene, activeRotation, setSceneAlignment])
 
   const activeSceneHotspots = useMemo(() => {
     if (!activeScene || !hotspotsByTour) return []
@@ -569,6 +610,21 @@ export default function TourEditorPage() {
     [updateSlug, tourId, tour?.slug]
   )
 
+  const uploadBlob = useCallback(
+    async (blob: Blob) => {
+      const uploadUrl = await generateUploadUrl()
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+        body: blob,
+      })
+      if (!res.ok) throw new Error('Upload failed')
+      const { storageId } = await res.json()
+      return storageId as Id<'_storage'>
+    },
+    [generateUploadUrl]
+  )
+
   /* ── Upload Handler ── */
   const handleUpload = useCallback(
     async (files: FileList | null) => {
@@ -584,19 +640,16 @@ export default function TourEditorPage() {
           const name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
           setUploadProgress((prev) => [...prev, `Uploading ${name}...`])
 
-          const uploadUrl = await generateUploadUrl()
-          const result = await fetch(uploadUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': file.type },
-            body: file,
-          })
-          const { storageId } = await result.json()
+          const optimized = await optimizePanorama(file)
+          const imageStorageId = await uploadBlob(optimized?.full ?? file)
+          const thumbnailStorageId = optimized ? await uploadBlob(optimized.preview) : undefined
 
           const currentSceneCount = (scenes?.length ?? 0) + i
           await createScene({
             tourId,
             title: name,
-            imageStorageId: storageId as Id<'_storage'>,
+            imageStorageId,
+            thumbnailStorageId,
             order: currentSceneCount,
           })
 
@@ -614,8 +667,44 @@ export default function TourEditorPage() {
         if (fileInputRef.current) fileInputRef.current.value = ''
       }
     },
-    [generateUploadUrl, createScene, tourId, scenes?.length]
+    [uploadBlob, createScene, tourId, scenes?.length]
   )
+
+  // One-time backfill: scenes uploaded before optimization get a display copy + preview
+  const optimizingRef = useRef(new Set<string>())
+  useEffect(() => {
+    const pending = sceneList.filter(
+      (s) =>
+        s.imageUrl &&
+        s.imageStorageId &&
+        !s.thumbnailStorageId &&
+        s.panoramaType === 'equirectangular' &&
+        !optimizingRef.current.has(s._id)
+    )
+    if (pending.length === 0) return
+    pending.forEach((s) => optimizingRef.current.add(s._id))
+    void (async () => {
+      // Serial on purpose: each decode holds a full-resolution bitmap in memory
+      for (const s of pending) {
+        try {
+          const res = await fetch(proxyImageUrl(s.imageUrl) ?? s.imageUrl!)
+          if (!res.ok) continue
+          const original = await res.blob()
+          const optimized = await optimizePanorama(original)
+          if (!optimized) {
+            console.warn('[editor] could not decode scene image for optimization:', s._id)
+            continue
+          }
+          const imageStorageId =
+            optimized.full === original ? s.imageStorageId! : await uploadBlob(optimized.full)
+          const thumbnailStorageId = await uploadBlob(optimized.preview)
+          await setOptimizedImage({ sceneId: s._id, imageStorageId, thumbnailStorageId })
+        } catch (err) {
+          console.warn('[editor] scene image optimization failed:', s._id, err)
+        }
+      }
+    })()
+  }, [sceneList, uploadBlob, setOptimizedImage, proxyImageUrl])
 
   /* ── Delete Scene ── */
   const handleDeleteScene = useCallback(
@@ -744,10 +833,18 @@ export default function TourEditorPage() {
 
   /* ── Sphere Click → place hotspot or pin master-plan corner ── */
   const handleSphereClick = useCallback(
-    (position: { x: number; y: number; z: number }) => {
+    (position: Vec3, world: Vec3) => {
+      if (markingLandmark && activeScene) {
+        setMarkingLandmark(false)
+        setSceneAlignment({ sceneId: activeScene._id, ref: position })
+          .then(() => toast.success('Landmark marked'))
+          .catch((err) => toast.error(err instanceof Error ? err.message : 'Could not save landmark'))
+        return
+      }
       if (mappingMasterPlan) {
         if (pinCorners.length >= 4) return
-        const yp = positionToMasterPlanYawPitch(position)
+        // Master plan lives in the shared (aligned) frame
+        const yp = positionToMasterPlanYawPitch(world)
         const next = [...pinCorners, yp]
         setPinCorners(next)
         if (next.length === 4) {
@@ -766,7 +863,7 @@ export default function TourEditorPage() {
       if (!isPlacingHotspot) return
       setPendingPosition(position)
     },
-    [isPlacingHotspot, mappingMasterPlan, activeSceneId, pinCorners]
+    [isPlacingHotspot, mappingMasterPlan, markingLandmark, activeScene, activeSceneId, pinCorners, setSceneAlignment]
   )
 
   const resetMasterPlanCorners = useCallback(() => {
@@ -1305,7 +1402,9 @@ export default function TourEditorPage() {
                     <div className="w-[56px] h-10 rounded-md overflow-hidden flex-shrink-0 relative">
                       {scene.imageUrl ? (
                         <img
-                          src={proxyImageUrl(scene.imageUrl) ?? scene.imageUrl}
+                          src={proxyImageUrl(scene.thumbnailUrl ?? scene.imageUrl) ?? scene.imageUrl}
+                          // Same CORS mode as the viewer's TextureLoader so the panorama downloads once
+                          crossOrigin="anonymous"
                           alt={scene.title}
                           className="absolute inset-0 w-full h-full object-cover"
                         />
@@ -1446,11 +1545,19 @@ export default function TourEditorPage() {
           ) : activeScene?.imageUrl ? (
             <PanoramaViewer
               imageUrl={proxyImageUrl(activeScene.imageUrl) ?? activeScene.imageUrl}
+              previewUrl={proxyImageUrl(activeScene.thumbnailUrl)}
               height="100%"
               hotspots={viewerHotspots as HotspotData[]}
               onHotspotClick={handleHotspotClick as (hotspot: HotspotData) => void}
               onSphereClick={handleSphereClick}
-              isEditing={isPlacingHotspot || mappingMasterPlan}
+              isEditing={isPlacingHotspot || mappingMasterPlan || markingLandmark}
+              editingHint={markingLandmark ? 'Click the shared landmark' : undefined}
+              rotation={activeRotation}
+              landmark={markingLandmark ? activeScene.alignRef : null}
+              showCrosshair={markingLandmark || showAlignGuides}
+              onViewDirectionReady={(getter) => {
+                viewDirectionRef.current = getter
+              }}
               previewPosition={pendingPosition}
               autoRotate={tourSettings.autoRotate && previewMode && !mappingMasterPlan}
               zoomLevel={editorZoom}
@@ -2369,6 +2476,75 @@ export default function TourEditorPage() {
                   onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212,160,23,0.12)' }}
                 />
               </div>
+
+              {/* Scene alignment */}
+              {sceneList.length > 1 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-y-1">
+                    <span className="text-xs font-medium whitespace-nowrap" style={{ color: '#A8A29E' }}>
+                      Alignment ({sceneList.filter((s) => s.alignRef).length}/{sceneList.length})
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {activeScene.alignRef && !markingLandmark && (
+                        <button
+                          onClick={() =>
+                            setSceneAlignment({ sceneId: activeScene._id, ref: null })
+                              .then(() => toast.success('Alignment cleared'))
+                              .catch(() => toast.error('Could not clear alignment'))
+                          }
+                          className="px-2 py-1 rounded-md text-xs whitespace-nowrap"
+                          style={{ color: '#6B6560' }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                      {markingLandmark ? (
+                        <button
+                          onClick={markLandmarkAtCenter}
+                          className="px-2 py-1 rounded-md text-xs whitespace-nowrap font-medium"
+                          style={{ color: '#0A0908', backgroundColor: '#2DD4BF' }}
+                        >
+                          Set at center
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setShowAlignGuides((g) => !g)}
+                          aria-pressed={showAlignGuides}
+                          className="px-2 py-1 rounded-md text-xs whitespace-nowrap"
+                          style={{ color: showAlignGuides ? '#2DD4BF' : '#6B6560' }}
+                        >
+                          Guides
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setIsPlacingHotspot(false)
+                          setMappingMasterPlan(false)
+                          setMarkingLandmark((m) => !m)
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap"
+                        style={{ color: '#2DD4BF', backgroundColor: 'rgba(45,212,191,0.08)' }}
+                      >
+                        <Crosshair size={12} />
+                        {markingLandmark ? 'Cancel' : activeScene.alignRef ? 'Re-mark' : 'Mark landmark'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: '#6B6560' }}>
+                    {markingLandmark
+                      ? 'Drag the landmark under the crosshair, then set it. Or click the landmark directly.'
+                      : activeScene.alignRef
+                        ? tour?.alignTarget &&
+                          Math.abs(activeScene.alignRef.x - tour.alignTarget.x) +
+                            Math.abs(activeScene.alignRef.y - tour.alignTarget.y) +
+                            Math.abs(activeScene.alignRef.z - tour.alignTarget.z) <
+                            1e-9
+                          ? 'Aligned. This is the reference scene.'
+                          : 'Aligned to the reference scene.'
+                        : 'Click the same landmark, such as a tower top, in every scene. The first scene you mark is the reference. Start with the scene your master plan is mapped on.'}
+                  </p>
+                </div>
+              )}
 
               {/* Hotspots section */}
               <div className="flex flex-col gap-2">

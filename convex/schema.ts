@@ -152,6 +152,8 @@ export default defineSchema({
       )
     ),
     floorPlanId: v.optional(v.id('floorPlanDetails')),
+    // Scene alignment — shared world direction every scene's landmark is rotated onto
+    alignTarget: v.optional(v.object({ x: v.number(), y: v.number(), z: v.number() })),
     // Master plan overlay — site/floor plan image mapped onto exterior corner views
     masterPlanStorageId: v.optional(v.id('_storage')),
     masterPlanMapping: v.optional(
@@ -242,6 +244,9 @@ export default defineSchema({
       )
     ),
     isPrimaryVariant: v.optional(v.boolean()),
+    // Scene alignment — direction of the tour's shared landmark in this image
+    // (local frame unit vector). See convex/sceneAlignment.ts.
+    alignRef: v.optional(v.object({ x: v.number(), y: v.number(), z: v.number() })),
   })
     .index('by_tourId', ['tourId'])
     .index('by_tourId_variantKey', ['tourId', 'variantKey'])

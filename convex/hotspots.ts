@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { sceneRotation, transferPosition } from './sceneAlignment'
 import { query, mutation } from './_generated/server'
 import type { QueryCtx, MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
@@ -282,12 +283,20 @@ export const copyToAllScenes = mutation({
 
     const targetScenes = allScenes.filter((s) => s._id !== sourceSceneId)
 
+    // Aligned scenes: re-express each position in the target image's frame so the
+    // copy lands on the same real-world spot. Unaligned scenes copy verbatim.
+    const tour = await ctx.db.get(tourId)
+    const fromRotation = sceneRotation(sourceScene.alignRef, tour?.alignTarget)
+
     let copied = 0
     for (const scene of targetScenes) {
+      const toRotation = sceneRotation(scene.alignRef, tour?.alignTarget)
+      const shift = fromRotation && toRotation
       for (const h of sourceHotspots) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { _id, _creationTime, sceneId, ...rest } = h
-        await ctx.db.insert('hotspots', { ...rest, sceneId: scene._id })
+        const position = shift ? transferPosition(h.position, fromRotation, toRotation) : h.position
+        await ctx.db.insert('hotspots', { ...rest, position, sceneId: scene._id })
         copied++
       }
     }

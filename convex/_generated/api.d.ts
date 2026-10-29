@@ -47,6 +47,7 @@ import type * as rateLimit from "../rateLimit.js";
 import type * as reconstructionActions from "../reconstructionActions.js";
 import type * as reconstructionJobs from "../reconstructionJobs.js";
 import type * as salesSessions from "../salesSessions.js";
+import type * as sceneAlignment from "../sceneAlignment.js";
 import type * as scenes from "../scenes.js";
 import type * as search from "../search.js";
 import type * as seedLegacyTowers from "../seedLegacyTowers.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   reconstructionActions: typeof reconstructionActions;
   reconstructionJobs: typeof reconstructionJobs;
   salesSessions: typeof salesSessions;
+  sceneAlignment: typeof sceneAlignment;
   scenes: typeof scenes;
   search: typeof search;
   seedLegacyTowers: typeof seedLegacyTowers;

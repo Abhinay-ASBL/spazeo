@@ -8,6 +8,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { useUser } from '@clerk/nextjs'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { sceneRotation, type Vec3 } from '../../../../../convex/sceneAlignment'
 import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSessionTracker } from '@/hooks/useSessionTracker'
@@ -75,7 +76,7 @@ export default function SalesModePage() {
   const endSalesSession = useMutation(api.salesSessions.end)
 
   const tourId = tourData && '_id' in tourData ? (tourData._id as Id<'tours'>) : null
-  const scenes = useMemo(() => (tourData as { scenes?: Array<{ _id: string; title: string; imageUrl?: string | null; order?: number }> })?.scenes ?? [], [tourData])
+  const scenes = useMemo(() => (tourData as { scenes?: Array<{ _id: string; title: string; imageUrl?: string | null; thumbnailUrl?: string | null; order?: number }> })?.scenes ?? [], [tourData])
   const activeScene = scenes.find((s) => s._id === activeSceneId) ?? scenes[0] ?? null
   const activeHotspots: HotspotData[] = (activeScene as (typeof activeScene & { hotspots?: HotspotData[] }) | null)?.hotspots ?? []
   const activeHotspot = activeHotspotId
@@ -363,6 +364,11 @@ export default function SalesModePage() {
       {activeScene?.imageUrl ? (
         <PanoramaViewer
           imageUrl={proxyUrl(activeScene.imageUrl as string) ?? ''}
+          previewUrl={activeScene.thumbnailUrl ? proxyUrl(activeScene.thumbnailUrl as string) : null}
+          rotation={sceneRotation(
+            (activeScene as { alignRef?: Vec3 }).alignRef,
+            (tourData as { alignTarget?: Vec3 } | null | undefined)?.alignTarget
+          )}
           height="100vh"
           hotspots={activeHotspots}
           onHotspotClick={handleHotspotClick as (hotspot: HotspotData) => void}
